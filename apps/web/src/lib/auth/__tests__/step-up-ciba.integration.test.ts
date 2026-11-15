@@ -11,7 +11,10 @@ import { db } from "@/lib/db/connection";
 import { sessions } from "@/lib/db/schema/auth";
 import { cibaRequests } from "@/lib/db/schema/ciba";
 import { identityBundles } from "@/lib/db/schema/identity";
-import { oauthClients } from "@/lib/db/schema/oauth-provider";
+import {
+  authChallengeSessions,
+  oauthClients,
+} from "@/lib/db/schema/oauth-provider";
 import {
   createTestUser,
   hashCibaAuthReqId,
@@ -22,8 +25,15 @@ import { postTokenWithDpop } from "@/test-utils/dpop-test-utils";
 const CIBA_GRANT_TYPE = "urn:openid:params:grant-type:ciba";
 const TEST_CLIENT_ID = "step-up-ciba-test";
 const FPA_CLIENT_ID = "step-up-ciba-fpa-test";
+const POLL_CLIENT_ID = "step-up-ciba-poll-test";
 const DECISION_URL = "http://localhost:3000/api/auth/ciba/decision";
+const BC_AUTHORIZE_URL = "http://localhost:3000/api/auth/oauth2/bc-authorize";
 let defaultAuthContextId: string | null = null;
+
+/** `acr_values` as the CIBA plugin's adapter stores them: a JSON array. */
+function storedAcr(...values: string[]): string {
+  return JSON.stringify(values);
+}
 
 async function createTestClient() {
   await db
@@ -50,6 +60,34 @@ async function createFirstPartyClient() {
       firstParty: true,
     })
     .run();
+}
+
+async function createPollClient() {
+  await db
+    .insert(oauthClients)
+    .values({
+      clientId: POLL_CLIENT_ID,
+      name: "Step-Up CIBA Poll Test",
+      redirectUris: JSON.stringify(["http://localhost/callback"]),
+      grantTypes: JSON.stringify([CIBA_GRANT_TYPE]),
+      tokenEndpointAuthMethod: "none",
+      metadata: JSON.stringify({ backchannel_token_delivery_mode: "poll" }),
+    })
+    .run();
+}
+
+async function postBcAuthorize(body: Record<string, string>) {
+  const response = await auth.handler(
+    new Request(BC_AUTHORIZE_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams(body),
+    })
+  );
+  return {
+    status: response.status,
+    json: (await response.json()) as Record<string, unknown>,
+  };
 }
 
 async function insertCibaRequest(
@@ -151,7 +189,7 @@ describe("CIBA step-up: acr_values at approval time", () => {
     await seedTier1User(userId);
     const authReqId = await insertCibaRequest({
       userId,
-      acrValues: "urn:zentity:assurance:tier-2",
+      acrValues: storedAcr("urn:zentity:assurance:tier-2"),
     });
 
     const response = await approveRequest(authReqId, sessionToken);
@@ -165,7 +203,7 @@ describe("CIBA step-up: acr_values at approval time", () => {
   it("tier-0 user cannot approve CIBA request requiring tier-1", async () => {
     const authReqId = await insertCibaRequest({
       userId,
-      acrValues: "urn:zentity:assurance:tier-1",
+      acrValues: storedAcr("urn:zentity:assurance:tier-1"),
     });
 
     const response = await approveRequest(authReqId, sessionToken);
@@ -179,7 +217,7 @@ describe("CIBA step-up: acr_values at approval time", () => {
     await seedTier1User(userId);
     const authReqId = await insertCibaRequest({
       userId,
-      acrValues: "urn:zentity:assurance:tier-1",
+      acrValues: storedAcr("urn:zentity:assurance:tier-1"),
     });
 
     const response = await approveRequest(authReqId, sessionToken);
@@ -191,7 +229,7 @@ describe("CIBA step-up: acr_values at approval time", () => {
     await seedTier1User(userId);
     const authReqId = await insertCibaRequest({
       userId,
-      acrValues: "urn:zentity:assurance:tier-0",
+      acrValues: storedAcr("urn:zentity:assurance:tier-0"),
     });
 
     const response = await approveRequest(authReqId, sessionToken);
@@ -211,13 +249,93 @@ describe("CIBA step-up: acr_values at approval time", () => {
     await seedTier1User(userId);
     const authReqId = await insertCibaRequest({
       userId,
-      acrValues: "urn:zentity:assurance:tier-3 urn:zentity:assurance:tier-1",
+      acrValues: storedAcr(
+        "urn:zentity:assurance:tier-3",
+        "urn:zentity:assurance:tier-1"
+      ),
     });
 
     const response = await approveRequest(authReqId, sessionToken);
 
     // tier-1 satisfies the second value, so the approval succeeds
     expect(response.status).toBe(200);
+  });
+
+  it("enforces a space-separated row stored before the plugin owned acr_values", async () => {
+    await seedTier1User(userId);
+    const authReqId = await insertCibaRequest({
+      userId,
+      acrValues: "urn:zentity:assurance:tier-3 urn:zentity:assurance:tier-2",
+    });
+
+    const response = await approveRequest(authReqId, sessionToken);
+
+    expect(response.status).toBe(403);
+    const body = (await response.json()) as { error_description?: string };
+    expect(body.error_description).toContain(
+      "urn:zentity:assurance:tier-3 urn:zentity:assurance:tier-2"
+    );
+  });
+});
+
+describe("CIBA step-up: acr_values sent to bc-authorize", () => {
+  let userId: string;
+  let sessionToken: string;
+
+  beforeEach(async () => {
+    await resetDatabase();
+    userId = await createTestUser();
+    await createPollClient();
+    const authContextId = (
+      await createAuthenticationContext({
+        userId,
+        loginMethod: "passkey",
+        authenticatedAt: new Date(),
+        sourceKind: "better_auth",
+        referenceType: "session",
+      })
+    ).id;
+    sessionToken = await insertSession(userId, authContextId);
+  });
+
+  it("stores the plugin's JSON array, enforces it at approval, and re-checks it at the poll", async () => {
+    const authorize = await postBcAuthorize({
+      client_id: POLL_CLIENT_ID,
+      scope: "openid",
+      login_hint: userId,
+      acr_values: "urn:zentity:assurance:tier-1",
+    });
+    expect(authorize.status).toBe(200);
+    const authReqId = authorize.json.auth_req_id as string;
+
+    const row = await db
+      .select({ acrValues: cibaRequests.acrValues })
+      .from(cibaRequests)
+      .where(eq(cibaRequests.authReqId, hashCibaAuthReqId(authReqId)))
+      .get();
+    expect(row?.acrValues).toBe(storedAcr("urn:zentity:assurance:tier-1"));
+
+    // A tier-0 user cannot approve a tier-1 request.
+    const refused = await approveRequest(authReqId, sessionToken);
+    expect(refused.status).toBe(403);
+
+    await seedTier1User(userId);
+    const approved = await approveRequest(authReqId, sessionToken);
+    expect(approved.status).toBe(200);
+
+    // The user's tier drops between approval and the poll.
+    await db
+      .delete(identityBundles)
+      .where(eq(identityBundles.userId, userId))
+      .run();
+    const { status, json } = await postTokenWithDpop({
+      grant_type: CIBA_GRANT_TYPE,
+      auth_req_id: authReqId,
+      client_id: POLL_CLIENT_ID,
+    });
+    expect(status).toBe(400);
+    expect(json.error).toBe("interaction_required");
+    expect(json.error_description).toContain("urn:zentity:assurance:tier-1");
   });
 });
 
@@ -244,7 +362,7 @@ describe("CIBA step-up: acr_values at token exchange (safety net)", () => {
     const authReqId = await insertCibaRequest({
       userId,
       status: "approved",
-      acrValues: "urn:zentity:assurance:tier-2",
+      acrValues: storedAcr("urn:zentity:assurance:tier-2"),
     });
 
     const { status, json } = await postTokenWithDpop({
@@ -263,7 +381,7 @@ describe("CIBA step-up: acr_values at token exchange (safety net)", () => {
     const authReqId = await insertCibaRequest({
       userId,
       status: "approved",
-      acrValues: "urn:zentity:assurance:tier-1",
+      acrValues: storedAcr("urn:zentity:assurance:tier-1"),
     });
 
     const { status, json } = await postTokenWithDpop({
@@ -296,7 +414,7 @@ describe("CIBA step-up: acr_values at token exchange (safety net)", () => {
     const authReqId = await insertCibaRequest({
       userId,
       status: "pending",
-      acrValues: "urn:zentity:assurance:tier-2",
+      acrValues: storedAcr("urn:zentity:assurance:tier-2"),
     });
 
     const { status, json } = await postTokenWithDpop({
@@ -333,7 +451,10 @@ describe("CIBA step-up: first-party client (FPA) path", () => {
       clientId: FPA_CLIENT_ID,
       userId,
       status: "approved",
-      acrValues: "urn:zentity:assurance:tier-2",
+      acrValues: storedAcr(
+        "urn:zentity:assurance:tier-3",
+        "urn:zentity:assurance:tier-2"
+      ),
     });
 
     const { status, json } = await postTokenWithDpop({
@@ -346,6 +467,17 @@ describe("CIBA step-up: first-party client (FPA) path", () => {
     expect(json.error).toBe("insufficient_authorization");
     expect(json.auth_session).toBeTypeOf("string");
     expect(json.error_description).toContain("tier-0");
+
+    // The authorization challenge reads the session's acr_values with
+    // findSatisfiedAcr, which expects the space-separated parameter form.
+    const session = await db
+      .select({ acrValues: authChallengeSessions.acrValues })
+      .from(authChallengeSessions)
+      .where(eq(authChallengeSessions.authSession, json.auth_session as string))
+      .get();
+    expect(session?.acrValues).toBe(
+      "urn:zentity:assurance:tier-3 urn:zentity:assurance:tier-2"
+    );
   });
 
   it("non-FPA client with unsatisfied acr_values still returns 400 interaction_required", async () => {
@@ -353,7 +485,7 @@ describe("CIBA step-up: first-party client (FPA) path", () => {
     const authReqId = await insertCibaRequest({
       userId,
       status: "approved",
-      acrValues: "urn:zentity:assurance:tier-2",
+      acrValues: storedAcr("urn:zentity:assurance:tier-2"),
     });
 
     const { status, json } = await postTokenWithDpop({
@@ -373,7 +505,7 @@ describe("CIBA step-up: first-party client (FPA) path", () => {
       clientId: FPA_CLIENT_ID,
       userId,
       status: "approved",
-      acrValues: "urn:zentity:assurance:tier-1",
+      acrValues: storedAcr("urn:zentity:assurance:tier-1"),
     });
 
     const { status, json } = await postTokenWithDpop({

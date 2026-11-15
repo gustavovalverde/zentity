@@ -199,6 +199,20 @@ describe("resolveCibaApprovalData", () => {
     expect(result?.request.authorization_details).toEqual(details);
   });
 
+  it("returns the plugin's JSON acr_values as a space-separated string", async () => {
+    const requestId = await insertCibaRequest(userId, {
+      acrValues: JSON.stringify([
+        "urn:zentity:assurance:tier-3",
+        "urn:zentity:assurance:tier-2",
+      ]),
+    });
+
+    const result = await resolveCibaApprovalData(requestId, userId);
+    expect(result?.request.acr_values).toBe(
+      "urn:zentity:assurance:tier-3 urn:zentity:assurance:tier-2"
+    );
+  });
+
   it("omits optional fields when null in DB", async () => {
     const requestId = await insertCibaRequest(userId);
 

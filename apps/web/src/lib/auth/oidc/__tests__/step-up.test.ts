@@ -92,6 +92,17 @@ describe("findSatisfiedAcr", () => {
   it("returns null for empty acr_values", () => {
     expect(findSatisfiedAcr("", 3 as AccountTier)).toBeNull();
   });
+
+  it("accepts values already split, as the CIBA plugin stores them", () => {
+    const requested = [
+      "urn:zentity:assurance:tier-3",
+      "urn:zentity:assurance:tier-1",
+    ];
+    expect(findSatisfiedAcr(requested, 1 as AccountTier)).toBe(
+      "urn:zentity:assurance:tier-1"
+    );
+    expect(findSatisfiedAcr(requested, 0 as AccountTier)).toBeNull();
+  });
 });
 
 describe("buildOAuthErrorUrl", () => {

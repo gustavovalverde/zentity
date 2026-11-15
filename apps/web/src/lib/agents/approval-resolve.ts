@@ -2,6 +2,7 @@ import type { AuthorizationDetail } from "./capability";
 
 import { and, eq } from "drizzle-orm";
 
+import { parseStoredStringArray } from "@/lib/db/adapter-compat";
 import { db } from "@/lib/db/connection";
 import { agentHosts, agentSessions } from "@/lib/db/schema/agent";
 import { cibaRequests } from "@/lib/db/schema/ciba";
@@ -119,12 +120,13 @@ export async function resolveCibaApprovalData(
     }
   }
 
+  const acrValues = parseStoredStringArray(row.acrValues).join(" ");
   const request: CibaRequestDetails = {
     request_id: requestId,
     expires_at: row.expiresAt.toISOString(),
     scope: row.scope,
     status: row.status,
-    ...(row.acrValues ? { acr_values: row.acrValues } : {}),
+    ...(acrValues ? { acr_values: acrValues } : {}),
     ...(authorizationDetails
       ? { authorization_details: authorizationDetails }
       : {}),

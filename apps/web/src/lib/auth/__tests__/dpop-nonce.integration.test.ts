@@ -434,7 +434,7 @@ describe("server-provided DPoP nonces", () => {
             clientId: FPA_CLIENT_ID,
             userId,
             status: "approved",
-            acrValues: "urn:zentity:assurance:tier-3",
+            acrValues: JSON.stringify(["urn:zentity:assurance:tier-3"]),
           });
           return tokenSender(keyPair, {
             grant_type: CIBA_GRANT_TYPE,
@@ -452,7 +452,7 @@ describe("server-provided DPoP nonces", () => {
         clientId: FPA_CLIENT_ID,
         userId,
         status: "approved",
-        acrValues: "urn:zentity:assurance:tier-3",
+        acrValues: JSON.stringify(["urn:zentity:assurance:tier-3"]),
       });
       const stepUp = await tokenSender(keyPair, {
         grant_type: CIBA_GRANT_TYPE,

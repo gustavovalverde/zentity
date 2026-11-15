@@ -22,6 +22,7 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { parseStoredStringArray } from "@/lib/db/adapter-compat";
 
 import { ConnectedTab } from "./connected-tab";
 import { CibaLiveUpdater } from "./live-updater";
@@ -88,12 +89,13 @@ function deriveRequestDetails(row: CibaRequestRow): CibaRequestDetails {
     }
   }
 
+  const acrValues = parseStoredStringArray(row.acrValues).join(" ");
   return {
     expires_at: row.expiresAt.toISOString(),
     request_id: row.id,
     scope: row.scope,
     status: row.status,
-    ...(row.acrValues ? { acr_values: row.acrValues } : {}),
+    ...(acrValues ? { acr_values: acrValues } : {}),
     ...(authorizationDetails
       ? { authorization_details: authorizationDetails }
       : {}),

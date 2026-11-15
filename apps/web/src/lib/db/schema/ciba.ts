@@ -9,11 +9,11 @@ import { oauthClients } from "./oauth-provider";
 
 /**
  * A CIBA backchannel authentication request. The columns from `authReqId`
- * through `createdAt` are the `@better-auth/ciba` model; the rest are Zentity
- * extensions the plugin never reads: the RAR and `acr_values` the client sent
- * (the plugin does not model them), the verified agent session and attestation,
- * the capability grant that approved it, and the approving authentication
- * context.
+ * through `acrValues` are the `@better-auth/ciba` model; its adapter writes the
+ * `string[]` fields `resources` and `acrValues` as JSON arrays, so raw readers
+ * parse them with `parseStoredStringArray`. The rest are Zentity extensions
+ * the plugin never reads: the verified agent session and attestation, the
+ * capability grant that approved it, and the approving authentication context.
  */
 export const cibaRequests = sqliteTable(
   "ciba_request",

@@ -33,98 +33,22 @@ import {
   getAuthenticationStateBySessionId,
 } from "@/lib/auth/auth-context";
 import { findSatisfiedAcr } from "@/lib/auth/oidc/step-up";
+import { parseStoredStringArray } from "@/lib/db/adapter-compat";
 import { db } from "@/lib/db/connection";
 import { cibaRequests } from "@/lib/db/schema/ciba";
 
 /**
- * Zentity's side of OpenID CIBA on top of `@better-auth/ciba`: the parameters
- * the plugin does not model, the approval decision (step-up, then
- * `completeCibaRequest`), the per-request stash the token grant reads, and the
- * actor the grant's tokens name.
+ * Zentity's side of OpenID CIBA on top of `@better-auth/ciba`: the approval
+ * decision (strict `acr_values` step-up, then `completeCibaRequest`), the
+ * per-request stash the token grant reads, and the actor the grant's tokens
+ * name. The plugin itself validates, stores, and issues the request's
+ * `acr_values` and RFC 9396 `authorization_details`.
  *
  * Users decide on Zentity's own `/approve/{requestId}` page or from a push
  * notification, through `/ciba/decision`, never on the provider's consent
  * page, so every approval runs the assurance check below before the plugin
  * records it.
  */
-
-// ── bc-authorize parameters the plugin does not model ────────────────
-
-interface BackchannelExtras {
-  acrValues: string | null;
-  authorizationDetails: string | null;
-}
-
-// `@better-auth/ciba` validates its own body schema, which drops RFC 9396
-// `authorization_details` and `acr_values`. The bc-authorize before-hook
-// captures them here; `sendNotification`, which runs later in the same request
-// with the new request id, persists them.
-const backchannelExtrasState = defineRequestState<BackchannelExtras | null>(
-  () => null
-);
-
-function readAuthorizationDetails(value: unknown): string | null {
-  if (value === undefined || value === "") {
-    return null;
-  }
-  if (typeof value === "string") {
-    try {
-      JSON.parse(value);
-    } catch {
-      throw new APIError("BAD_REQUEST", {
-        error: "invalid_request",
-        error_description: "authorization_details must be valid JSON",
-      });
-    }
-    return value;
-  }
-  return JSON.stringify(value);
-}
-
-/** The stored RAR as issued in the token, or null when absent or corrupt. */
-export function parseStoredAuthorizationDetails(
-  raw: string | null
-): unknown[] | null {
-  if (!raw) {
-    return null;
-  }
-  try {
-    const parsed: unknown = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed : null;
-  } catch {
-    return null;
-  }
-}
-
-export async function captureBackchannelExtras(
-  body: Record<string, unknown>
-): Promise<void> {
-  const acrValues =
-    typeof body.acr_values === "string" && body.acr_values.trim()
-      ? body.acr_values.trim()
-      : null;
-  await backchannelExtrasState.set({
-    acrValues,
-    authorizationDetails: readAuthorizationDetails(body.authorization_details),
-  });
-}
-
-export async function persistBackchannelExtras(
-  requestId: string
-): Promise<BackchannelExtras> {
-  const extras = (await backchannelExtrasState.get()) ?? {
-    acrValues: null,
-    authorizationDetails: null,
-  };
-  if (extras.acrValues || extras.authorizationDetails) {
-    await db
-      .update(cibaRequests)
-      .set(extras)
-      .where(eq(cibaRequests.id, requestId))
-      .run();
-  }
-  return extras;
-}
 
 // ── Token grant stash ────────────────────────────────────────────────
 
@@ -138,12 +62,6 @@ export interface PendingCibaToken {
   agentClaims: AapAccessTokenClaims | null;
   /** Approval-time authentication context, "" when none was captured. */
   authContextId: string;
-  /**
-   * RFC 9396 authorization details issued in the access token and the token
-   * response: the canonical payment authorization when the request carries
-   * one, otherwise the stored request's RAR.
-   */
-  authorizationDetails: unknown[] | null;
   /** The stored `auth_req_id` hash, which every CIBA token references. */
   authReqIdHash: string;
   /** Durable agent snapshot, set only for verified agent sessions. */
@@ -318,11 +236,15 @@ export function createCibaApproval(
       const assurance = await getAccountAssurance(input.userId, {
         isAuthenticated: true,
       });
-      if (row.acrValues && !findSatisfiedAcr(row.acrValues, assurance.tier)) {
+      const acrValues = parseStoredStringArray(row.acrValues);
+      if (
+        acrValues.length > 0 &&
+        !findSatisfiedAcr(acrValues, assurance.tier)
+      ) {
         throw cibaDecisionError(
           "FORBIDDEN",
           "insufficient_user_authentication",
-          `Your assurance level (tier-${assurance.tier}) does not meet the required level: ${row.acrValues}`
+          `Your assurance level (tier-${assurance.tier}) does not meet the required level: ${acrValues.join(" ")}`
         );
       }
 

@@ -3,7 +3,6 @@ import "server-only";
 import {
   PAYMENT_AUTHORIZATION_CAPABILITY,
   PAYMENT_AUTHORIZATION_TYPE,
-  type PaymentAuthorization,
   PaymentAuthorizationDetailsSchema,
 } from "@zentity/sdk/protocol";
 import { APIError } from "better-auth/api";
@@ -16,17 +15,17 @@ import { env } from "@/env";
  * A payment token differs from every other token zentity mints in three ways
  * the wallet checks: it carries exactly one canonical `payment_authorization`
  * RAR, its `aud` is the wallet's absolute-URI identity (e.g.
- * `urn:zentity:wallet:<jkt>`), and it lives 120 seconds. The oauth-provider
- * hard-sets `aud` and `exp` AFTER our claims hook runs, so those two are pinned
- * through native OAuth seams (a resource indicator and a per-scope lifetime)
- * while the RAR is minted in the claims hook. This module owns all three so the
+ * `urn:zentity:wallet:<jkt>`), and it lives 120 seconds. All three are pinned
+ * through native OAuth seams: the RAR and a resource indicator at
+ * bc-authorize, and a per-scope lifetime. This module owns all three so the
  * wiring reads as one decision instead of three scattered edits.
  *
  * Trust note: the bc-authorize before-hook (pinPaymentRequest) overwrites
  * ctx.body.authorization_details and ctx.body.resource BEFORE the CIBA plugin
- * persists them, so the JWT claims copy (re-emitted here), the token
- * response-body copy, and `aud` all derive from issuer-set values, not a client
- * echo. The wallet enforces the RAR from the signed JWT regardless.
+ * validates and stores them. The plugin issues the stored details unchanged in
+ * the JWT and the token response, and binds `aud` to the stored resource, so
+ * all three derive from issuer-set values, not a client echo. The wallet
+ * enforces the RAR from the signed JWT regardless.
  */
 
 /**
@@ -108,30 +107,4 @@ export function pinPaymentRequest(body: Record<string, unknown>): void {
   }
   body.authorization_details = JSON.stringify(result.data);
   body.resource = walletAudience;
-}
-
-/**
- * Mint claims (D-1): re-validate the persisted RAR and emit it as
- * `authorization_details`. The CIBA grant handler `Object.assign`s this return
- * over its client echo, so the JWT carries the canonical RAR. A corrupt stored
- * RAR throws — failing the mint loudly rather than minting a token without
- * `authorization_details`.
- */
-export function buildPaymentAuthorizationClaims(
-  authorizationDetailsRaw: unknown
-): { authorization_details: PaymentAuthorization[] } | null {
-  const details = parseAuthorizationDetails(authorizationDetailsRaw);
-  if (!hasPaymentEntry(details)) {
-    return null;
-  }
-  const result = PaymentAuthorizationDetailsSchema.safeParse(details);
-  if (!result.success) {
-    throw new APIError("BAD_REQUEST", {
-      error: "invalid_grant",
-      error_description: `stored payment_authorization is invalid: ${
-        result.error.issues[0]?.message ?? "unknown"
-      }`,
-    });
-  }
-  return { authorization_details: result.data };
 }
