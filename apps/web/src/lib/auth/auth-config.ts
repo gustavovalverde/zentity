@@ -2,8 +2,6 @@ import type { CibaNotification } from "@better-auth/ciba";
 import type { AuthContext, GenericEndpointContext } from "@better-auth/core";
 import type { LoginMethod } from "@zentity/sdk/protocol";
 
-import { createHash } from "node:crypto";
-
 import { CIBA_GRANT_TYPE, ciba } from "@better-auth/ciba";
 import { cimd } from "@better-auth/cimd";
 import { fetchClientMetadataResource } from "@better-auth/cimd/node";
@@ -929,10 +927,6 @@ async function afterDcrRegisterEnableEndSession(ctx: HookCtx) {
   }
 }
 
-function hashAuthorizationCodeIdentifier(code: string): string {
-  return createHash("sha256").update(code).digest("base64url");
-}
-
 /**
  * Rebinds an authorization code to its own reference before the grant redeems
  * it, so every token the code issues references this one authorization rather
@@ -945,7 +939,7 @@ async function beforeTokenFinalizeDisclosureBindings(ctx: HookCtx) {
     return;
   }
 
-  const record = await findAuthorizationCodeRecord(code);
+  const record = await findAuthorizationCodeRecord(ctx, code);
   if (!record) {
     return;
   }
@@ -1012,21 +1006,20 @@ async function beforeTokenFinalizeDisclosureBindings(ctx: HookCtx) {
 }
 
 async function findAuthorizationCodeRecord(
+  ctx: HookCtx,
   code: string
 ): Promise<{ identifier: string; value: string } | null> {
-  const identifiers = [code, hashAuthorizationCodeIdentifier(code)];
-  for (const identifier of identifiers) {
-    const record = await db
-      .select({ value: verifications.value })
-      .from(verifications)
-      .where(eq(verifications.identifier, identifier))
-      .limit(1)
-      .get();
-    if (record?.value) {
-      return { identifier, value: record.value };
-    }
-  }
-  return null;
+  const identifier = await oauthProviderApi(ctx).hashToken(
+    code,
+    "authorization_code"
+  );
+  const record = await db
+    .select({ value: verifications.value })
+    .from(verifications)
+    .where(eq(verifications.identifier, identifier))
+    .limit(1)
+    .get();
+  return record?.value ? { identifier, value: record.value } : null;
 }
 
 async function pendingCibaAuthContextId(
