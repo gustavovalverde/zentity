@@ -158,9 +158,7 @@ async function issueAgentToken(
     taskId: "task-123",
     assertionVerified: true,
     approvedCapabilityName: "purchase",
-    approvedConstraints: JSON.stringify([
-      { field: "merchant", op: "eq", value: "Test Store" },
-    ]),
+    approvedConstraints: [{ field: "merchant", op: "eq", value: "Test Store" }],
     approvedGrantId: "grant-123",
     approvalStrength: "session",
     attestationProvider: "AgentPass",

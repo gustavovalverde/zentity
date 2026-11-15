@@ -18,8 +18,7 @@ import {
   compliantErc20Abi,
   identityRegistryAbi,
 } from "@zentity/contracts";
-import { createPublicClient, http, parseAbiItem } from "viem";
-import { hardhat, sepolia } from "viem/chains";
+import { maxUint64, parseAbiItem, parseUnits } from "viem";
 import { z } from "zod";
 
 import {
@@ -27,6 +26,7 @@ import {
   createProvider,
 } from "@/lib/blockchain/attestation/providers";
 import {
+  createNetworkPublicClient,
   getEnabledNetworks,
   getExplorerTxUrl,
   getNetworkById,
@@ -36,12 +36,6 @@ import { createRateLimiter } from "@/lib/http/rate-limit";
 
 import { protectedProcedure, requireFeature, router } from "../server";
 
-// Chain configurations for viem
-const VIEM_CHAINS = {
-  11155111: sepolia,
-  31337: hardhat,
-} as const;
-
 // CompliantERC20 ABI (kept in sync with contracts package)
 const COMPLIANT_ERC20_ABI = compliantErc20Abi;
 
@@ -50,8 +44,14 @@ const mintLimiter = createRateLimiter({ windowMs: 60 * 60 * 1000, max: 3 });
 // Note: Contract uses euint64 for balances with 18 decimals.
 // uint64.max = ~18.4 * 10^18, so max total supply is ~18 tokens.
 // We limit per-mint to 10 tokens to allow multiple mints before hitting cap.
-const MAX_MINT_AMOUNT = BigInt(10) * BigInt(10) ** BigInt(18); // 10 tokens
-const UINT64_MAX = BigInt(2) ** BigInt(64) - BigInt(1); // Max supply for euint64 balances
+const MAX_MINT_AMOUNT = parseUnits("10", 18); // 10 tokens
+const UINT64_MAX = maxUint64; // Max supply for euint64 balances
+
+/** Whole tokens (two decimals) left under the euint64 cap. */
+function toRemainingTokens(remaining: bigint): number {
+  return Number(remaining / BigInt(10 ** 16)) / 100;
+}
+
 // biome-ignore lint/suspicious/noBitwiseOperators: contract access is represented as a bitmask
 const REQUIRED_COMPLIANCE_ATTRIBUTES = ATTR.COMPLIANCE | ATTR.BLACKLIST;
 
@@ -78,18 +78,7 @@ export const compliantTokenRouter = router({
         });
       }
 
-      const chain = VIEM_CHAINS[network.chainId as keyof typeof VIEM_CHAINS];
-      if (!chain) {
-        throw new TRPCError({
-          code: "INTERNAL_SERVER_ERROR",
-          message: `Unsupported chain ID: ${network.chainId}`,
-        });
-      }
-
-      const client = createPublicClient({
-        chain,
-        transport: http(network.rpcUrl),
-      });
+      const client = createNetworkPublicClient(network);
 
       try {
         const [name, symbol, decimals, totalSupply] = await Promise.all([
@@ -116,7 +105,7 @@ export const compliantTokenRouter = router({
         ]);
 
         const remaining = UINT64_MAX - totalSupply;
-        const remainingTokens = Number(remaining / BigInt(10 ** 16)) / 100;
+        const remainingTokens = toRemainingTokens(remaining);
 
         return {
           name,
@@ -222,33 +211,24 @@ export const compliantTokenRouter = router({
       }
 
       // Pre-check: verify supply capacity before sending tx
-      const chain = VIEM_CHAINS[network.chainId as keyof typeof VIEM_CHAINS];
-      if (chain) {
-        const readClient = createPublicClient({
-          chain,
-          transport: http(network.rpcUrl),
-        });
-        const currentSupply = await readClient.readContract({
-          address: contractAddress as `0x${string}`,
-          abi: COMPLIANT_ERC20_ABI,
-          functionName: "totalSupply",
-        });
+      const publicClient = createNetworkPublicClient(network);
+      const currentSupply = await publicClient.readContract({
+        address: contractAddress as `0x${string}`,
+        abi: COMPLIANT_ERC20_ABI,
+        functionName: "totalSupply",
+      });
 
-        if (currentSupply + amount > UINT64_MAX) {
-          const remaining = UINT64_MAX - currentSupply;
-          const remainingTokens = Number(remaining / BigInt(10 ** 16)) / 100;
-          throw new TRPCError({
-            code: "BAD_REQUEST",
-            message: `Supply cap reached. Only ${remainingTokens.toFixed(2)} tokens can be minted (euint64 limit).`,
-          });
-        }
+      if (currentSupply + amount > UINT64_MAX) {
+        const remainingTokens = toRemainingTokens(UINT64_MAX - currentSupply);
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: `Supply cap reached. Only ${remainingTokens.toFixed(2)} tokens can be minted (euint64 limit).`,
+        });
       }
 
       // Mint tokens using provider's wallet (owner)
       try {
         const provider = createProvider(input.networkId);
-        // Access the wallet client through the provider
-        // @ts-expect-error - accessing protected method for mint operation
         const walletClient = provider.getWalletClient();
 
         const txHash = await walletClient.writeContract({
@@ -260,18 +240,10 @@ export const compliantTokenRouter = router({
 
         // Wait for transaction confirmation before returning success
         // This ensures logs are queryable and history shows the mint
-        const viemChain =
-          VIEM_CHAINS[network.chainId as keyof typeof VIEM_CHAINS];
-        if (viemChain) {
-          const publicClient = createPublicClient({
-            chain: viemChain,
-            transport: http(network.rpcUrl),
-          });
-          await publicClient.waitForTransactionReceipt({
-            hash: txHash,
-            confirmations: 1,
-          });
-        }
+        await publicClient.waitForTransactionReceipt({
+          hash: txHash,
+          confirmations: 1,
+        });
 
         return {
           success: true,
@@ -341,18 +313,7 @@ export const compliantTokenRouter = router({
         return { transfers: [] };
       }
 
-      const chain = VIEM_CHAINS[network.chainId as keyof typeof VIEM_CHAINS];
-      if (!chain) {
-        throw new TRPCError({
-          code: "INTERNAL_SERVER_ERROR",
-          message: `Unsupported chain ID: ${network.chainId}`,
-        });
-      }
-
-      const client = createPublicClient({
-        chain,
-        transport: http(network.rpcUrl),
-      });
+      const client = createNetworkPublicClient(network);
 
       try {
         // Get Transfer events where user is sender or receiver
@@ -469,18 +430,7 @@ export const compliantTokenRouter = router({
         };
       }
 
-      const chain = VIEM_CHAINS[network.chainId as keyof typeof VIEM_CHAINS];
-      if (!chain) {
-        throw new TRPCError({
-          code: "INTERNAL_SERVER_ERROR",
-          message: `Unsupported chain ID: ${network.chainId}`,
-        });
-      }
-
-      const client = createPublicClient({
-        chain,
-        transport: http(network.rpcUrl),
-      });
+      const client = createNetworkPublicClient(network);
 
       try {
         const grantedAttributes = await client.readContract({

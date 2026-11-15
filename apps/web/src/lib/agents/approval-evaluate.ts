@@ -2,7 +2,7 @@ import {
   PAYMENT_AUTHORIZATION_CAPABILITY,
   PAYMENT_AUTHORIZATION_TYPE,
 } from "@zentity/sdk/protocol";
-import { and, eq, gte, inArray, sql } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, sql } from "drizzle-orm";
 
 import { computeSessionState } from "@/lib/agents/session";
 import { isIdentityScope } from "@/lib/auth/oidc/disclosure/registry";
@@ -21,7 +21,7 @@ import {
   resolveCapabilityApprovalStrength,
 } from "./capability";
 
-interface Constraint {
+export interface GrantConstraint {
   field: string;
   op: "eq" | "in" | "max" | "min" | "not_in";
   value?: number | string;
@@ -30,7 +30,7 @@ interface Constraint {
 
 interface NormalizedGrant {
   capabilityName: string;
-  constraints: Constraint[];
+  constraints: GrantConstraint[];
   cooldownSec?: number | undefined;
   dailyLimitAmount?: number | undefined;
   dailyLimitCount?: number | undefined;
@@ -44,7 +44,7 @@ interface GrantEvalResult {
   approvalStrength?: string | undefined;
   approved: boolean;
   capabilityName?: string | undefined;
-  constraintsJson?: string | undefined;
+  constraints?: GrantConstraint[] | undefined;
   grantId?: string | undefined;
   hostPolicyId?: string | undefined;
   reason?: string | undefined;
@@ -95,18 +95,6 @@ function extractActionParams(
   };
 }
 
-function parseConstraints(raw: string | null): Constraint[] {
-  if (!raw) {
-    return [];
-  }
-  try {
-    const parsed = JSON.parse(raw) as unknown;
-    return Array.isArray(parsed) ? (parsed as Constraint[]) : [];
-  } catch {
-    return [];
-  }
-}
-
 /**
  * Whether a payment grant is bounded enough to auto-approve without a human.
  * On-chain spend requires an explicit amount ceiling: a per-spend `max` on
@@ -127,7 +115,7 @@ function isBoundedPaymentGrant(grant: NormalizedGrant): boolean {
 }
 
 function evaluateConstraint(
-  constraint: Constraint,
+  constraint: GrantConstraint,
   params: Record<string, unknown>
 ): boolean {
   const value = params[constraint.field];
@@ -159,7 +147,7 @@ function evaluateConstraint(
 function normalizeGrantRows(
   sessionGrants: Array<{
     capabilityName: string;
-    constraints: string | null;
+    constraints: GrantConstraint[] | null;
     cooldownSec: number | null;
     dailyLimitAmount: number | null;
     dailyLimitCount: number | null;
@@ -172,7 +160,7 @@ function normalizeGrantRows(
   return sessionGrants.map((grant) => ({
     id: grant.id,
     capabilityName: grant.capabilityName,
-    constraints: parseConstraints(grant.constraints),
+    constraints: grant.constraints ?? [],
     dailyLimitAmount: grant.dailyLimitAmount ?? undefined,
     dailyLimitCount: grant.dailyLimitCount ?? undefined,
     cooldownSec: grant.cooldownSec ?? undefined,
@@ -441,9 +429,7 @@ export async function evaluateSessionGrants(
         approved: true,
         approvalStrength,
         capabilityName,
-        constraintsJson: grant.constraints.length
-          ? JSON.stringify(grant.constraints)
-          : undefined,
+        constraints: grant.constraints.length ? grant.constraints : undefined,
         grantId: grant.id,
         hostPolicyId: grant.hostPolicyId,
       };
@@ -507,7 +493,7 @@ function recordUsageIfAllowed(
             gte(capabilityUsageLedger.executedAt, cooldownThreshold)
           )
         )
-        .orderBy(sql`${capabilityUsageLedger.executedAt} DESC`)
+        .orderBy(desc(capabilityUsageLedger.executedAt))
         .limit(1)
         .get();
 

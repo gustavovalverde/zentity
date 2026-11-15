@@ -42,7 +42,6 @@ async function resolvePrfOutput(params: {
 }): Promise<Uint8Array | null> {
   const prfOutput = extractPrfOutputFromClientResults({
     clientExtensionResults: params.clientExtensionResults,
-    credentialId: params.credentialId ?? undefined,
   });
   if (prfOutput) {
     return prfOutput;

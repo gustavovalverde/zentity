@@ -86,7 +86,7 @@ jobs:
     name: Build Demo RP
     needs: changes
     if: needs.changes.outputs.demo-rp == 'true' || github.event_name == 'workflow_dispatch'
-    uses: ./.github/workflows/reusable-build-service.yml
+    uses: $/.github/workflows/reusable-build-service.yml
     with:
       service_name: demo-rp
       context_path: .
@@ -102,7 +102,7 @@ jobs:
     name: Build FHE Service
     needs: changes
     if: needs.changes.outputs.fhe == 'true' || github.event_name == 'workflow_dispatch'
-    uses: ./.github/workflows/reusable-build-service.yml
+    uses: $/.github/workflows/reusable-build-service.yml
     with:
       service_name: fhe-service
       context_path: apps/fhe
@@ -117,7 +117,7 @@ jobs:
     name: Build OCR Service
     needs: changes
     if: needs.changes.outputs.ocr == 'true' || github.event_name == 'workflow_dispatch'
-    uses: ./.github/workflows/reusable-build-service.yml
+    uses: $/.github/workflows/reusable-build-service.yml
     with:
       service_name: ocr-service
       context_path: apps/ocr
@@ -132,7 +132,7 @@ jobs:
     name: Build Web App
     needs: changes
     if: needs.changes.outputs.web == 'true' || github.event_name == 'workflow_dispatch'
-    uses: ./.github/workflows/reusable-build-service.yml
+    uses: $/.github/workflows/reusable-build-service.yml
     with:
       service_name: web
       context_path: .

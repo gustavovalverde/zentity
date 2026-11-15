@@ -7,40 +7,37 @@ import {
   rateLimitResponse,
 } from "@/lib/http/rate-limit";
 /**
- * Breached password check endpoint (UX-only).
+ * Breached password range proxy (UX-only).
  *
  * Why this exists:
- * - With OPAQUE, the server never sees raw passwords, so this endpoint powers
- *   client-side breach checks before submitting a registration/reset request.
+ * - With OPAQUE, the server never sees raw passwords, so the browser checks
+ *   breaches itself. This route relays the Have I Been Pwned (HIBP) range API
+ *   for the browser.
  *
  * Privacy/Security:
- * - Uses the Have I Been Pwned "range" API (k-anonymity). We only send the first
- *   5 chars of the SHA-1 hash prefix to HIBP.
- * - The raw password is never sent to HIBP.
- * - This endpoint receives a SHA-1 hash of the password (from our own client),
- *   not the raw password. It must not be logged or stored; we only return
- *   `{ compromised: boolean }`.
+ * - k-anonymity end to end: the browser sends only the first 5 hex characters
+ *   of the password's SHA-1 and matches the suffix locally. The server never
+ *   receives the suffix, and rejects anything but exactly 5 hex characters, so
+ *   a full hash is refused rather than silently truncated.
+ * - The prefix is not logged or stored, and the request carries no credentials.
  *
  * Response contract:
- * - `{ skipped: true }` indicates "not checked" (invalid payload or upstream error).
+ * - 200 with HIBP's `SUFFIX:COUNT` lines as text/plain. HIBP pads responses
+ *   (`Add-Padding`) with zero-count entries that the client must ignore.
+ * - 400 for an invalid prefix; 429 when rate limited; 502 when HIBP is
+ *   unreachable or fails. The client treats every non-200 as "skipped".
  */
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-const pwnedRequestSchema = z.object({
-  sha1: z
-    .string()
-    .trim()
-    .toUpperCase()
-    .regex(/^[0-9A-F]{40}$/),
-});
+const UPSTREAM_TIMEOUT_MS = 5000;
 
-interface PwnedCheckResponse {
-  compromised: boolean;
-  skipped: boolean;
-}
+const prefixSchema = z.string().regex(/^[0-9A-F]{5}$/);
 
-export async function POST(request: Request) {
+const failure = (status: number) =>
+  new NextResponse(null, { status, headers: { "Cache-Control": "no-store" } });
+
+export async function GET(request: Request) {
   const { limited, retryAfter } = publicLimiter.check(
     getClientIp(request.headers)
   );
@@ -48,46 +45,41 @@ export async function POST(request: Request) {
     return rateLimitResponse(retryAfter);
   }
 
-  const body: unknown = await request.json().catch(() => null);
-  const parsed = pwnedRequestSchema.safeParse(body);
+  const parsed = prefixSchema.safeParse(
+    new URL(request.url).searchParams.get("prefix")?.toUpperCase()
+  );
   if (!parsed.success) {
-    return NextResponse.json(
-      { compromised: false, skipped: true } satisfies PwnedCheckResponse,
-      { status: 200 }
-    );
+    return failure(400);
   }
-  const normalizedSha1 = parsed.data.sha1;
 
-  const prefix = normalizedSha1.substring(0, 5);
-  const suffix = normalizedSha1.substring(5);
-
-  const response = await fetch(
-    `https://api.pwnedpasswords.com/range/${prefix}`,
-    {
-      method: "GET",
-      cache: "no-store",
-      signal: request.signal,
-      headers: {
-        "Add-Padding": "true",
-        "User-Agent": "Zentity Password Checker",
-      },
+  try {
+    const upstream = await fetch(
+      `https://api.pwnedpasswords.com/range/${parsed.data}`,
+      {
+        method: "GET",
+        cache: "no-store",
+        signal: AbortSignal.any([
+          request.signal,
+          AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
+        ]),
+        headers: {
+          "Add-Padding": "true",
+          "User-Agent": "Zentity Password Checker",
+        },
+      }
+    );
+    if (!upstream.ok) {
+      return failure(502);
     }
-  );
 
-  if (!response.ok) {
-    return NextResponse.json(
-      { compromised: false, skipped: true } satisfies PwnedCheckResponse,
-      { status: 200 }
-    );
+    return new NextResponse(await upstream.text(), {
+      status: 200,
+      headers: {
+        "Content-Type": "text/plain; charset=utf-8",
+        "Cache-Control": "public, max-age=3600",
+      },
+    });
+  } catch {
+    return failure(502);
   }
-
-  const data = await response.text();
-  const compromised = data
-    .split("\n")
-    .some((line) => line.split(":")[0]?.toUpperCase() === suffix);
-
-  return NextResponse.json(
-    { compromised, skipped: false } satisfies PwnedCheckResponse,
-    { status: 200 }
-  );
 }

@@ -167,7 +167,11 @@ export function OnChainAttestation({
     createPermitMutation.isPending || recordSubmissionMutation.isPending;
 
   // Refresh attestation status mutation
-  const refreshMutation = useMutation(
+  const {
+    isPending: isRefreshing,
+    mutate: refreshAttestation,
+    mutateAsync: refreshAttestationAsync,
+  } = useMutation(
     trpc.attestation.refresh.mutationOptions({
       onSuccess: () => {
         refetchNetworks().catch(reportRejection);
@@ -188,12 +192,12 @@ export function OnChainAttestation({
 
     const interval = setInterval(() => {
       for (const networkId of pendingNetworkIds) {
-        refreshMutation.mutate({ networkId });
+        refreshAttestation({ networkId });
       }
     }, 8000);
 
     return () => clearInterval(interval);
-  }, [networks, refreshMutation]);
+  }, [networks, refreshAttestation]);
 
   // Derived state - memoized for performance
   const showComplianceAccess = useMemo(
@@ -413,10 +417,10 @@ export function OnChainAttestation({
       return;
     }
 
-    await refreshMutation.mutateAsync({
+    await refreshAttestationAsync({
       networkId: selectedNetwork,
     });
-  }, [selectedNetwork, refreshMutation]);
+  }, [selectedNetwork, refreshAttestationAsync]);
 
   // Count confirmed attestations
   const confirmedCount =
@@ -507,7 +511,7 @@ export function OnChainAttestation({
               }}
               isCheckingOnChain={isCheckingOnChain}
               isConnected={isConnected}
-              isRefreshing={refreshMutation.isPending}
+              isRefreshing={isRefreshing}
               isSubmitting={isSubmitting}
               needsReAttestation={needsReAttestation}
               networks={networks}

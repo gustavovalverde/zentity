@@ -60,9 +60,6 @@ function sanitizeAttributes(
 }
 
 function isValueWithinLimits(unit: "ms" | "By", value: number): boolean {
-  if (!Number.isFinite(value) || value < 0) {
-    return false;
-  }
   if (unit === "ms") {
     return value <= MAX_DURATION_MS;
   }

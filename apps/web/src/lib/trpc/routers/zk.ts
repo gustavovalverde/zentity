@@ -96,6 +96,7 @@ import {
 import {
   normalizeChallengeNonce,
   PROOF_TYPE_SPECS,
+  ProofType,
 } from "@/lib/privacy/zk/proof-types";
 import {
   assertPolicyVersion,
@@ -112,24 +113,12 @@ import { protectedProcedure, publicProcedure, router } from "../server";
 const FHE_SERVICE_URL = env.FHE_SERVICE_URL;
 const PROOF_SESSION_TTL_MS = 15 * 60 * 1000;
 
-export const circuitTypeSchema = z.enum([
-  "age_verification",
-  "doc_validity",
-  "nationality_membership",
-  "face_match",
-  "identity_binding",
-]);
+export const circuitTypeSchema = z.enum(ProofType);
 
 const MIN_FACE_MATCH_THRESHOLD = Math.round(FACE_MATCH_MIN_CONFIDENCE * 10_000);
 const MIN_FACE_MATCH_PERCENT = Math.round(FACE_MATCH_MIN_CONFIDENCE * 100);
 const U32_MAX = BigInt(0xff_ff_ff_ff);
-const REQUIRED_SESSION_PROOFS = [
-  "age_verification",
-  "doc_validity",
-  "nationality_membership",
-  "face_match",
-  "identity_binding",
-] as const;
+const REQUIRED_SESSION_PROOFS = Object.values(ProofType);
 
 type NoirVerificationResult = Awaited<ReturnType<typeof verifyNoirProof>>;
 type ProofVerificationResult = NoirVerificationResult & { reason?: string };

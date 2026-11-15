@@ -9,7 +9,6 @@
     "dev": "next dev --port 3102",
     "build": "next build",
     "start": "next start --port 3102",
-    "setup": "mkdir -p .data && pnpm run db:push",
     "db:setup": "mkdir -p .data && pnpm run db:push",
     "db:push": "drizzle-kit push",
     "lint": "pnpm exec ultracite fix",

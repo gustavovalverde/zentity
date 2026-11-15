@@ -52,7 +52,7 @@ All three auth methods (passkey, OPAQUE, wallet) provide equivalent key custody 
 
 ---
 
-OPAQUE handles the password exchange. The next section describes the policy layer that prevents users from choosing compromised passwords in the first place.
+OPAQUE handles the password exchange. The next section describes the policy layer that guides users away from weak or compromised passwords.
 
 ## Password Policy
 
@@ -61,9 +61,8 @@ The policy operates at two layers with different enforcement boundaries. The ser
 ### Server-Enforced (Authoritative)
 
 - Length: 10 to 128 characters
-- Breached password blocking via HIBP
 
-The server enforces breached-password blocking during email+password sign-up, password reset, and password change. If the password appears in known breaches, the request is rejected with `PASSWORD_COMPROMISED`. This is the real security boundary.
+The server never sees the password (OPAQUE), so it cannot check it against known breaches. Breached-password detection is client-side guidance only; see the breach check privacy model below.
 
 ### Client-Side (UX Guidance Only)
 
@@ -75,7 +74,7 @@ Client-side checks must never be relied on for enforcement.
 
 ---
 
-The server-enforced policy rejects known-compromised passwords, but checking against HIBP requires care to avoid leaking the password. The next section explains the privacy model for this check.
+Checking against HIBP requires care to avoid leaking the password. The next section explains the privacy model for this check.
 
 ## Breach Check Privacy Model
 
@@ -85,11 +84,11 @@ To reduce frustration, the UI performs a pre-check after the user completes both
 
 ### What the Browser Sends
 
-The client does not send the plaintext password. It computes SHA-1 of the password (uppercase hex) and sends only the hash to the server-side route handler.
+The client does not send the plaintext password or the full hash. It computes SHA-1 of the password (uppercase hex) and sends only the first 5 characters, as `GET /api/password/pwned?prefix=XXXXX`. The route rejects anything that is not exactly 5 hex characters, so a full hash is refused. The request carries no cookies or flow identifiers, and the route does not log the prefix.
 
 ### What the Server Sends to HIBP
 
-The route handler uses the Have I Been Pwned range API (k-anonymity): it sends only the first 5 characters of the SHA-1 hash prefix to HIBP, never the plaintext password. The HIBP `Add-Padding` header reduces response size leakage.
+The route handler relays the Have I Been Pwned range API (k-anonymity): it sends the 5-character prefix to HIBP with the `Add-Padding` header and returns the `SUFFIX:COUNT` lines unchanged. The server never receives the suffix. The browser matches its own suffix locally and ignores padded entries with a count of 0. A lookup failure (invalid upstream response, timeout, rate limit) skips the check instead of blocking sign-up.
 
 ### DevTools Visibility
 
@@ -97,7 +96,5 @@ Users can inspect what their browser sends in the Network tab. The goal is not t
 
 ## Future Improvements
 
-- **Reduce duplicate upstream checks**: Better Auth also runs its own HIBP check on submit. Short-lived, non-identifying caching on the server-side route handler can reduce external calls without weakening enforcement.
-- **Rate limiting**: Per-IP and per-session limits on the pre-check endpoint to prevent abuse.
 - **Passwordless**: Prefer passkeys, wallet auth, or magic links for stronger phishing resistance and less password exposure.
 - **Key-stretching profiles**: Make OPAQUE key stretching configurable per environment with careful migration planning.

@@ -770,6 +770,36 @@ describe("passportChip.submitResult", () => {
     expect(result.disclosed.dateOfBirth).toBe("1990-05-15");
   });
 
+  it("normalizes a full ISO timestamp string birthdate to a date", async () => {
+    const resultWithTimestamp = {
+      ...mockQueryResult,
+      birthdate: { disclose: { result: "1990-05-15T00:00:00.000Z" } },
+    };
+
+    const caller = await createCaller(authedSession);
+    const result = await caller.submitResult({
+      ...validInput(),
+      result: resultWithTimestamp as Record<string, unknown>,
+    });
+
+    expect(result.disclosed.dateOfBirth).toBe("1990-05-15");
+  });
+
+  it("drops an unparseable birthdate string", async () => {
+    const resultWithGarbage = {
+      ...mockQueryResult,
+      birthdate: { disclose: { result: "not-a-date" } },
+    };
+
+    const caller = await createCaller(authedSession);
+    const result = await caller.submitResult({
+      ...validInput(),
+      result: resultWithGarbage as Record<string, unknown>,
+    });
+
+    expect(result.disclosed.dateOfBirth).toBeNull();
+  });
+
   // --- Re-verify for vault ---
 
   it("allows re-submission when chip-verified but profile secret missing", async () => {

@@ -1,43 +1,33 @@
 import type { AccountTier } from "@zentity/sdk/protocol";
 
-import crypto from "node:crypto";
-
 import { describe, expect, it } from "vitest";
 
 import {
   ACR_VALUES_SUPPORTED,
-  buildOidcAssuranceClaims,
-  computeAtHash,
+  buildNamespacedAssuranceClaim,
+  computeAcr,
   loginMethodToAmr,
 } from "../oidc-claims";
 
-describe("buildOidcAssuranceClaims", () => {
+describe("computeAcr", () => {
   it.each([
     [0, "urn:zentity:assurance:tier-0"],
     [1, "urn:zentity:assurance:tier-1"],
     [2, "urn:zentity:assurance:tier-2"],
     [3, "urn:zentity:assurance:tier-3"],
   ] as [AccountTier, string][])("maps tier %d to %s", (tier, expectedUri) => {
-    expect(
-      buildOidcAssuranceClaims(
-        { tier },
-        { amr: ["pwd"], authenticatedAt: 1_700_000_000 }
-      ).acr
-    ).toBe(expectedUri);
+    expect(computeAcr(tier)).toBe(expectedUri);
   });
 
   it("ACR_VALUES_SUPPORTED contains all tier URIs", () => {
     expect(ACR_VALUES_SUPPORTED).toHaveLength(4);
     for (const tier of [0, 1, 2, 3] as AccountTier[]) {
-      expect(ACR_VALUES_SUPPORTED).toContain(
-        buildOidcAssuranceClaims(
-          { tier },
-          { amr: ["pwd"], authenticatedAt: 1_700_000_000 }
-        ).acr
-      );
+      expect(ACR_VALUES_SUPPORTED).toContain(computeAcr(tier));
     }
   });
+});
 
+describe("buildNamespacedAssuranceClaim", () => {
   it.each([
     [0, "http://eidas.europa.eu/LoA/low"],
     [1, "http://eidas.europa.eu/LoA/low"],
@@ -47,24 +37,18 @@ describe("buildOidcAssuranceClaims", () => {
     "maps tier %d to %s for acr_eidas",
     (tier, expectedUri) => {
       expect(
-        buildOidcAssuranceClaims(
-          { tier },
-          { amr: ["pwd"], authenticatedAt: 1_700_000_000 }
-        ).acr_eidas
+        buildNamespacedAssuranceClaim({ tier }, { amr: ["pwd"] })
+          .zentity_assurance.acr_eidas
       ).toBe(expectedUri);
     }
   );
 
   it("omits amr when the auth method cannot be normalized", () => {
-    expect(
-      buildOidcAssuranceClaims(
-        { tier: 1 },
-        { amr: [], authenticatedAt: 1_700_000_000 }
-      )
-    ).toEqual({
-      acr: "urn:zentity:assurance:tier-1",
-      acr_eidas: "http://eidas.europa.eu/LoA/low",
-      auth_time: 1_700_000_000,
+    expect(buildNamespacedAssuranceClaim({ tier: 1 }, { amr: [] })).toEqual({
+      zentity_assurance: {
+        acr: "urn:zentity:assurance:tier-1",
+        acr_eidas: "http://eidas.europa.eu/LoA/low",
+      },
     });
   });
 });
@@ -104,22 +88,5 @@ describe("loginMethodToAmr", () => {
 
   it("falls back to user for unknown method", () => {
     expect(loginMethodToAmr("none")).toEqual(["user"]);
-  });
-});
-
-describe("computeAtHash", () => {
-  const testToken = "ya29.test-access-token-value";
-
-  it("returns the base64url left half of the SHA-256 hash", () => {
-    const hash = crypto
-      .createHash("sha256")
-      .update(testToken, "ascii")
-      .digest();
-    const expected = hash.subarray(0, 16).toString("base64url");
-    expect(computeAtHash(testToken)).toBe(expected);
-  });
-
-  it("different tokens produce different hashes", () => {
-    expect(computeAtHash("token-a")).not.toBe(computeAtHash("token-b"));
   });
 });

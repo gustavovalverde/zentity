@@ -104,8 +104,7 @@ services:
       - FHE_KEYS_DIR=/var/lib/zentity/fhe
       - FHE_DEBUG_KEYS=${FHE_DEBUG_KEYS:-true}
       - OTEL_ENABLED=${OTEL_ENABLED:-true}
-      # The FHE service reads this variable as the full traces URL.
-      - OTEL_EXPORTER_OTLP_ENDPOINT=${OTEL_EXPORTER_OTLP_TRACES_ENDPOINT:-http://otel-collector:4318/v1/traces}
+      - OTEL_EXPORTER_OTLP_ENDPOINT=${OTEL_EXPORTER_OTLP_ENDPOINT:-http://otel-collector:4318}
       - OTEL_EXPORTER_OTLP_HEADERS=${OTEL_EXPORTER_OTLP_HEADERS:-}
       - OTEL_SERVICE_NAME=zentity-fhe
     volumes:
@@ -124,8 +123,7 @@ services:
       - PORT=5004
       - INTERNAL_SERVICE_TOKEN=${INTERNAL_SERVICE_TOKEN:-}
       - OTEL_ENABLED=${OTEL_ENABLED:-true}
-      # The OCR service reads this variable as the full traces URL.
-      - OTEL_EXPORTER_OTLP_ENDPOINT=${OTEL_EXPORTER_OTLP_TRACES_ENDPOINT:-http://otel-collector:4318/v1/traces}
+      - OTEL_EXPORTER_OTLP_ENDPOINT=${OTEL_EXPORTER_OTLP_ENDPOINT:-http://otel-collector:4318}
       - OTEL_EXPORTER_OTLP_HEADERS=${OTEL_EXPORTER_OTLP_HEADERS:-}
       - OTEL_SERVICE_NAME=zentity-ocr
     restart: unless-stopped

@@ -11,8 +11,6 @@ import "server-only";
 import type { FeatureName } from "@/lib/assurance/tier";
 import type { RateLimiter } from "@/lib/http/rate-limit";
 
-import { randomUUID } from "node:crypto";
-
 import { DPOP_NONCE_HEADER } from "@better-auth/core/oauth2";
 import { type Attributes, type Span, SpanStatusCode } from "@opentelemetry/api";
 import {
@@ -26,8 +24,10 @@ import { eq } from "drizzle-orm";
 import { getSecurityPosture } from "@/lib/assurance/posture";
 import { canAccessFeature, getBlockedReason } from "@/lib/assurance/tier";
 import { auth, type Session } from "@/lib/auth/auth-config";
-import { resolveAuthenticationContext } from "@/lib/auth/auth-context";
-import { loadOpaqueAccessTokenExtensions } from "@/lib/auth/oidc/haip/opaque-access-token";
+import {
+  AUTHENTICATION_CONTEXT_CLAIM,
+  resolveAuthenticationContext,
+} from "@/lib/auth/auth-context";
 import {
   invalidAccessToken,
   missingAccessToken,
@@ -38,7 +38,6 @@ import { db } from "@/lib/db/connection";
 import { sessions, users } from "@/lib/db/schema/auth";
 import { logError, logWarn } from "@/lib/logging/error-logger";
 import { createRequestLogger, isDebugEnabled } from "@/lib/logging/logger";
-import { extractInputMeta } from "@/lib/logging/redact";
 import {
   getRequestLogBindings,
   getSpanAttributesFromContext,
@@ -52,15 +51,13 @@ interface TrpcContext {
   /** The next DPoP nonce for a client whose DPoP-bound token verified. */
   dpopNonce?: string | null;
   flowId: string | null;
-  flowIdSource: "header" | "cookie" | "query" | "none";
+  flowIdSource: "header" | "none";
   req: Request;
   requestId: string;
   session: Session | null;
   span?: Span;
-  spanId?: string;
   /** The `WWW-Authenticate` challenge for a refused OAuth access token. */
   tokenChallenge?: Headers | null;
-  traceId?: string;
 }
 
 interface ResolvedAuthSession {
@@ -149,9 +146,9 @@ async function resolveOAuthSession(req: Request): Promise<ResolvedAuthSession> {
 
   const sessionId =
     typeof verified.payload.sid === "string" ? verified.payload.sid : null;
-  const extensions = await loadOpaqueAccessTokenExtensions(verified.token);
+  const authContextId = verified.payload[AUTHENTICATION_CONTEXT_CLAIM];
   const authContext = await resolveAuthenticationContext({
-    authContextId: extensions?.authContextId ?? null,
+    authContextId: typeof authContextId === "string" ? authContextId : null,
     sessionId,
   });
 
@@ -343,8 +340,7 @@ const withTracing = trpc.middleware(({ path, type, ctx, next }) => {
   };
 
   return withSpan(`trpc.${path}`, attributes, async (span) => {
-    const { traceId, spanId } = span.spanContext();
-    const result = await next({ ctx: { ...ctx, span, traceId, spanId } });
+    const result = await next({ ctx: { ...ctx, span } });
     if (!result.ok) {
       const { code } = result.error;
       span.setAttribute(ATTR_RPC_STATUS_CODE, code);
@@ -389,92 +385,80 @@ const CRITICAL_PATHS = new Set([
  * Runs on all procedures, before authentication.
  * Adds log, requestId, and debug to context.
  */
-const withLogging = trpc.middleware(
-  async ({ ctx, next, path, type, input }) => {
-    const requestId = ctx.requestId || randomUUID();
-    const logBindings: Record<string, unknown> = {
-      ...getRequestLogBindings(ctx),
-    };
-    if (ctx.traceId) {
-      logBindings.traceId = ctx.traceId;
-    }
-    if (ctx.spanId) {
-      logBindings.spanId = ctx.spanId;
-    }
-    const log = createRequestLogger(requestId, logBindings);
-    const debug = isDebugEnabled();
-    const start = performance.now();
+const withLogging = trpc.middleware(async ({ ctx, next, path, type }) => {
+  const { requestId } = ctx;
+  const log = createRequestLogger(requestId, getRequestLogBindings(ctx));
+  const debug = isDebugEnabled();
+  const start = performance.now();
 
-    // Determine log level for this path
-    const isDebugPath = DEBUG_ONLY_PATHS.has(path);
-    const isCritical = CRITICAL_PATHS.has(path);
+  // Determine log level for this path
+  const isDebugPath = DEBUG_ONLY_PATHS.has(path);
+  const isCritical = CRITICAL_PATHS.has(path);
 
-    // Log request start (metadata only, no input values)
-    const inputMeta = extractInputMeta(input);
-    if (isDebugPath) {
-      log.debug({ path, type, ...inputMeta }, "tRPC request");
-    } else {
-      log.info({ path, type, ...inputMeta }, "tRPC request");
-    }
-
-    // Log a failed procedure with severity tiered by error code. Shared by the
-    // thrown-error path and the non-throwing `{ ok: false }` result that tRPC
-    // returns from next() — the latter was previously mislabeled as success.
-    const logProcedureFailure = (error: unknown) => {
-      if (error instanceof TRPCError) {
-        // UNAUTHORIZED is expected, log at debug
-        if (error.code === "UNAUTHORIZED") {
-          log.debug({ path, code: error.code }, "Unauthorized");
-          return;
-        }
-
-        // Client errors at warn level
-        if (
-          error.code === "BAD_REQUEST" ||
-          error.code === "FORBIDDEN" ||
-          error.code === "TOO_MANY_REQUESTS" ||
-          error.code === "PRECONDITION_FAILED" ||
-          error.code === "NOT_FOUND"
-        ) {
-          logWarn("tRPC client error", { path, code: error.code }, log);
-          return;
-        }
-      }
-
-      // Server errors (INTERNAL_SERVER_ERROR, etc.) and unexpected throws
-      const duration = Math.round(performance.now() - start);
-      logError(error, { requestId, path, duration }, log);
-    };
-
-    try {
-      const result = await next({
-        ctx: { ...ctx, log, requestId, debug },
-      });
-
-      // tRPC reports resolver/input failures as a non-throwing { ok: false }
-      // result; surface them instead of logging a false success.
-      if (!result.ok) {
-        logProcedureFailure(result.error);
-        return result;
-      }
-
-      // Log completion (timing only for critical paths in debug mode)
-      if (isCritical && debug) {
-        const duration = Math.round(performance.now() - start);
-        log.info({ path, duration, ok: true }, "tRPC complete");
-      } else if (isDebugPath) {
-        log.debug({ path, ok: true }, "tRPC complete");
-      } else {
-        log.info({ path, ok: true }, "tRPC complete");
-      }
-
-      return result;
-    } catch (error) {
-      logProcedureFailure(error);
-      throw error;
-    }
+  // Log request start (path and type only; input is not parsed yet)
+  if (isDebugPath) {
+    log.debug({ path, type }, "tRPC request");
+  } else {
+    log.info({ path, type }, "tRPC request");
   }
-);
+
+  // Log a failed procedure with severity tiered by error code. Shared by the
+  // thrown-error path and the non-throwing `{ ok: false }` result that tRPC
+  // returns from next() — the latter was previously mislabeled as success.
+  const logProcedureFailure = (error: unknown) => {
+    if (error instanceof TRPCError) {
+      // UNAUTHORIZED is expected, log at debug
+      if (error.code === "UNAUTHORIZED") {
+        log.debug({ path, code: error.code }, "Unauthorized");
+        return;
+      }
+
+      // Client errors at warn level
+      if (
+        error.code === "BAD_REQUEST" ||
+        error.code === "FORBIDDEN" ||
+        error.code === "TOO_MANY_REQUESTS" ||
+        error.code === "PRECONDITION_FAILED" ||
+        error.code === "NOT_FOUND"
+      ) {
+        logWarn("tRPC client error", { path, code: error.code }, log);
+        return;
+      }
+    }
+
+    // Server errors (INTERNAL_SERVER_ERROR, etc.) and unexpected throws
+    const duration = Math.round(performance.now() - start);
+    logError(error, { requestId, path, duration }, log);
+  };
+
+  try {
+    const result = await next({
+      ctx: { ...ctx, log, requestId, debug },
+    });
+
+    // tRPC reports resolver/input failures as a non-throwing { ok: false }
+    // result; surface them instead of logging a false success.
+    if (!result.ok) {
+      logProcedureFailure(result.error);
+      return result;
+    }
+
+    // Log completion (timing only for critical paths in debug mode)
+    if (isCritical && debug) {
+      const duration = Math.round(performance.now() - start);
+      log.info({ path, duration, ok: true }, "tRPC complete");
+    } else if (isDebugPath) {
+      log.debug({ path, ok: true }, "tRPC complete");
+    } else {
+      log.info({ path, ok: true }, "tRPC complete");
+    }
+
+    return result;
+  } catch (error) {
+    logProcedureFailure(error);
+    throw error;
+  }
+});
 
 /**
  * Authentication middleware that rejects unauthenticated requests.

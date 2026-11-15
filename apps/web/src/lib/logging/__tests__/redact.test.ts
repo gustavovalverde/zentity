@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 // Mock server-only (no-op in test environment)
 vi.mock("server-only", () => ({}));
 
-import { extractInputMeta, REDACT_KEYS, sanitizeLogMessage } from "../redact";
+import { sanitizeLogMessage } from "../redact";
 
 describe("logging redaction", () => {
   it("redacts common sensitive patterns in log messages", () => {
@@ -44,13 +44,5 @@ describe("logging redaction", () => {
   it("redacts base64 image data", () => {
     const output = sanitizeLogMessage("data:image/png;base64,abcdef");
     expect(output).toBe("[base64-image]");
-  });
-
-  it("extracts safe input metadata without leaking sensitive keys", () => {
-    const input = { password: "secret", safe: "ok" };
-    const meta = extractInputMeta(input);
-
-    expect(meta).toEqual({ inputKeys: ["safe"], hasImage: false });
-    expect(REDACT_KEYS.has("password")).toBe(true);
   });
 });

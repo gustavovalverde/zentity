@@ -856,9 +856,7 @@ async function beforeCibaTokenLoadRequest(ctx: HookCtx) {
 }
 
 /**
- * Drains the CIBA token stash after `/oauth2/token`: writes the approval-time
- * authentication context onto the issued access token record (a Zentity
- * extension column the upstream issuance does not set) and persists the agent
+ * Drains the CIBA token stash after `/oauth2/token` by persisting the agent
  * snapshot keyed by the minted token's identity. Every CIBA token references
  * the stored auth_req_id hash, set as the request's `referenceId` at approval.
  * The snapshot is keyed by the JWT's jti (the AS owns it) or, for opaque
@@ -870,14 +868,6 @@ async function afterCibaTokenPersist(ctx: HookCtx) {
     return;
   }
   const { authReqIdHash } = pending;
-
-  if (pending.authContextId) {
-    await db
-      .update(oauthAccessTokens)
-      .set({ authContextId: pending.authContextId })
-      .where(eq(oauthAccessTokens.referenceId, authReqIdHash))
-      .run();
-  }
 
   const audienceClientId = ctx.body?.client_id as string | undefined;
   if (pending.snapshot && audienceClientId) {
@@ -1535,7 +1525,7 @@ async function approveFromCapabilityGrant(input: {
       grant: {
         method: "capability_grant",
         capabilityName,
-        constraints: grantResult.constraintsJson ?? null,
+        constraints: grantResult.constraints ?? null,
         grantId: grantResult.grantId ?? null,
         hostPolicyId: grantResult.hostPolicyId ?? null,
         strength: grantResult.approvalStrength ?? null,

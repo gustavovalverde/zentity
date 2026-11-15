@@ -11,7 +11,7 @@
 
 import { execSync } from "node:child_process";
 import { randomBytes } from "node:crypto";
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 
 import { server as opaqueServer, ready } from "@serenity-kit/opaque";
@@ -106,6 +106,7 @@ async function main(): Promise<void> {
 
   console.log("\nPushing database schema...");
   try {
+    mkdirSync(resolve(ROOT, ".data"), { recursive: true });
     execSync("pnpm db:push:dev", { cwd: ROOT, stdio: "inherit" });
     console.log("Database schema pushed.\n");
   } catch {

@@ -126,6 +126,31 @@ describe("crypto queries", () => {
     ).rejects.toThrow("Encrypted attribute integrity check failed");
   });
 
+  it("rejects a stored hash of the wrong length as an integrity failure", async () => {
+    const userId = await createTestUser();
+    const id = crypto.randomUUID();
+
+    await insertEncryptedAttribute({
+      id,
+      userId,
+      source: "web2_tfhe",
+      attributeType: "dob_days",
+      ciphertext: Buffer.from("cipher-original"),
+      keyId: "key-1",
+      encryptionTimeMs: 25,
+    });
+
+    await db
+      .update(encryptedAttributes)
+      .set({ ciphertextHash: "truncated" })
+      .where(eq(encryptedAttributes.id, id))
+      .run();
+
+    await expect(
+      getLatestEncryptedAttributeByUserAndType(userId, "dob_days")
+    ).rejects.toThrow("Encrypted attribute integrity check failed");
+  });
+
   it("stores proof sessions and artifacts with column defaults for omitted fields", async () => {
     const userId = await createTestUser();
 

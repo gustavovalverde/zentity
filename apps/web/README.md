@@ -202,7 +202,7 @@ src/
 | `/api/confidential/relayer/[...path]` | Various | Server-side proxy for Zama relayer requests |
 | `/api/zk/circuits` | GET | Circuit manifest (IDs, vkey hashes) |
 | `/api/zk/circuits/[circuitType]/vkey` | GET | Circuit vkey + hash |
-| `/api/password/pwned` | POST | Password breach pre-check |
+| `/api/password/pwned` | GET | HIBP range relay for the password breach pre-check (5-character prefix only) |
 
 ## Recovery Routes
 

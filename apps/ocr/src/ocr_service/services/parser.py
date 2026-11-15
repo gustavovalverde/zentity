@@ -291,11 +291,13 @@ def extract_national_id_fields(text: str) -> ExtractedData:
             data.date_of_birth = parse_date_to_iso(dob_match.group(1))
             break
 
-    # Fallback: try generic date pattern
+    # Fallback: unlabeled dates arrive in OCR block order, which is not stable. A birth
+    # date precedes issue and expiry dates on the same card, so take the earliest.
     if not data.date_of_birth:
         date_matches = re.findall(r"\b(\d{2}[/-]\d{2}[/-]\d{4})\b", text_upper)
-        if date_matches:
-            data.date_of_birth = parse_date_to_iso(date_matches[0])
+        iso_dates = [d for d in map(parse_date_to_iso, date_matches) if d]
+        if iso_dates:
+            data.date_of_birth = min(iso_dates)
 
     # Expiration date - try each pattern
     for pattern in _NATIONAL_ID_PATTERNS["expiration_date"]:

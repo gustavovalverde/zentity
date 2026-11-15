@@ -121,12 +121,11 @@ export async function createTrpcContext({ req }: { req: Request }) {
   return { req, session: session ?? null, requestId };
 }
 
-const withLogging = trpc.middleware(async ({ ctx, path, type, input, next }) => {
+const withLogging = trpc.middleware(async ({ ctx, path, type, next }) => {
   const log = createRequestLogger(ctx.requestId);
-  const inputMeta = extractInputMeta(input);
   const start = performance.now();
 
-  log.info({ path, type, ...inputMeta }, "tRPC request");
+  log.info({ path, type }, "tRPC request");
 
   try {
     const result = await next({ ctx: { ...ctx, log, debug: isDebugEnabled() } });
@@ -143,6 +142,7 @@ const withLogging = trpc.middleware(async ({ ctx, path, type, input, next }) => 
 **Cross-service propagation**
 
 - Web → OCR/FHE clients include `X-Request-Id` on outbound calls.
+- Outbound `fetch` calls carry a W3C `traceparent` header added by the OpenTelemetry undici instrumentation, so no client builds trace headers itself. Log records get `trace_id` and `span_id` from the Pino instrumentation.
 - OCR service logs include `request_id` via middleware and logging filter.
 - FHE service includes `request_id` on tracing spans via `TraceLayer`.
 

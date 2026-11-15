@@ -20,7 +20,6 @@ interface PrfExtensionResults {
   prf?: {
     enabled?: boolean;
     results?: { first?: ArrayBuffer };
-    resultsByCredential?: Record<string, ArrayBuffer>;
   };
 }
 
@@ -59,7 +58,6 @@ function toPrfOutput(output?: ArrayBuffer): Uint8Array | null {
 
 export function extractPrfOutputFromClientResults(params: {
   clientExtensionResults: unknown;
-  credentialId?: string | undefined;
 }): Uint8Array | null {
   if (
     !params.clientExtensionResults ||
@@ -70,10 +68,7 @@ export function extractPrfOutputFromClientResults(params: {
 
   const prf = (
     params.clientExtensionResults as {
-      prf?: {
-        results?: { first?: unknown };
-        resultsByCredential?: Record<string, unknown>;
-      };
+      prf?: { results?: { first?: unknown } };
     }
   ).prf;
 
@@ -81,11 +76,7 @@ export function extractPrfOutputFromClientResults(params: {
     return null;
   }
 
-  const candidate =
-    prf.results?.first ??
-    (params.credentialId
-      ? prf.resultsByCredential?.[params.credentialId]
-      : null);
+  const candidate = prf.results?.first;
 
   if (!candidate) {
     return null;
@@ -212,18 +203,6 @@ export async function evaluatePrf(params: {
       | PrfExtensionResults
       | undefined;
     const outputs = new Map<string, Uint8Array>();
-    const resultsByCredential = extensionResults?.prf?.resultsByCredential;
-    if (resultsByCredential) {
-      for (const [credentialId, output] of Object.entries(
-        resultsByCredential
-      )) {
-        const parsed = toPrfOutput(output);
-        if (parsed) {
-          outputs.set(credentialId, parsed);
-        }
-      }
-    }
-
     const singleOutput = toPrfOutput(extensionResults?.prf?.results?.first);
     if (singleOutput) {
       outputs.set(selectedCredentialId, singleOutput);

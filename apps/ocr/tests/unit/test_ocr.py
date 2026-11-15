@@ -37,7 +37,7 @@ class TestDecodeBase64Image:
         image = decode_base64_image(passport_icao_base64)
         assert isinstance(image, np.ndarray)
         assert len(image.shape) == 3  # Height, Width, Channels
-        assert image.shape[2] == 3  # RGB
+        assert image.shape[2] == 3  # BGR, three channels
 
     def test_decodes_image_with_data_uri(self, base64_with_data_uri):
         """Data URI prefix is stripped correctly."""
@@ -46,7 +46,7 @@ class TestDecodeBase64Image:
         assert len(image.shape) == 3
 
     def test_returns_rgb_not_rgba(self, passport_icao_base64):
-        """Image is converted to RGB (3 channels)."""
+        """Image is converted to three channels (no alpha)."""
         image = decode_base64_image(passport_icao_base64)
         assert image.shape[2] == 3  # Not 4 (RGBA)
 
@@ -99,6 +99,51 @@ class TestDecodeBase64Image:
             assert isinstance(image, np.ndarray)
         except Exception:
             pass  # Expected for strict decoders
+
+
+class TestChannelOrder:
+    """RapidOCR reads a bare ndarray as BGR, so the decoder must return BGR."""
+
+    @staticmethod
+    def _encode(image: Image.Image, fmt: str = "PNG") -> str:
+        buffer = io.BytesIO()
+        image.save(buffer, format=fmt)
+        return base64.b64encode(buffer.getvalue()).decode()
+
+    def test_red_dominant_pixel_decodes_as_bgr(self):
+        red = self._encode(Image.new("RGB", (4, 4), (200, 30, 10)))
+        image = decode_base64_image(red)
+        assert image[0, 0].tolist() == [10, 30, 200]
+
+    def test_decoded_array_is_contiguous_for_opencv(self):
+        image = decode_base64_image(self._encode(Image.new("RGB", (4, 4), (200, 30, 10))))
+        assert image.flags["C_CONTIGUOUS"]
+        assert image.dtype == np.uint8
+
+    @pytest.mark.parametrize(
+        ("mode", "color"),
+        [("P", 1), ("CMYK", (0, 255, 255, 0)), ("RGBA", (200, 30, 10, 255)), ("L", 90)],
+    )
+    def test_other_modes_decode_to_three_bgr_channels(self, mode, color):
+        fmt = "TIFF" if mode == "CMYK" else "PNG"
+        pil = Image.new(mode, (4, 4), color)
+        if mode == "P":
+            pil.putpalette([0, 0, 0, 200, 30, 10] + [0] * 762)
+        image = decode_base64_image(self._encode(pil, fmt))
+        assert image.shape == (4, 4, 3)
+        if mode in ("P", "RGBA"):
+            assert image[0, 0].tolist() == [10, 30, 200]
+
+    def test_engine_receives_bgr_pixels(self, monkeypatch):
+        seen = []
+
+        def fake_engine(image):
+            seen.append(image.copy())
+            return None
+
+        monkeypatch.setattr("ocr_service.services.ocr_engine.get_engine", lambda: fake_engine)
+        extract_text_from_base64(self._encode(Image.new("RGB", (4, 4), (200, 30, 10))))
+        assert seen[0][0, 0].tolist() == [10, 30, 200]
 
 
 # =============================================================================

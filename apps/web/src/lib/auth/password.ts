@@ -1,4 +1,3 @@
-import { getFlowId } from "@/lib/observability/flow-id";
 import { bytesToHex } from "@/lib/privacy/primitives/symmetric";
 
 // ── Policy constants and validation ──────────────────────
@@ -87,32 +86,47 @@ async function sha1HexUpper(input: string): Promise<string> {
   return bytesToHex(new Uint8Array(digest)).toUpperCase();
 }
 
+const HIBP_PREFIX_LENGTH = 5;
+const HIBP_RANGE_LINE = /^[0-9A-F]{35}:\d+$/i;
+
 /**
- * Client-side breach check via /api/password/pwned.
- * UX-only pre-submit feedback; OPAQUE means server never sees raw password.
+ * Client-side breach check against the HIBP range API, relayed by
+ * /api/password/pwned. Only the 5-character SHA-1 prefix leaves the browser;
+ * the suffix is matched locally against the returned `SUFFIX:COUNT` lines.
+ * UX-only pre-submit feedback; OPAQUE means the server never sees the password.
  */
 export async function checkPasswordPwned(
   password: string,
   opts?: { signal?: AbortSignal }
 ): Promise<PasswordPwnedResult> {
   const sha1 = await sha1HexUpper(password);
-  const flowId = getFlowId();
-  const res = await fetch("/api/password/pwned", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      ...(flowId ? { "X-Zentity-Flow-Id": flowId } : {}),
-    },
-    credentials: "include",
-    ...(opts?.signal === undefined ? {} : { signal: opts.signal }),
-    body: JSON.stringify({ sha1 }),
-  });
+  const prefix = sha1.slice(0, HIBP_PREFIX_LENGTH);
+  const suffix = sha1.slice(HIBP_PREFIX_LENGTH);
 
-  const data = (await res
-    .json()
-    .catch(() => null)) as PasswordPwnedResult | null;
-  if (!(res.ok && data)) {
+  const res = await fetch(`/api/password/pwned?prefix=${prefix}`, {
+    credentials: "omit",
+    ...(opts?.signal === undefined ? {} : { signal: opts.signal }),
+  });
+  if (!res.ok) {
     return { compromised: false, skipped: true };
   }
-  return data;
+
+  const body = await res.text().catch(() => null);
+  if (body === null) {
+    return { compromised: false, skipped: true };
+  }
+
+  const lines = body.split("\n").map((line) => line.trim());
+  // A real range always has entries; anything else (a captive-portal page, an
+  // empty body) is not a verdict.
+  if (!lines.some((line) => HIBP_RANGE_LINE.test(line))) {
+    return { compromised: false, skipped: true };
+  }
+
+  // Padded entries carry a count of 0 and never represent a real breach.
+  const compromised = lines.some((line) => {
+    const [lineSuffix, count] = line.split(":");
+    return lineSuffix?.toUpperCase() === suffix && Number(count) > 0;
+  });
+  return { compromised, skipped: false };
 }

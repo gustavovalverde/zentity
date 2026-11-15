@@ -105,7 +105,11 @@ def crop_mrz_region(image: np.ndarray, *, start_ratio: float = 0.65) -> np.ndarr
 
 
 def decode_base64_image(base64_string: str) -> np.ndarray:
-    """Decode base64 image to numpy array (RGB)."""
+    """Decode base64 image to a numpy array in BGR channel order.
+
+    RapidOCR treats a bare ndarray as BGR and only swaps channels for str, Path,
+    bytes, and PIL inputs, so the decoder returns the order the engine expects.
+    """
     if "," in base64_string:
         base64_string = base64_string.split(",", 1)[1]
 
@@ -124,7 +128,7 @@ def decode_base64_image(base64_string: str) -> np.ndarray:
         image.load()
         rgb_image = image.convert("RGB")
         try:
-            return np.array(rgb_image)
+            return np.ascontiguousarray(np.array(rgb_image)[:, :, ::-1])
         finally:
             rgb_image.close()
 
