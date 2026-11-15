@@ -1,4 +1,5 @@
 import { p256 } from "@noble/curves/nist.js";
+import { bytesToNumberBE, numberToBytesBE } from "@noble/curves/utils.js";
 import {
   base64url,
   exportJWK,
@@ -183,23 +184,6 @@ export interface DeriveDpopKeyPairOptions {
   info?: string;
 }
 
-function bigIntToBytes(value: bigint, length: number): Uint8Array {
-  const hex = value.toString(16).padStart(length * 2, "0");
-  const bytes = new Uint8Array(length);
-  for (let i = 0; i < length; i++) {
-    bytes[i] = Number.parseInt(hex.slice(i * 2, i * 2 + 2), 16);
-  }
-  return bytes;
-}
-
-function bytesToBigInt(bytes: Uint8Array): bigint {
-  let hex = "";
-  for (const byte of bytes) {
-    hex += byte.toString(16).padStart(2, "0");
-  }
-  return hex.length > 0 ? BigInt(`0x${hex}`) : 0n;
-}
-
 /**
  * Derive a stable P-256 DPoP keypair from a secret seed: HKDF-SHA-256 to
  * a 32-byte scalar, reduced modulo the P-256 group order, then the public
@@ -233,12 +217,17 @@ export async function deriveDpopKeyPairFromSeed(
     )
   );
   // Reduce to a valid private scalar in [1, n-1]; guard the ~2^-256 zero case.
-  const reduced = bytesToBigInt(stretched) % p256.Point.Fn.ORDER;
-  const scalar = reduced === 0n ? 1n : reduced;
-  const privateScalar = bigIntToBytes(scalar, P256_SCALAR_BYTES);
-  const { x, y } = p256.Point.BASE.multiply(scalar).toAffine();
-  const xB64 = base64url.encode(bigIntToBytes(x, P256_SCALAR_BYTES));
-  const yB64 = base64url.encode(bigIntToBytes(y, P256_SCALAR_BYTES));
+  const reduced = bytesToNumberBE(stretched) % p256.Point.Fn.ORDER;
+  const privateScalar = numberToBytesBE(
+    reduced === 0n ? 1n : reduced,
+    P256_SCALAR_BYTES
+  );
+  // Uncompressed SEC1 point: 0x04 || x || y.
+  const publicPoint = p256.getPublicKey(privateScalar, false);
+  const xB64 = base64url.encode(
+    publicPoint.subarray(1, 1 + P256_SCALAR_BYTES)
+  );
+  const yB64 = base64url.encode(publicPoint.subarray(1 + P256_SCALAR_BYTES));
   return {
     privateJwk: {
       crv: "P-256",

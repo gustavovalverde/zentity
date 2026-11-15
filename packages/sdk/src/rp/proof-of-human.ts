@@ -1,4 +1,5 @@
 import { decodeJwt, type JWTVerifyOptions } from "jose";
+import { z } from "zod";
 import type { DpopClient } from "./dpop-client";
 import {
   createJwksTokenVerifier,
@@ -182,14 +183,11 @@ export function createProofOfHumanTokenVerifier(
   };
 }
 
-async function parseJsonBody(
-  response: Response
-): Promise<Record<string, unknown>> {
-  return ((await response.json().catch(() => ({}))) ?? {}) as Record<
-    string,
-    unknown
-  >;
-}
+const proofOfHumanResponseSchema = z.object({
+  error: z.string().optional().catch(undefined),
+  error_description: z.string().optional().catch(undefined),
+  token: z.string().optional().catch(undefined),
+});
 
 export async function requestProofOfHumanToken(
   options: RequestProofOfHumanTokenOptions
@@ -199,20 +197,22 @@ export async function requestProofOfHumanToken(
     accessToken: options.accessToken,
     ...(options.fetch ? { fetch: options.fetch } : {}),
   });
-  const result = await parseJsonBody(response);
+  const result =
+    proofOfHumanResponseSchema.safeParse(
+      await response.json().catch(() => undefined)
+    ).data ?? {};
 
   if (!response.ok) {
     return {
       ok: false,
-      error: (result.error as string | undefined) ?? "proof_of_human_failed",
+      error: result.error ?? "proof_of_human_failed",
       errorDescription:
-        (result.error_description as string | undefined) ??
-        `Issuer returned HTTP ${response.status}`,
+        result.error_description ?? `Issuer returned HTTP ${response.status}`,
       status: response.status,
     };
   }
 
-  const token = result.token as string | undefined;
+  const token = result.token;
   if (!token) {
     return {
       ok: false,

@@ -32,13 +32,12 @@ const mockDpopClient = {
 
 const fpaMocks = vi.hoisted(() => ({
   createDpopClientFromKeyPair: vi.fn(async () => mockDpopClient),
-  ensureOpaqueReady: vi.fn(async () => undefined),
   exchangeAuthorizationCode: vi.fn(),
   exchangeToken: vi.fn(),
-  finishOpaqueLogin: vi.fn(),
+  finishLogin: vi.fn(),
   generateDpopKeyPair: vi.fn(async () => TEST_KEY_PAIR),
   generatePkceChallenge: vi.fn(async () => TEST_PKCE),
-  startOpaqueLogin: vi.fn(),
+  startLogin: vi.fn(),
 }));
 
 vi.mock("../rp/dpop-client", () => ({
@@ -46,10 +45,12 @@ vi.mock("../rp/dpop-client", () => ({
   generateDpopKeyPair: fpaMocks.generateDpopKeyPair,
 }));
 
-vi.mock("./opaque", () => ({
-  ensureOpaqueReady: fpaMocks.ensureOpaqueReady,
-  finishOpaqueLogin: fpaMocks.finishOpaqueLogin,
-  startOpaqueLogin: fpaMocks.startOpaqueLogin,
+vi.mock("@serenity-kit/opaque", () => ({
+  client: {
+    finishLogin: fpaMocks.finishLogin,
+    startLogin: fpaMocks.startLogin,
+  },
+  ready: Promise.resolve(),
 }));
 
 vi.mock("./oauth", () => ({
@@ -133,11 +134,11 @@ describe("createFirstPartyAuth", () => {
       storage: authStateStorage.storage,
     });
 
-    fpaMocks.startOpaqueLogin.mockReturnValue({
+    fpaMocks.startLogin.mockReturnValue({
       clientLoginState: "client-state",
       startLoginRequest: "opaque-start-request",
     });
-    fpaMocks.finishOpaqueLogin.mockReturnValue({
+    fpaMocks.finishLogin.mockReturnValue({
       exportKey: "export-key",
       finishLoginRequest: "opaque-finish-request",
       serverStaticPublicKey: "server-public-key",
