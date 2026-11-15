@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import { GET as getAuthorizationServerMetadata } from "@/app/.well-known/oauth-authorization-server/[[...issuer]]/route";
 import { GET as getOpenIdConfiguration } from "@/app/.well-known/openid-configuration/[[...issuer]]/route";
 import { GET as getCredentialIssuerMetadata } from "@/app/.well-known/openid-credential-issuer/[[...issuer]]/route";
+import { GET as authRouteGet } from "@/app/api/auth/[...all]/route";
 import { auth } from "@/lib/auth/auth-config";
 import {
   IDENTITY_SCOPES,
@@ -77,6 +78,22 @@ describe("oidc well-known metadata", () => {
       );
       expect(provided.headers.get("Cache-Control")).toBe(
         "public, max-age=15, stale-while-revalidate=15, stale-if-error=86400"
+      );
+    }
+  );
+
+  // walt.id appends the well-known suffix to the issuer path instead of
+  // inserting it after the host (RFC 8414 §3), so these paths must resolve.
+  it.each(["openid-configuration", "oauth-authorization-server"] as const)(
+    "serves %s at the issuer-suffixed path through the auth route",
+    async (kind) => {
+      const response = await authRouteGet(
+        new Request(`http://localhost:3000/api/auth/.well-known/${kind}`)
+      );
+
+      expect(response.status).toBe(200);
+      expect(await response.json()).toEqual(
+        await servedDocument(kind, ["api", "auth"])
       );
     }
   );
