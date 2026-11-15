@@ -15,7 +15,6 @@ import { APIError, createAuthEndpoint } from "better-auth/api";
 import { decodeProtectedHeader } from "jose";
 import { z } from "zod";
 
-import { isTokenRevoked } from "@/lib/auth/jwt";
 import {
   oauthProviderApi,
   providerDpopSettings,
@@ -32,8 +31,8 @@ import {
  * URL, age, `ath`, key, and server-provided nonce match, with each proof `jti`
  * reserved in the database so it cannot be replayed on any instance. The
  * provider issues the nonces, so one nonce serves the whole origin. Zentity
- * adds what the provider does not check: JWT access tokens carry
- * `typ: at+jwt`, and Zentity's revoked-`jti` list.
+ * adds what the provider does not check for JWT access tokens: `typ: at+jwt`,
+ * and a `jti`, without which the provider cannot revoke the token.
  */
 
 const ACCESS_TOKEN_JWT_TYPE = "at+jwt";
@@ -72,18 +71,16 @@ function missingToken(): APIError {
 }
 
 /** The checks the provider does not make for Zentity-signed JWTs. */
-export async function isZentityAccessToken(
+export function isZentityAccessToken(
   token: string,
   payload: JWTPayload
-): Promise<boolean> {
+): boolean {
   if (!isCompactJws(token)) {
     return true;
   }
-  if (decodeProtectedHeader(token).typ !== ACCESS_TOKEN_JWT_TYPE) {
-    return false;
-  }
   return (
-    typeof payload.jti === "string" && !(await isTokenRevoked(payload.jti))
+    decodeProtectedHeader(token).typ === ACCESS_TOKEN_JWT_TYPE &&
+    typeof payload.jti === "string"
   );
 }
 
@@ -121,7 +118,7 @@ export function resourceAccessTokenPlugin() {
           if (payload.active !== true) {
             throw invalidToken("Invalid access token");
           }
-          if (!(await isZentityAccessToken(authorization.token, payload))) {
+          if (!isZentityAccessToken(authorization.token, payload)) {
             throw invalidToken("invalid access token");
           }
           const dpop = providerDpopSettings(ctx);
@@ -169,8 +166,7 @@ export function resourceAccessTokenPlugin() {
           const payload =
             await oauthProviderApi(ctx).validateAccessToken(token);
           const active =
-            payload.active === true &&
-            (await isZentityAccessToken(token, payload));
+            payload.active === true && isZentityAccessToken(token, payload);
           return ctx.json({
             format: isCompactJws(token) ? "jwt" : "opaque",
             payload: active ? payload : { active: false },

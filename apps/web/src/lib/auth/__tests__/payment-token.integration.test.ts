@@ -6,6 +6,8 @@ vi.hoisted(() => {
   process.env.WALLET_AUDIENCE = "urn:zentity:wallet:payment-token-test";
 });
 
+import { GET as listRevocations } from "@/app/api/auth/oauth2/revoked/route";
+import { env } from "@/env";
 import { auth } from "@/lib/auth/auth-config";
 import { createAuthenticationContext } from "@/lib/auth/auth-context";
 import { PAYMENT_AUTHORIZATION_SCOPE } from "@/lib/auth/oidc/payment-mint";
@@ -22,6 +24,7 @@ import { postTokenWithDpop } from "@/test-utils/dpop-test-utils";
 const WALLET_AUDIENCE = "urn:zentity:wallet:payment-token-test";
 const CIBA_GRANT_TYPE = "urn:openid:params:grant-type:ciba";
 const BC_AUTHORIZE_URL = "http://localhost:3000/api/auth/oauth2/bc-authorize";
+const REVOKE_URL = "http://localhost:3000/api/auth/oauth2/revoke";
 const CLIENT_ID = "payment-token-agent";
 const CLIENT_REQUESTED_RESOURCE = "http://localhost:3000";
 
@@ -68,7 +71,7 @@ describe("payment_authorization token", () => {
       .run();
   });
 
-  it("is issued for the wallet audience whatever resource the client requested", async () => {
+  async function issuePaymentToken(): Promise<string> {
     const authorize = await postBcAuthorize({
       client_id: CLIENT_ID,
       scope: `openid ${PAYMENT_AUTHORIZATION_SCOPE}`,
@@ -76,7 +79,9 @@ describe("payment_authorization token", () => {
       authorization_details: JSON.stringify([PAYMENT_RAR]),
       resource: CLIENT_REQUESTED_RESOURCE,
     });
-    expect(authorize.status).toBe(200);
+    if (authorize.status !== 200) {
+      throw new Error(`bc-authorize answered ${authorize.status}`);
+    }
     const authReqId = authorize.json.auth_req_id as string;
 
     const approval = await createAuthenticationContext({
@@ -102,13 +107,43 @@ describe("payment_authorization token", () => {
       auth_req_id: authReqId,
       client_id: CLIENT_ID,
     });
-    expect(token.status).toBe(200);
+    if (token.status !== 200) {
+      throw new Error(`token request answered ${token.status}`);
+    }
+    return token.json.access_token as string;
+  }
 
-    const claims = decodeJwt(token.json.access_token as string);
+  it("is issued for the wallet audience whatever resource the client requested", async () => {
+    const claims = decodeJwt(await issuePaymentToken());
     const audience = [claims.aud].flat();
     expect(audience).toContain(WALLET_AUDIENCE);
     expect(audience).not.toContain(CLIENT_REQUESTED_RESOURCE);
     expect((claims.exp ?? 0) - (claims.iat ?? 0)).toBe(120);
     expect(claims.authorization_details).toEqual([PAYMENT_RAR]);
+  });
+
+  it("reaches the wallet's revocation feed when its client revokes it", async () => {
+    const token = await issuePaymentToken();
+
+    const revocation = await auth.handler(
+      new Request(REVOKE_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams({ token, client_id: CLIENT_ID }),
+      })
+    );
+    expect(revocation.status).toBe(200);
+
+    const feed = await listRevocations(
+      new Request("http://localhost:3000/api/auth/oauth2/revoked?since=0", {
+        headers: env.INTERNAL_SERVICE_TOKEN
+          ? { authorization: `Bearer ${env.INTERNAL_SERVICE_TOKEN}` }
+          : {},
+      })
+    );
+    expect(feed.status).toBe(200);
+    expect(
+      ((await feed.json()) as { revocations: { jti: string }[] }).revocations
+    ).toEqual([expect.objectContaining({ jti: decodeJwt(token).jti })]);
   });
 });

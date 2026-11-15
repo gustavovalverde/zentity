@@ -4,6 +4,8 @@ import { eq } from "drizzle-orm";
 import { decodeJwt, SignJWT } from "jose";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { GET as listRevocations } from "@/app/api/auth/oauth2/revoked/route";
+import { env } from "@/env";
 import { auth } from "@/lib/auth/auth-config";
 import { mintOpaqueAccessToken } from "@/lib/auth/oidc/haip/opaque-access-token";
 import { db } from "@/lib/db/connection";
@@ -206,9 +208,20 @@ async function refreshStatus(
   return status;
 }
 
+/** The `jti`s the wallet runtime's revocation feed reports. */
 async function revokedJtis(): Promise<string[]> {
-  const rows = await db.select({ jti: revokedTokens.jti }).from(revokedTokens);
-  return rows.map((row) => row.jti);
+  const response = await listRevocations(
+    new Request("http://localhost:3000/api/auth/oauth2/revoked?since=0", {
+      headers: env.INTERNAL_SERVICE_TOKEN
+        ? { authorization: `Bearer ${env.INTERNAL_SERVICE_TOKEN}` }
+        : {},
+    })
+  );
+  if (response.status !== 200) {
+    throw new Error(`revocation feed answered ${response.status}`);
+  }
+  const body = (await response.json()) as { revocations: { jti: string }[] };
+  return body.revocations.map((row) => row.jti);
 }
 
 describe("RFC 7009 token revocation", () => {
@@ -339,14 +352,59 @@ describe("RFC 7009 token revocation", () => {
     ).toEqual({
       status: 401,
       challenge:
-        'DPoP error="invalid_token", error_description="access token revoked", resource_metadata="http://localhost:3000/.well-known/oauth-protected-resource", algs="ES256"',
+        'DPoP error="invalid_token", error_description="Invalid access token", algs="ES256"',
     });
     expect(
       await userInfoRefusal({ authorization: `Bearer ${tokens.accessToken}` })
     ).toEqual({
       status: 401,
-      challenge: `Bearer error="invalid_token", error_description="access token revoked", resource_metadata="${RESOURCE}/.well-known/oauth-protected-resource"`,
+      challenge:
+        'Bearer error="invalid_token", error_description="Invalid access token"',
     });
+  });
+
+  it("keeps a JWT access token live when its revocation cannot be recorded", async () => {
+    const tokens = await issueTokens(userId, sessionId, OWNER.id);
+    const insert = db.insert.bind(db);
+    const failFeedWrite = vi.spyOn(db, "insert").mockImplementation(((
+      table: Parameters<typeof db.insert>[0]
+    ) => {
+      if (table === revokedTokens) {
+        throw new Error("revocation feed unavailable");
+      }
+      return insert(table);
+    }) as typeof db.insert);
+    const request = {
+      token: tokens.accessToken,
+      ...credentialsFor(OWNER.id),
+    };
+
+    expect((await revoke(request)).status).toBe(500);
+    expect(await introspectionActive(tokens.accessToken)).toBe(true);
+
+    failFeedWrite.mockRestore();
+    expect((await revoke(request)).status).toBe(200);
+    expect(await revokedJtis()).toEqual([decodeJwt(tokens.accessToken).jti]);
+    expect(await introspectionActive(tokens.accessToken)).toBe(false);
+  });
+
+  it("revokes the JWT access tokens of a revoked refresh token's grant", async () => {
+    const tokens = await issueTokens(userId, sessionId, OWNER.id);
+    expect(await userInfoStatus(tokens.accessToken, tokens.dpopKeyPair)).toBe(
+      200
+    );
+
+    const result = await revoke({
+      token: tokens.refreshToken,
+      token_type_hint: "refresh_token",
+      ...credentialsFor(OWNER.id),
+    });
+
+    expect(result.status).toBe(200);
+    expect(await userInfoStatus(tokens.accessToken, tokens.dpopKeyPair)).toBe(
+      401
+    );
+    expect(await introspectionActive(tokens.accessToken)).toBe(false);
   });
 
   it("revokes the owner's refresh token", async () => {

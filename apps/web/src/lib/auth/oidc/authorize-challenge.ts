@@ -1,7 +1,7 @@
 import type { GenericEndpointContext } from "@better-auth/core";
 import type { BetterAuthPlugin } from "better-auth";
 
-import { createHash, randomBytes } from "node:crypto";
+import { randomBytes } from "node:crypto";
 
 import { ready, server } from "@serenity-kit/opaque";
 import { createAuthEndpoint, getSessionFromCtx } from "better-auth/api";
@@ -116,10 +116,6 @@ async function verifiedDpopJkt(
   ctx: GenericEndpointContext
 ): Promise<string | undefined> {
   return (await oauthProviderApi(ctx).verifyDpopProof())?.jkt;
-}
-
-function hashCode(code: string): string {
-  return createHash("sha256").update(code).digest("base64url");
 }
 
 function loadSession(
@@ -871,7 +867,11 @@ async function issueAuthorizationCode(
   }
 
   const code = generateRandomString(32, "a-z", "A-Z", "0-9");
-  const codeHash = hashCode(code);
+  // The key the token endpoint looks the code up by.
+  const codeHash = await oauthProviderApi(ctx).hashToken(
+    code,
+    "authorization_code"
+  );
   const now = new Date();
   const iat = Math.floor(now.getTime() / 1000);
 
