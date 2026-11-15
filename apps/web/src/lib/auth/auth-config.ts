@@ -30,6 +30,7 @@ import { type Oidc4vciOptions, oidc4vci } from "@better-auth/oidc4vci";
 import { oidc4vp } from "@better-auth/oidc4vp";
 import { passkey } from "@better-auth/passkey";
 import { setGlobalConfig as setOpenid4vcConfig } from "@openid4vc/utils";
+import { AGENT_BOOTSTRAP_SCOPES } from "@zentity/sdk/agent-contract";
 import {
   decodeJwtPayloadStrict,
   PAYMENT_AUTHORIZATION_TYPE,
@@ -60,10 +61,7 @@ import {
   normalizeAuthorizationDetails,
 } from "@/lib/agents/capability";
 import { buildCibaPushPayload, sendWebPush } from "@/lib/agents/push-sender";
-import {
-  AGENT_BOOTSTRAP_SCOPES,
-  bindAgentAssertionToCibaRequest,
-} from "@/lib/agents/session";
+import { bindAgentAssertionToCibaRequest } from "@/lib/agents/session";
 import {
   buildCibaAgentContribution,
   persistTokenSnapshot,
