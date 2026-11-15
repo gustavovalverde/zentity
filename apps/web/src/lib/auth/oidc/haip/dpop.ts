@@ -16,7 +16,7 @@ import { APIError } from "better-auth/api";
  * nonces as the token endpoint.
  */
 
-function oauthProviderOptions(
+export function oauthProviderOptions(
   ctx: Pick<GenericEndpointContext, "context">
 ): OAuthOptions<Scope[]> {
   const plugin = ctx.context.getPlugin("oauth-provider") as {

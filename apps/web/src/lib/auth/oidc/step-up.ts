@@ -15,11 +15,15 @@ import type { LibSQLDatabase } from "drizzle-orm/libsql";
 
 import { randomBytes } from "node:crypto";
 
+import { getIssuer } from "@better-auth/oauth-provider";
 import { APIError, getSessionFromCtx } from "better-auth/api";
 import { eq } from "drizzle-orm";
 
 import { getAccountAssurance } from "@/lib/assurance/posture";
-import { oauthProviderApi } from "@/lib/auth/oidc/haip/dpop";
+import {
+  oauthProviderApi,
+  oauthProviderOptions,
+} from "@/lib/auth/oidc/haip/dpop";
 import { authorizeRequestParameters } from "@/lib/auth/oidc/oauth-request";
 import { parseStoredStringArray } from "@/lib/db/adapter-compat";
 import {
@@ -33,6 +37,7 @@ import {
 
 const ACR_TIER_PATTERN = /^urn:zentity:assurance:tier-(\d)$/;
 const WHITESPACE = /\s+/;
+const IMPLICIT_RESPONSE_TYPE = /\b(token|id_token)\b/;
 const PAR_URI_PREFIX = "urn:ietf:params:oauth:request_uri:";
 const SESSION_LIFETIME_MS = 10 * 60 * 1000;
 const PUSHED_ACR_PREFIX = "zentity:par-acr:";
@@ -70,22 +75,62 @@ export function findSatisfiedAcr(
   return null;
 }
 
+type ErrorResponseMode = "query" | "fragment";
+
+interface OAuthErrorRedirect {
+  error: string;
+  errorDescription: string;
+  /** The authorization server issuer (RFC 9207). */
+  iss?: string;
+  mode?: ErrorResponseMode;
+  state?: string;
+}
+
 /**
- * Build an OAuth error redirect URL with error, description, and state.
+ * Builds an authorization error redirect the way the OAuth provider formats
+ * its own: `error`, `error_description`, `state`, and `iss`, in the query or,
+ * for fragment responses, in the fragment.
  */
 export function buildOAuthErrorUrl(
   redirectUri: string,
-  state: string | undefined,
-  error: string,
-  errorDescription: string
+  { error, errorDescription, iss, mode = "query", state }: OAuthErrorRedirect
 ): string {
-  const url = new URL(redirectUri);
-  url.searchParams.set("error", error);
-  url.searchParams.set("error_description", errorDescription);
+  const params = new URLSearchParams({
+    error,
+    error_description: errorDescription,
+  });
   if (state) {
-    url.searchParams.set("state", state);
+    params.append("state", state);
+  }
+  if (iss) {
+    params.append("iss", iss);
+  }
+  if (mode === "fragment") {
+    return `${redirectUri}#${params.toString()}`;
+  }
+  const url = new URL(redirectUri);
+  for (const [key, value] of params) {
+    url.searchParams.append(key, value);
   }
   return url.toString();
+}
+
+/**
+ * The response mode an authorization error goes back in, as the provider
+ * chooses it: an explicit `response_mode`, otherwise the fragment for
+ * response types that return tokens (OIDC Core §5, RFC 6749 §4.2.2.1).
+ */
+function errorResponseMode(params: {
+  response_mode?: string;
+  response_type?: string;
+}): ErrorResponseMode {
+  if (params.response_mode === "fragment" || params.response_mode === "query") {
+    return params.response_mode;
+  }
+  return params.response_type &&
+    IMPLICIT_RESPONSE_TYPE.test(params.response_type)
+    ? "fragment"
+    : "query";
 }
 
 // ---------------------------------------------------------------------------
@@ -95,7 +140,21 @@ export function buildOAuthErrorUrl(
 interface AcrRequest {
   acr_values?: string;
   redirect_uri?: string;
+  response_mode?: string;
+  response_type?: string;
   state?: string;
+}
+
+function readAcrRequest(source: Record<string, unknown>): AcrRequest {
+  const read = (key: keyof AcrRequest) =>
+    typeof source[key] === "string" ? source[key] : undefined;
+  return {
+    acr_values: read("acr_values"),
+    redirect_uri: read("redirect_uri"),
+    response_mode: read("response_mode"),
+    response_type: read("response_type"),
+    state: read("state"),
+  };
 }
 
 function throwRedirect(url: string): never {
@@ -133,9 +192,13 @@ async function isRegisteredRedirectUri(
 /**
  * Returns the tier rejection to the client. The hook runs before the provider
  * validates the request, so the error is redirected only to a redirect_uri the
- * client registered (RFC 6749 §4.1.2.1).
+ * client registered (RFC 6749 §4.1.2.1). The provider refuses an authorization
+ * request without `redirect_uri`, so this hook refuses it too rather than
+ * redirecting to a registered default.
  */
 async function rejectAcr(
+  // biome-ignore lint/suspicious/noExplicitAny: middleware context is untyped
+  ctx: any,
   // biome-ignore lint/suspicious/noExplicitAny: drizzle schema generic
   db: LibSQLDatabase<any>,
   clientId: string,
@@ -154,12 +217,13 @@ async function rejectAcr(
     });
   }
   throwRedirect(
-    buildOAuthErrorUrl(
-      params.redirect_uri,
-      params.state,
-      "interaction_required",
-      description
-    )
+    buildOAuthErrorUrl(params.redirect_uri, {
+      error: "interaction_required",
+      errorDescription: description,
+      iss: getIssuer(ctx, oauthProviderOptions(ctx)),
+      mode: errorResponseMode(params),
+      state: params.state,
+    })
   );
 }
 
@@ -185,13 +249,7 @@ export async function rememberPushedAcrRequest(
   if (!(clientId && acrValues && requestUri.startsWith(PAR_URI_PREFIX))) {
     return;
   }
-  const value: PushedAcrRequest = {
-    clientId,
-    acr_values: acrValues,
-    redirect_uri:
-      typeof body.redirect_uri === "string" ? body.redirect_uri : undefined,
-    state: typeof body.state === "string" ? body.state : undefined,
-  };
+  const value: PushedAcrRequest = { ...readAcrRequest(body), clientId };
   await ctx.context.internalAdapter.createVerificationValue({
     identifier: `${PUSHED_ACR_PREFIX}${requestUri}`,
     value: JSON.stringify(value),
@@ -232,7 +290,7 @@ async function enforceFromPar(
     return;
   }
 
-  await rejectAcr(db, clientId, params, rejection);
+  await rejectAcr(ctx, db, clientId, params, rejection);
 }
 
 async function enforceFromRequest(
@@ -243,15 +301,7 @@ async function enforceFromRequest(
   request: Record<string, unknown>,
   clientId: string | undefined
 ) {
-  const params: AcrRequest = {
-    acr_values:
-      typeof request.acr_values === "string" ? request.acr_values : undefined,
-    redirect_uri:
-      typeof request.redirect_uri === "string"
-        ? request.redirect_uri
-        : undefined,
-    state: typeof request.state === "string" ? request.state : undefined,
-  };
+  const params = readAcrRequest(request);
   if (!(params.acr_values && clientId)) {
     return;
   }
@@ -263,7 +313,7 @@ async function enforceFromRequest(
 
   const rejection = await findAcrRejection(params.acr_values, session.user.id);
   if (rejection) {
-    await rejectAcr(db, clientId, params, rejection);
+    await rejectAcr(ctx, db, clientId, params, rejection);
   }
 }
 

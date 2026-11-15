@@ -7,6 +7,7 @@ import { env } from "@/env";
 import { auth } from "@/lib/auth/auth-config";
 import { createAuthenticationContext } from "@/lib/auth/auth-context";
 import { verifySignedOAuthQuery } from "@/lib/auth/oidc/oauth-request";
+import { getAuthIssuer } from "@/lib/auth/oidc/well-known";
 import { db } from "@/lib/db/connection";
 import { sessions } from "@/lib/db/schema/auth";
 import { identityBundles } from "@/lib/db/schema/identity";
@@ -159,6 +160,29 @@ describe("step-up authentication: acr_values", () => {
     expect(location?.searchParams.get("error")).toBe("interaction_required");
     expect(location?.searchParams.get("error_description")).toContain("tier-1");
     expect(location?.searchParams.get("state")).toBe("test-state");
+    expect(location?.searchParams.get("iss")).toBe(getAuthIssuer());
+  });
+
+  it("returns a pushed fragment-mode rejection in the fragment", async () => {
+    await seedTier1User(userId);
+    const requestUri = await pushParRequest(
+      baseParParams({
+        acr_values: "urn:zentity:assurance:tier-2",
+        response_mode: "fragment",
+      })
+    );
+
+    const response = await auth.handler(
+      buildAuthorizeRequest(requestUri, sessionToken)
+    );
+
+    expect(response.status).toBe(302);
+    const location = getRedirectLocation(response);
+    expect(location?.search).toBe("");
+    const fragment = new URLSearchParams(location?.hash.slice(1));
+    expect(fragment.get("error")).toBe("interaction_required");
+    expect(fragment.get("state")).toBe("test-state");
+    expect(fragment.get("iss")).toBe(getAuthIssuer());
   });
 
   it("tier-0 user (no FHE keys) rejected when acr_values=tier-1", async () => {
@@ -308,11 +332,15 @@ describe("step-up authentication: direct authorize requests", () => {
     });
   });
 
-  function buildDirectAuthorizeRequest(redirectUri: string) {
+  function buildDirectAuthorizeRequest(
+    redirectUri: string,
+    overrides: Record<string, string> = {}
+  ) {
     const params = new URLSearchParams(
       baseParParams({
         acr_values: "urn:zentity:assurance:tier-2",
         redirect_uri: redirectUri,
+        ...overrides,
       })
     );
     return new Request(`${AUTHORIZE_URL}?${params}`, {
@@ -331,6 +359,21 @@ describe("step-up authentication: direct authorize requests", () => {
     const location = getRedirectLocation(response);
     expect(location?.origin).toBe(new URL(REDIRECT_URI).origin);
     expect(location?.searchParams.get("error")).toBe("interaction_required");
+    expect(location?.searchParams.get("state")).toBe("test-state");
+    expect(location?.searchParams.get("iss")).toBe(getAuthIssuer());
+  });
+
+  it("returns a fragment-mode rejection in the fragment", async () => {
+    const response = await auth.handler(
+      buildDirectAuthorizeRequest(REDIRECT_URI, { response_mode: "fragment" })
+    );
+
+    expect(response.status).toBe(302);
+    const location = getRedirectLocation(response);
+    expect(location?.search).toBe("");
+    const fragment = new URLSearchParams(location?.hash.slice(1));
+    expect(fragment.get("error")).toBe("interaction_required");
+    expect(fragment.get("iss")).toBe(getAuthIssuer());
   });
 
   it("never redirects the tier rejection to an unregistered redirect_uri", async () => {
