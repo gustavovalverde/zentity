@@ -18,6 +18,7 @@ import {
   identityRegistryAbi,
 } from "@zentity/contracts";
 import {
+  type ContractFunctionArgs,
   createWalletClient,
   decodeFunctionData,
   http,
@@ -144,49 +145,24 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-/**
- * Decode the consent receipt components from an `attestWithPermit` call.
- * Argument positions (per IdentityRegistry.attestWithPermit):
- *   [0] permit struct
- *   [1] consentV (uint8)
- *   [2] consentR (bytes32)
- *   [3] consentS (bytes32)
- *   [4] attributeMask (uint8)
- *   [5] consentDeadline (uint256)
- *   [6] encrypted attributes struct
- */
-function decodeAttestWithPermitConsent(
-  args: readonly unknown[] | undefined
-): OnChainConsentReceipt | null {
-  if (!args || args.length < 6) {
-    return null;
-  }
-
-  const consentV = args[1] as number | bigint;
-  const consentR = args[2] as `0x${string}`;
-  const consentS = args[3] as `0x${string}`;
-  const attributeMask = args[4] as number | bigint;
-  const consentDeadline = args[5] as bigint;
-
-  if (
-    typeof consentR !== "string" ||
-    typeof consentS !== "string" ||
-    !consentR.startsWith("0x") ||
-    !consentS.startsWith("0x")
-  ) {
-    return null;
-  }
-
-  const signature = serializeSignature({
-    r: consentR,
-    s: consentS,
-    v: BigInt(consentV),
-  });
+/** Build the consent receipt from the arguments of an `attestWithPermit` call. */
+function toConsentReceipt(
+  args: ContractFunctionArgs<
+    typeof identityRegistryAbi,
+    "nonpayable" | "payable",
+    "attestWithPermit"
+  >
+): OnChainConsentReceipt {
+  const [, consentV, consentR, consentS, attributeMask, consentDeadline] = args;
 
   return {
-    attributeMask: Number(attributeMask),
+    attributeMask,
     deadline: Number(consentDeadline),
-    signature,
+    signature: serializeSignature({
+      r: consentR,
+      s: consentS,
+      v: BigInt(consentV),
+    }),
   };
 }
 
@@ -248,12 +224,12 @@ export class AttestationProvider implements IAttestationProvider {
     const contractAddress = this.getContractAddress();
     const userAddr = params.userAddress as `0x${string}`;
 
-    const nonce = (await client.readContract({
+    const nonce = await client.readContract({
       address: contractAddress,
       abi: identityRegistryAbi,
       functionName: "nonces",
       args: [userAddr],
-    })) as bigint;
+    });
 
     const block = await client.getBlock({ blockTag: "latest" });
     const deadline = block.timestamp + 3600n;
@@ -368,12 +344,7 @@ export class AttestationProvider implements IAttestationProvider {
           return { verdict: "invalid" };
         }
 
-        const consent = decodeAttestWithPermitConsent(decoded.args);
-        if (!consent) {
-          return { verdict: "invalid" };
-        }
-
-        return { verdict: "valid", consent };
+        return { verdict: "valid", consent: toConsentReceipt(decoded.args) };
       } catch (error) {
         if (
           isTransactionNotFoundError(error) &&
@@ -421,11 +392,11 @@ export class AttestationProvider implements IAttestationProvider {
         }),
       ]);
 
-      const ts = Number(timestamp as bigint);
+      const ts = Number(timestamp);
 
       return {
-        isAttested: Boolean(isAttested),
-        attestationId: Number(attestationId as bigint),
+        isAttested,
+        attestationId: Number(attestationId),
         attestedAt: ts > 0 ? new Date(ts * 1000).toISOString() : undefined,
       };
     } catch {
