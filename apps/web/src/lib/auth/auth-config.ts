@@ -1535,7 +1535,7 @@ async function approveFromCapabilityGrant(input: {
       grant: {
         method: "capability_grant",
         capabilityName,
-        constraints: grantResult.constraintsJson ?? null,
+        constraints: grantResult.constraints ?? null,
         grantId: grantResult.grantId ?? null,
         hostPolicyId: grantResult.hostPolicyId ?? null,
         strength: grantResult.approvalStrength ?? null,

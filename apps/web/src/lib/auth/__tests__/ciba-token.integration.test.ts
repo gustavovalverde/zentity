@@ -324,9 +324,9 @@ describe("CIBA token endpoint", () => {
       taskId: "task-123",
       assertionVerified: true,
       approvedCapabilityName: "purchase",
-      approvedConstraints: JSON.stringify([
+      approvedConstraints: [
         { field: "merchant", op: "eq", value: "Test Store" },
-      ]),
+      ],
       approvedGrantId: "grant-123",
       approvalStrength: "session",
       attestationProvider: "AgentPass",

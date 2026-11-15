@@ -249,6 +249,7 @@ function readRequest(authReqId: string) {
     .select({
       approvalMethod: cibaRequests.approvalMethod,
       approvedCapabilityName: cibaRequests.approvedCapabilityName,
+      approvedConstraints: cibaRequests.approvedConstraints,
       approvedHostPolicyId: cibaRequests.approvedHostPolicyId,
       authContextId: cibaRequests.authContextId,
       status: cibaRequests.status,
@@ -380,9 +381,7 @@ describe("CIBA approval from capability grants", () => {
     const agent = await registerAgent(userId, delegationAuthContextId, [
       {
         capabilityName: "payment_authorization:sign",
-        constraints: JSON.stringify([
-          { field: "amount.value", op: "max", value: 100 },
-        ]),
+        constraints: [{ field: "amount.value", op: "max", value: 100 }],
         source: "user_grant",
         status: "active",
       },
@@ -417,6 +416,7 @@ describe("CIBA approval from capability grants", () => {
         status: "approved",
         approvalMethod: "capability_grant",
         approvedCapabilityName: "payment_authorization:sign",
+        approvedConstraints: [{ field: "amount.value", op: "max", value: 100 }],
       })
     );
     expect(await ledgerEntries(agent.sessionId)).toEqual([

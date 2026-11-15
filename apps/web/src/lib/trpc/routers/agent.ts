@@ -198,7 +198,6 @@ export const agentRouter = router({
     .input(
       z.object({
         grantId: z.string(),
-        constraints: z.string().nullable().optional(),
         status: z.enum(["active", "denied", "revoked"]).optional(),
       })
     )

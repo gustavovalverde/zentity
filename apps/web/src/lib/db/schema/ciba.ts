@@ -1,3 +1,5 @@
+import type { GrantConstraint } from "../../agents/approval-evaluate";
+
 import { sql } from "drizzle-orm";
 import { index, integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
 
@@ -65,7 +67,9 @@ export const cibaRequests = sqliteTable(
     assertionVerified: integer("assertion_verified", { mode: "boolean" }),
     pairwiseActSub: text("pairwise_act_sub"),
     approvedCapabilityName: text("approved_capability_name"),
-    approvedConstraints: text("approved_constraints"),
+    approvedConstraints: text("approved_constraints", { mode: "json" }).$type<
+      GrantConstraint[]
+    >(),
     approvedGrantId: text("approved_grant_id"),
     approvedHostPolicyId: text("approved_host_policy_id"),
     approvalStrength: text("approval_strength"),
