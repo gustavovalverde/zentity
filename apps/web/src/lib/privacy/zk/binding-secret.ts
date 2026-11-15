@@ -19,6 +19,7 @@ import "client-only";
 import {
   bytesToHex,
   hexToBytes,
+  hkdfBits,
   sha256Bytes,
 } from "@/lib/privacy/primitives/symmetric";
 
@@ -101,33 +102,16 @@ export interface BindingSecretResult {
  * @param salt - Optional salt (userId for wallet binding)
  * @returns 32-byte derived key
  */
-async function deriveHkdf(
+function deriveHkdf(
   input: Uint8Array,
   info: string,
   salt?: string
 ): Promise<Uint8Array> {
-  // Convert to ArrayBuffer for WebCrypto compatibility
-  const inputBuffer = new Uint8Array(input).buffer;
-  const masterKey = await crypto.subtle.importKey(
-    "raw",
-    inputBuffer,
-    "HKDF",
-    false,
-    ["deriveBits"]
-  );
-
-  const derivedBits = await crypto.subtle.deriveBits(
-    {
-      name: "HKDF",
-      salt: salt ? new TextEncoder().encode(salt) : new Uint8Array(0),
-      hash: "SHA-256",
-      info: new TextEncoder().encode(info),
-    },
-    masterKey,
-    256
-  );
-
-  return new Uint8Array(derivedBits);
+  return hkdfBits(input, {
+    info,
+    bits: 256,
+    ...(salt ? { salt: new TextEncoder().encode(salt) } : {}),
+  });
 }
 
 /**

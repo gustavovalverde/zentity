@@ -13,6 +13,42 @@ function bytesToFieldHex(bytes: Uint8Array): string {
 }
 
 describe("binding-secret", () => {
+  describe("HKDF vectors", () => {
+    const documentHash = "0xdeadbeef1234567890abcdef";
+
+    it("matches independent HKDF-SHA256 vectors for every auth mode", async () => {
+      const passkey = await deriveBindingSecret({
+        authMode: AuthMode.PASSKEY,
+        prfOutput: new Uint8Array(32).fill(42),
+        userId: "user-123",
+        documentHash,
+      });
+      expect(bytesToFieldHex(passkey.bindingSecret)).toBe(
+        "0x6084eef8614526e0690ae0f7a5f64f9de73fbbbdb18e6edfdac3d234802e64a6"
+      );
+
+      const opaque = await deriveBindingSecret({
+        authMode: AuthMode.OPAQUE,
+        exportKey: new Uint8Array(64).fill(9),
+        userId: "user-123",
+        documentHash,
+      });
+      expect(bytesToFieldHex(opaque.bindingSecret)).toBe(
+        "0x0456334b2211e8c7be72e2f5930a40017cded32ff8d15ea8fca6f9e4ed85d325"
+      );
+
+      const wallet = await deriveBindingSecret({
+        authMode: AuthMode.WALLET,
+        signatureBytes: new Uint8Array(65).fill(7),
+        userId: "user-123",
+        documentHash,
+      });
+      expect(bytesToFieldHex(wallet.bindingSecret)).toBe(
+        "0x9767f73afbf7d4303de036c6ea1dfde466d5b374183db7ecbaa21153d5450dae"
+      );
+    });
+  });
+
   describe("deriveBindingSecret", () => {
     const mockUserId = "user-123";
     const mockDocumentHash = "0xdeadbeef1234567890abcdef";
