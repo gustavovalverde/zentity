@@ -30,7 +30,7 @@ export function buildConsentAuthProxyHeaders(request: Request): Headers {
 
   const requestOrigin = new URL(request.url).origin;
   const origin = request.headers.get("origin");
-  const refererUrl = parseUrl(request.headers.get("referer"));
+  const refererUrl = URL.parse(request.headers.get("referer") ?? "");
   if (
     origin === requestOrigin ||
     (!origin && refererUrl?.origin === requestOrigin)
@@ -43,25 +43,13 @@ export function buildConsentAuthProxyHeaders(request: Request): Headers {
   return headers;
 }
 
-function parseUrl(value: string | null): URL | null {
-  if (!value) {
-    return null;
-  }
-
-  try {
-    return new URL(value);
-  } catch {
-    return null;
-  }
-}
-
 export function buildConsentErrorRedirect(
   request: Request,
   message: string,
   oauthQuery?: string | null
 ): NextResponse {
   const requestOrigin = new URL(request.url).origin;
-  const refererUrl = parseUrl(request.headers.get("referer"));
+  const refererUrl = URL.parse(request.headers.get("referer") ?? "");
 
   let targetUrl: URL;
   if (refererUrl?.origin === requestOrigin) {
@@ -83,17 +71,7 @@ export function appendSetCookieHeaders(
   sourceHeaders: Headers,
   targetHeaders: Headers
 ): void {
-  const getSetCookie = (
-    sourceHeaders as Headers & { getSetCookie?: () => string[] }
-  ).getSetCookie;
-  const setCookieHeaders =
-    typeof getSetCookie === "function"
-      ? getSetCookie.call(sourceHeaders)
-      : [sourceHeaders.get("set-cookie")].filter((cookie): cookie is string =>
-          Boolean(cookie)
-        );
-
-  for (const cookie of setCookieHeaders) {
+  for (const cookie of sourceHeaders.getSetCookie()) {
     targetHeaders.append("set-cookie", cookie);
   }
 }

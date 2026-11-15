@@ -81,18 +81,19 @@ function expectedQueryHash(): string {
 }
 
 /**
- * Extract disclosed birthdate string from QueryResult.
- * ZKPassport discloses dates as Date objects.
+ * Extract the disclosed birthdate as a `YYYY-MM-DD` string from QueryResult.
+ * ZKPassport discloses dates as Date objects, but a serialized result can carry
+ * a date-only or full ISO timestamp string; both normalize to the UTC date.
  */
 function extractBirthdate(result: QueryResult): string | undefined {
   const disclosed = result.birthdate?.disclose?.result;
-  if (disclosed instanceof Date) {
-    return disclosed.toISOString().split("T")[0];
+  if (!(disclosed instanceof Date || typeof disclosed === "string")) {
+    return undefined;
   }
-  if (typeof disclosed === "string") {
-    return disclosed;
-  }
-  return undefined;
+  const date = new Date(disclosed);
+  return Number.isNaN(date.getTime())
+    ? undefined
+    : date.toISOString().slice(0, 10);
 }
 
 function extractString(

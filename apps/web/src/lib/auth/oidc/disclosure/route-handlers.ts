@@ -19,6 +19,7 @@ import {
   oauth2IdentityLimiter,
   rateLimitResponse,
 } from "@/lib/http/rate-limit";
+import { jsonError } from "@/lib/http/route-responses";
 
 import {
   createIdentityIntentToken,
@@ -55,10 +56,6 @@ interface ValidatedIdentityStage {
   scopeHash: string;
   scopes: string[];
   userId: string;
-}
-
-function jsonError(error: string, status: number) {
-  return NextResponse.json({ error }, { status });
 }
 
 function validateScopeSubset(

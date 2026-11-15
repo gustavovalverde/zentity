@@ -13,7 +13,7 @@ Zentity's architecture separates proving (browser), verifying (server), and comp
 |---|---|---|
 | Web UI + API | Next.js 16 (App Router), React 19, Node.js, pnpm, tRPC | Primary UI and orchestration layer with type-safe API routes. |
 | ZK proofs | Noir, bb.js (Barretenberg), UltraHonk | Client-side proving in Web Workers; server-side verification. |
-| Liveness + face match | Human.js + tfjs-node | Multi-gesture liveness and face match; real-time guidance on client, verification on server. |
+| Liveness + face match | Human.js + tfjs-node | Multi-gesture liveness and face match; the browser streams frames and the server runs detection and verification. |
 | OCR | RapidOCR (PPOCRv5), python-stdnum | Document parsing, field extraction, and validation. |
 | FHE and Web3 | TFHE-rs (Rust), fhEVM, Base mirror | Encrypted computation off-chain, encrypted on-chain attestation, and narrow public payment-time predicates. |
 | Storage | SQLite (libSQL/Turso), Drizzle ORM | Privacy-first storage of commitments, proofs, and encrypted blobs. |
@@ -288,9 +288,9 @@ The access token includes an `act` claim identifying both the human and the agen
 
 **Liveness + face match**
 
-- The **client** runs Human.js for real-time detection and gesture guidance (smile, head turns).
-- The **server** re-verifies frames with Human.js (tfjs-node) and issues signed liveness/face-match claims.
-- This split keeps UX responsive while preserving server-side integrity.
+- The **client** captures camera frames and posts them to `/api/identity/liveness/frame`. It renders the challenge, quality, and gesture guidance (smile, head turns) the server returns.
+- The **server** runs Human.js (tfjs-node) on every frame (`lib/identity/liveness/human/server.ts`), advances the challenge, and issues signed liveness/face-match claims.
+- No detection model runs in the browser, so the server alone decides whether a gesture happened.
 
 For detailed liveness policy and integrity guarantees, see [Tamper Model](<../(architecture)/tamper-model.md>) and [Attestation & Privacy Architecture](<../(architecture)/attestation-privacy-architecture.md>).
 
