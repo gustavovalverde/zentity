@@ -47,6 +47,7 @@ import {
   SCOPE_DESCRIPTIONS,
 } from "@/lib/auth/oidc/disclosure/registry";
 import { groupScopes } from "@/lib/auth/oidc/disclosure/scope-display";
+import { formatDate } from "@/lib/date-format";
 import { parseStoredStringArray } from "@/lib/db/adapter-compat";
 
 interface ConsentRow {
@@ -58,17 +59,6 @@ interface ConsentRow {
   createdAt: Date | null;
   scopes: string | null;
   updatedAt: Date | null;
-}
-
-function formatDate(date: Date | null): string {
-  if (!date) {
-    return "Unknown date";
-  }
-  return date.toLocaleDateString(undefined, {
-    year: "numeric",
-    month: "short",
-    day: "numeric",
-  });
 }
 
 function AppLetter({ name }: { name: string }) {
@@ -176,10 +166,10 @@ export function ConnectedAppsCard({
                       )}
                     </ItemTitle>
                     <p className="text-muted-foreground text-xs">
-                      Authorized {formatDate(consent.createdAt)}
+                      Authorized {formatDate(consent.createdAt, "Unknown date")}
                       {consent.updatedAt &&
                       consent.updatedAt > (consent.createdAt ?? new Date(0))
-                        ? ` · Updated ${formatDate(consent.updatedAt)}`
+                        ? ` · Updated ${formatDate(consent.updatedAt, "Unknown date")}`
                         : ""}
                     </p>
                     {groups.length > 0 && (

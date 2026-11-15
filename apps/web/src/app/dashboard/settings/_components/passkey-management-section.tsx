@@ -66,6 +66,7 @@ import {
   signInWithPasskey,
 } from "@/lib/auth/passkey/client";
 import { checkPrfSupport } from "@/lib/auth/passkey/prf";
+import { formatDate } from "@/lib/date-format";
 import { generatePrfSalt } from "@/lib/privacy/credentials/derivation";
 import {
   addVaultCredential,
@@ -81,21 +82,6 @@ interface PasskeyCredential {
   id: string;
   name?: string | null | undefined;
   [key: string]: unknown;
-}
-
-function formatDate(dateValue: string | Date | null | undefined): string {
-  if (!dateValue) {
-    return "Never";
-  }
-  const date = dateValue instanceof Date ? dateValue : new Date(dateValue);
-  if (Number.isNaN(date.getTime())) {
-    return "Unknown";
-  }
-  return date.toLocaleDateString(undefined, {
-    year: "numeric",
-    month: "short",
-    day: "numeric",
-  });
 }
 
 function DeviceIcon({
@@ -515,7 +501,7 @@ export function PasskeyManagementSection({
                       </ItemTitle>
                     )}
                     <p className="text-muted-foreground text-xs">
-                      Added {formatDate(passkey.createdAt)}
+                      Added {formatDate(passkey.createdAt, "Never")}
                     </p>
                   </ItemContent>
                   <ItemActions>
