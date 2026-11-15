@@ -162,11 +162,7 @@ import {
 } from "@/lib/auth/oidc/step-up";
 import { resolveSybilNullifier } from "@/lib/auth/oidc/sybil";
 import { tokenExchangePlugin } from "@/lib/auth/oidc/token-exchange";
-import {
-  beforeRevokeJwtAccessToken,
-  beforeUserInfoRejectRevokedToken,
-  revokedAccessTokenJti,
-} from "@/lib/auth/oidc/token-revocation";
+import { recordRevokedAccessToken } from "@/lib/auth/oidc/token-revocation";
 import {
   discoveryMetadataExtension,
   getAuthIssuer,
@@ -755,9 +751,6 @@ async function afterIntrospectKeepJwtSubject(ctx: HookCtx) {
   );
   if (!introspection?.active) {
     return;
-  }
-  if (await revokedAccessTokenJti(token)) {
-    return ctx.json({ active: false });
   }
   const { sub } = decodeJwt(token);
   if (typeof sub !== "string") {
@@ -1869,6 +1862,9 @@ export const auth = betterAuth({
         },
       },
     },
+    verification: {
+      create: { before: recordRevokedAccessToken },
+    },
   },
   socialProviders,
   session: {
@@ -1895,12 +1891,6 @@ export const auth = betterAuth({
   },
   hooks: {
     before: createAuthMiddleware(async (ctx) => {
-      if (ctx.path === "/oauth2/revoke") {
-        return beforeRevokeJwtAccessToken(ctx);
-      }
-      if (ctx.path === "/oauth2/userinfo") {
-        return beforeUserInfoRejectRevokedToken(ctx);
-      }
       if (ctx.path === "/oauth2/register") {
         return beforeDcrRegister(ctx);
       }
@@ -2034,6 +2024,11 @@ export const auth = betterAuth({
     }),
     oauthProvider({
       accessTokenExpiresIn: 3600,
+      // `/oauth2/revoke` revokes JWT access tokens, and revoking a refresh
+      // token revokes the JWT access tokens of its grant. Introspection,
+      // UserInfo, and Zentity's resources then refuse them; the wallet
+      // runtime learns of them from the revocation feed.
+      revocableJwtAccessTokens: true,
       // Payment tokens live 120s (D-6); every other scope keeps the 3600s
       // default. Token issuance takes the minimum across the granted scopes.
       scopeExpirations: PAYMENT_TOKEN_SCOPE_EXPIRATIONS,

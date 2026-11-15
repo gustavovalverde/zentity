@@ -311,7 +311,7 @@ A resource endpoint also requires the proof key to match the token's `cnf.jkt` a
 - A failed DPoP proof or binding gets a 401 with `DPoP error="...", error_description="...", algs="ES256"` (RFC 9449 §7.1).
 - A token without a required scope gets a 403 with `Bearer error="insufficient_scope", scope="..."` naming the scopes to request (RFC 6750 §3.1).
 
-Endpoints served by the OAuth provider, such as the token endpoint and UserInfo, send the provider's own challenges unchanged. For example, a failed client authentication at the token endpoint answers `Basic`, and a UserInfo request without a token gets `Bearer, DPoP algs="ES256"`. UserInfo also refuses a revoked JWT access token and a consumed identity release, and answers those by the rules above.
+Endpoints served by the OAuth provider, such as the token endpoint and UserInfo, send the provider's own challenges unchanged. For example, a failed client authentication at the token endpoint answers `Basic`, a UserInfo request without a token gets `Bearer, DPoP algs="ES256"`, and a revoked token at UserInfo gets `Bearer error="invalid_token"` or `DPoP error="invalid_token"`. UserInfo also refuses a consumed identity release, and answers it by the rules above.
 
 #### Server-provided nonces
 
@@ -365,6 +365,12 @@ The `ath` claim is only included when presenting the access token at a resource 
 | Token type | `"DPoP"` | n/a |
 
 Access tokens are opaque by design; they prevent `sub` leakage for pairwise clients and keep DPoP binding server-side.
+
+### Token revocation
+
+`POST /api/auth/oauth2/revoke` (RFC 7009) revokes a refresh token or an access token, opaque or JWT, for the client it was issued to. Revoking a refresh token also revokes the access tokens of its grant. A revoked token reads as inactive at introspection, and UserInfo, token exchange, and Zentity's protected resources refuse it. An unknown or expired token answers 200 without effect. A token issued to another client answers 200 to a public client and `invalid_request` to a confidential one.
+
+A revoked JWT access token still verifies against the JWKS, so a resource server that verifies JWTs itself must learn of the revocation another way. Zentity keeps every JWT `jti` revoked at this endpoint, and the wallet runtime polls them at `GET /api/auth/oauth2/revoked?since=<unix-ms>`, authenticating with `Authorization: Bearer <INTERNAL_SERVICE_TOKEN>`. The response lists revocations oldest first, with a `next_since` cursor and a `truncated` flag. It does not list JWT access tokens revoked through their refresh token's grant.
 
 ### JWT signing algorithms
 

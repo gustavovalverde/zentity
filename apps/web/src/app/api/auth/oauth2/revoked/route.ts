@@ -85,7 +85,6 @@ export async function GET(request: Request) {
     revocations: rows.map((row) => ({
       jti: row.jti,
       revoked_at: row.revokedAt.toISOString(),
-      reason: row.reason,
     })),
     truncated: rows.length === parsed.data.limit,
   });
