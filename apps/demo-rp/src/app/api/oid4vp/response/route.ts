@@ -83,13 +83,9 @@ export async function POST(request: Request) {
 
     // Verify the VP token
     const clientId = env.NEXT_PUBLIC_APP_URL;
-    const { verified, claims } = await verifyVpToken(
-      vpToken,
-      session.nonce,
-      clientId
-    );
+    const claims = await verifyVpToken(vpToken, session.nonce, clientId);
 
-    if (!verified) {
+    if (!claims) {
       await updateVpSession(session.id, {
         status: "failed",
         result: JSON.stringify({ error: "Verification failed" }),
