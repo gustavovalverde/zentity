@@ -24,8 +24,7 @@
     ],
     "paths": {
       "@/*": ["./src/*"],
-      "@/noir-circuits/*": ["./noir-circuits/*"],
-      "@mattrglobal/pairing-crypto": ["./src/types/pairing-crypto.d.ts"]
+      "@/noir-circuits/*": ["./noir-circuits/*"]
     },
     "allowJs": true
   },
