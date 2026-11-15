@@ -181,11 +181,6 @@ async function verifyAgentAssertion(
   jwt: string
 ): Promise<AgentAssertionResult | null> {
   try {
-    const payloadB64 = jwt.split(".")[1];
-    if (!payloadB64) {
-      return null;
-    }
-
     const rawPayload = decodeJwtPayloadStrict(jwt) as { iss?: string };
     const sessionId = rawPayload.iss;
     if (!sessionId) {
@@ -206,22 +201,20 @@ async function verifyAgentAssertion(
     }
 
     const publicKey = await importJWK(JSON.parse(session.publicKey), "EdDSA");
-    const { payload, protectedHeader } = await jwtVerify(jwt, publicKey, {
+    const { payload } = await jwtVerify(jwt, publicKey, {
       algorithms: ["EdDSA"],
       issuer: sessionId,
+      typ: "agent-assertion+jwt",
+      requiredClaims: ["jti", "exp"],
     });
-    if (protectedHeader.typ !== "agent-assertion+jwt") {
-      return null;
-    }
 
     const lifecycle = await computeSessionState(sessionId);
     if (lifecycle !== "active") {
       return null;
     }
 
-    const jti = payload.jti;
-    const exp = payload.exp;
-    if (typeof jti !== "string" || typeof exp !== "number") {
+    const { jti, exp } = payload;
+    if (typeof jti !== "string" || exp === undefined) {
       return null;
     }
 
