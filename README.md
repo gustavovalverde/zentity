@@ -188,7 +188,10 @@ OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318
 OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318/v1/traces
 ```
 
-Docker Compose already points all three services at its collector.
+Docker Compose already points all three services at its collector. To send
+them elsewhere, set `OTEL_EXPORTER_OTLP_ENDPOINT` (web, base URL) and
+`OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` (FHE and OCR, full traces URL) in the root
+`.env`.
 
 Quick manual test (happy path):
 

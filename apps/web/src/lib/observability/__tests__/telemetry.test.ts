@@ -1,10 +1,15 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { otelEnv, sdkConfigs, autoInstrumentationConfigs } = vi.hoisted(() => ({
-  otelEnv: {} as Record<string, unknown>,
-  sdkConfigs: [] as Record<string, unknown>[],
-  autoInstrumentationConfigs: [] as Record<string, unknown>[],
-}));
+const { otelEnv, sdkConfigs, autoInstrumentationConfigs, warn } = vi.hoisted(
+  () => ({
+    otelEnv: {} as Record<string, unknown>,
+    sdkConfigs: [] as Record<string, unknown>[],
+    autoInstrumentationConfigs: [] as Record<string, unknown>[],
+    warn: vi.fn(),
+  })
+);
+
+vi.mock("@/lib/logging/logger", () => ({ logger: { warn } }));
 
 vi.mock("@/env", async (importOriginal) => {
   const mod = await importOriginal<typeof import("@/env")>();
@@ -56,6 +61,28 @@ describe("initTelemetry", () => {
   beforeEach(() => {
     sdkConfigs.length = 0;
     autoInstrumentationConfigs.length = 0;
+    warn.mockClear();
+  });
+
+  it("warns when the generic endpoint is a full signal URL", async () => {
+    await startTelemetry({
+      OTEL_EXPORTER_OTLP_ENDPOINT: "http://collector:4318/v1/traces",
+    });
+
+    expect(sdkConfigs).toHaveLength(1);
+    expect(warn).toHaveBeenCalledOnce();
+    expect(warn.mock.calls[0]?.[0]).toContain(
+      "OTEL_EXPORTER_OTLP_TRACES_ENDPOINT"
+    );
+  });
+
+  it("accepts a base URL without warning", async () => {
+    await startTelemetry({
+      OTEL_EXPORTER_OTLP_ENDPOINT: "http://collector:4318",
+    });
+
+    expect(sdkConfigs).toHaveLength(1);
+    expect(warn).not.toHaveBeenCalled();
   });
 
   it("does not start the SDK when telemetry is not configured", async () => {

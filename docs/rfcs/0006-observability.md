@@ -107,8 +107,13 @@ src/lib/observability/
 The web app passes no exporters, metric readers, or endpoints to `NodeSDK`. The
 SDK builds them from the standard `OTEL_*` variables: `OTEL_EXPORTER_OTLP_ENDPOINT`
 is the collector's base URL, and the SDK appends `/v1/traces` and `/v1/metrics`.
-Telemetry starts only when `OTEL_ENABLED=true` or an OTLP endpoint is set, so
-local development does not export to the SDK's localhost default. Logs are not
+A full signal URL in `OTEL_EXPORTER_OTLP_ENDPOINT` would gain a second signal
+path, so startup logs a warning for that shape; a full traces URL belongs in
+`OTEL_EXPORTER_OTLP_TRACES_ENDPOINT`. Telemetry starts only when
+`OTEL_ENABLED=true` or an OTLP endpoint is set, so local development does not
+export to the SDK's localhost default. Once it starts, traces and metrics both
+export, each to its own endpoint or the SDK default, unless
+`OTEL_TRACES_EXPORTER` or `OTEL_METRICS_EXPORTER` is `none`. Logs are not
 exported over OTLP; Pino writes them to stdout and the Pino instrumentation adds
 `trace_id` and `span_id` to each record.
 
@@ -148,11 +153,11 @@ export async function register() {
 
 tRPC reports a failed procedure as a `{ ok: false }` result rather than a
 throw, so the middleware inspects the result. Every failure records its tRPC
-code in `rpc.status_code` and `error.type`. Only server errors, the codes that
-map to HTTP 5xx (including unexpected throws, which tRPC reports as
-`INTERNAL_SERVER_ERROR`), mark the span ERROR. Client errors such as
-`BAD_REQUEST`, `UNAUTHORIZED`, `FORBIDDEN`, and `NOT_FOUND` leave the status
-unset, following the OpenTelemetry HTTP and RPC server conventions.
+code in `rpc.status_code`. Only the codes that tRPC maps to HTTP 5xx (including
+unexpected throws, which tRPC reports as `INTERNAL_SERVER_ERROR`) also set
+`error.type` and mark the span ERROR. Client errors such as `BAD_REQUEST`,
+`UNAUTHORIZED`, `FORBIDDEN`, `NOT_FOUND`, and `TIMEOUT` (408) leave both unset,
+following the OpenTelemetry HTTP server convention.
 
 ```typescript
 // src/lib/trpc/server.ts (simplified)
@@ -161,8 +166,9 @@ const withTracing = trpc.middleware(({ path, type, ctx, next }) =>
     const result = await next({ ctx: { ...ctx, span } });
     if (!result.ok) {
       const { code } = result.error;
-      span.setAttributes({ "rpc.status_code": code, "error.type": code });
+      span.setAttribute("rpc.status_code", code);
       if (getHTTPStatusCodeFromError(result.error) >= 500) {
+        span.setAttribute("error.type", code);
         span.setStatus({ code: SpanStatusCode.ERROR, message: code });
       }
     }

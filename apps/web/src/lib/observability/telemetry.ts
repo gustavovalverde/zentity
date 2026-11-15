@@ -17,6 +17,8 @@ import { env } from "@/env";
 
 let sdk: NodeSDK | null = null;
 
+const SIGNAL_PATH_SUFFIX = /\/v1\/(?:traces|metrics|logs)\/?$/;
+
 export function getServiceName(): string {
   return env.OTEL_SERVICE_NAME;
 }
@@ -104,6 +106,15 @@ export async function initTelemetry(): Promise<void> {
   });
 
   sdk.start();
+
+  // The SDK appends /v1/<signal> to OTEL_EXPORTER_OTLP_ENDPOINT, so a full
+  // signal URL exports to paths the collector rejects, with no error logged.
+  if (SIGNAL_PATH_SUFFIX.test(env.OTEL_EXPORTER_OTLP_ENDPOINT ?? "")) {
+    const { logger } = await import("@/lib/logging/logger");
+    logger.warn(
+      "OTEL_EXPORTER_OTLP_ENDPOINT ends in a signal path. Set it to the collector base URL (for example http://otel-collector:4318), or move the full URL to OTEL_EXPORTER_OTLP_TRACES_ENDPOINT."
+    );
+  }
 
   const shutdown = () => {
     sdk?.shutdown().catch(() => {
