@@ -10,6 +10,7 @@ Covers:
 - Document number formatting
 """
 
+import pytest
 from mrz.base.countries_ops import get_country
 
 from ocr_service.services.parser import (
@@ -532,6 +533,18 @@ class TestExtractNationalIdFields:
         data = extract_national_id_fields(national_id_text_dominican)
         # Pattern: SEXO: M
         assert data.gender == "M"
+
+    @pytest.mark.parametrize(
+        "text",
+        [
+            "CARTE NATIONALE D'IDENTITE FRANCE 1105040043-12/06/1979 07/01/2014",
+            "CARTE NATIONALE D'IDENTITE FRANCE 07/01/2014 1105040043-12/06/1979",
+        ],
+    )
+    def test_unlabeled_birth_date_ignores_block_order(self, text):
+        """Without a DOB label, the earliest date wins, not the first one in the text."""
+        data = extract_national_id_fields(text)
+        assert data.date_of_birth == "1979-06-12"
 
     def test_extracts_spanish_dni(self, national_id_text_spanish):
         """Extracts fields from Spanish DNI text."""
