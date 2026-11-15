@@ -17,7 +17,6 @@ import { jwks } from "@/lib/db/schema/oauth-provider";
 
 import { PROOF_DISCLOSURE_KEYS } from "../claims";
 import {
-  extractProofScopes,
   filterProofClaimsByScopes,
   IDENTITY_SCOPE_CLAIMS,
   IDENTITY_SCOPES,
@@ -467,12 +466,6 @@ describe("RP contract — proof claim filtering", () => {
     expect(userinfo).not.toHaveProperty("sybil_nullifier");
     expect(idToken).toHaveProperty("verified");
     expect(userinfo).toHaveProperty("verified");
-  });
-
-  it("extractProofScopes filters correctly", () => {
-    const scopes = ["openid", "email", "proof:verification", "proof:age"];
-    const proofScopes = extractProofScopes(scopes);
-    expect(proofScopes).toEqual(["proof:verification", "proof:age"]);
   });
 });
 

@@ -52,7 +52,7 @@ PACT uses `MAJOR.MINOR[-draft]` versioning. Implementations MUST reject configur
 
 **Agent-Assertion.** A short-lived EdDSA JWT (`typ: agent-assertion+jwt`) signed by the session private key, proving possession of the runtime identity at the time of a consent request.
 
-**Approval Strength.** A capability-level declaration of the minimum consent mechanism required: `none` (auto-approve), `session` (active user interaction), or `biometric` (unforgeable user verification).
+**Approval Strength.** A capability-level declaration of the ceremony a manual approval requires: `session` (an active user session) or `user_verification` (a WebAuthn assertion with the user-verified flag set, from a PIN or a biometric check). Whether a capability grant may approve the capability without the user is a separate declaration, `grantable`.
 
 **Authorization Server (AS).** The server that implements this profile, managing identity registration, capability grants, consent routing, and token issuance.
 
@@ -343,7 +343,8 @@ Capabilities are server-defined named actions. Each capability declares:
 | `description` | string | Yes | Human-readable description |
 | `input_schema` | JSON Schema | No | Expected input parameters |
 | `output_schema` | JSON Schema | No | Expected output shape |
-| `approval_strength` | enum | Yes | `none`, `session`, or `biometric` |
+| `approval_strength` | enum | Yes | `session` or `user_verification`: the ceremony a manual approval requires |
+| `grantable` | boolean | Yes | Whether a capability grant may approve the capability without the user |
 
 **Discovery.** `GET {capabilities_endpoint}` returns the full registry. No authentication required.
 
@@ -354,25 +355,31 @@ Capabilities are server-defined named actions. Each capability declares:
     "description": "Authorize and execute purchases on behalf of the user",
     "input_schema": { "..." },
     "output_schema": { "..." },
-    "approval_strength": "biometric"
+    "approval_strength": "user_verification",
+    "grantable": false
   },
   {
-    "name": "read_profile",
-    "description": "Read identity profile and verification status",
-    "approval_strength": "session"
+    "name": "my_profile",
+    "description": "Read vault-gated profile fields such as full name, address, or birthdate",
+    "approval_strength": "session",
+    "grantable": false
   },
   {
     "name": "check_compliance",
-    "description": "Check on-chain attestation and compliance status",
-    "approval_strength": "none"
+    "description": "Check the user's on-chain attestation and compliance status",
+    "approval_strength": "session",
+    "grantable": true
   },
   {
-    "name": "request_approval",
-    "description": "Request explicit user approval via push notification",
-    "approval_strength": "session"
+    "name": "payment_authorization:sign",
+    "description": "Mint a payment_authorization RAR entry bounding a single on-chain spend",
+    "approval_strength": "user_verification",
+    "grantable": true
   }
 ]
 ```
+
+A grantable capability with `user_verification` strength, such as `payment_authorization:sign`, may be approved by a bounded grant without the user, and needs a user-verified approval otherwise.
 
 ### 5.2 Grants
 
@@ -476,19 +483,19 @@ The CIBA `auth_req_id` correlates agent identity (from the control plane), human
 
 ### 6.2 Three Routing Outcomes
 
-The consent router produces three outcomes based on the capability's `approval_strength` and the agent's session grants. They differ along one axis: how much human involvement is required.
+The consent router produces three outcomes. The server derives them from the whole stored request, every scope and every `authorization_details` entry (Section 6.5), and from the agent's session grants. They differ along one axis: how much human involvement is required.
 
 | Outcome | When | Human interruption |
 |---------|------|-------------------|
-| **Silent approval** | Active grant exists, constraints pass, limits not exceeded, and capability strength is `none` | None |
-| **Session approval** | No matching grant, or strength is `session` | Push notification with inline approve/deny |
-| **Biometric approval** | Capability strength is `biometric` | Push notification with "Open to approve" link only; WebAuthn `userVerification: required` on the approval page |
+| **Silent approval** | Every requested item maps to one grantable capability, an active grant exists, constraints pass, and limits are not exceeded | None |
+| **Session approval** | No matching grant, and the request's ceremony is `session` | Push notification; inline approve/deny only for requests whose every scope the notification can name with server text |
+| **User-verified approval** | The request's ceremony is `user_verification` | Push notification with a review action only; a WebAuthn assertion with `userVerification: required` on the approval page |
 
 **What silent approval can never do.** The evaluator MUST refuse automatic approval in these cases:
 
 - Any request containing identity scopes (scopes that would release PII)
-- Any request whose derived capability is missing from the registry
-- Any capability whose approval strength is `biometric`
+- Any request that spans more than one capability, or that includes a scope or `authorization_details` entry no grantable capability covers
+- Any capability that is not `grantable`
 - Any request without an active matching grant
 - Any request that exceeds cooldown or daily limits
 
@@ -565,18 +572,26 @@ The `session` strength accepts any in-session re-authentication an agent with br
 
 **Identity scope exception.** When a CIBA request includes identity scopes, push notifications MUST NOT include inline approve actions, even for `session`-strength capabilities. Vault unlock (required by VEIL Section 6 for identity claim delivery) cannot be triggered from a service worker or agent browser context, making identity-scoped requests functionally equivalent to `biometric` for inline approval purposes. The user MUST navigate to the approval page in a full browser context.
 
-### 6.5 Capability Derivation
+### 6.5 Approval Policy Derivation
 
-The consent router derives a capability name from the CIBA request's `authorization_details` and `scope`:
+The consent router derives what a request needs from one policy table with a row per scope and per `authorization_details` type. Each row names the capability that covers the item, its ceremony, whether a notification may approve it inline, and whether a grant may approve it:
 
-| Condition | Derived capability |
-|-----------|--------------------|
-| Any detail has `type === "purchase"` | `purchase` |
-| Any scope is an identity scope | `read_profile` |
-| Any scope is a proof scope (for example `proof:age` or `proof:compliance`) | `check_compliance` |
-| Only `openid` scope, no typed details | `request_approval` |
+| Item | Capability | Ceremony | Inline | Grantable |
+|------|------------|----------|--------|-----------|
+| `openid` | none (neutral) | `session` | Yes | neutral |
+| `compliance:read` | `check_compliance` | `session` | Yes | Yes |
+| Proof scopes (`proof:age`, `proof:nationality`, and the other `proof:*` predicates) | `my_proofs` | `session` | Yes | Yes |
+| Identity scopes (`identity.*`) | `my_profile` | `user_verification` when the user has a passkey, else `session` | No | No |
+| `email`, `offline_access`, `proof:sybil`, `agent:*`, and other operational scopes | none | `session` | No | No |
+| `payment_authorization` entry | `payment_authorization:sign` | `user_verification` | No | Bounded grants only |
 
-The first matching row wins. The precedence order is `purchase` details, then identity scopes, then proof scopes, then `openid`-only requests. A mixed request (for example, purchase details plus `identity.*` scopes) is routed to the most sensitive derived capability.
+The request as a whole:
+
+- needs the strictest ceremony of its items;
+- may be approved only on the approval page when any item is not inline, any `authorization_details` entry is present, or the ceremony is `user_verification`;
+- may be approved by a grant only when every item other than `openid` maps to one and the same grantable capability. A mixed request, such as `compliance:read` with `email`, or a payment with proof scopes, goes to the user.
+
+An unknown scope is page only, not grantable, and needs a session. An unknown or unparseable `authorization_details` entry is page only, not grantable, and needs `user_verification`. The derivation takes no input from the `Agent-Assertion`, so an agent can lower what a request needs only by asking for less.
 
 ---
 

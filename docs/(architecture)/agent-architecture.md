@@ -159,12 +159,13 @@ Attestation is not the same thing as runtime proof. Vendor attestation says some
 
 ### What attestation changes
 
-Attestation does not widen the silent-approval set for identity-disclosing capabilities. Unverified hosts receive default durable policies for:
+Attestation does not widen the silent-approval set for identity-disclosing capabilities. Unverified and attested hosts receive the same default durable policies:
 
+- `whoami`
+- `my_proofs`
 - `check_compliance`
-- `request_approval`
 
-`purchase` is not auto-granted because it requires biometric approval strength and therefore always routes through explicit human approval.
+`purchase` and `my_profile` are never auto-granted, because the catalog marks them as not grantable, so they always route through explicit human approval.
 
 This keeps the trust model practical rather than ceremonial. Verification changes how the runtime is presented and audited without bypassing vault unlock or other explicit approval boundaries.
 
@@ -176,16 +177,28 @@ The capability system exists to answer one narrow question repeatedly: "Can this
 
 ### Seeded capabilities
 
-Zentity seeds four capabilities:
+Zentity seeds six capabilities. Each states the ceremony a manual approval needs and whether a capability grant may approve it without the user:
 
-| Capability | Approval strength | Default host policy |
-| --- | --- | --- |
-| `purchase` | `biometric` | No |
-| `read_profile` | `session` | No |
-| `check_compliance` | `none` | Yes |
-| `request_approval` | `session` | Yes |
+| Capability | Manual ceremony (`approval_strength`) | `grantable` | Default host policy |
+| --- | --- | --- | --- |
+| `purchase` | `user_verification` | No | No |
+| `my_profile` | `session` (user verification when the user has a passkey) | No | No |
+| `my_proofs` | `session` | Yes | Yes |
+| `check_compliance` | `session` | Yes | Yes |
+| `whoami` | `session` | Yes | Yes |
+| `payment_authorization:sign` | `user_verification` | Yes, bounded grants only | No |
 
-The authoritative metadata lives in `agent_capability`, including optional input and output schemas plus the approval strength.
+`user_verification` means a passkey assertion with the user-verified flag set, which the authenticator sets after a PIN or a biometric check that Zentity cannot tell apart. The authoritative metadata lives in `agent_capability`, including optional input and output schemas, the approval strength, and `grantable`. `GET /api/auth/agent/capabilities` publishes both `approval_strength` and `grantable`.
+
+### The approval policy
+
+`approvalPolicy` in `apps/web/src/lib/agents/capability.ts` reads the whole stored request, every scope and every RAR entry, against one table (`APPROVAL_POLICY`) with a row per scope and per RAR type. The result is:
+
+- the strictest ceremony any item needs;
+- whether only the approval page may approve the request: any item that a notification cannot describe, any RAR entry, or a `user_verification` ceremony makes it page only;
+- the grant capability, set only when every item other than `openid` maps to one and the same grantable capability.
+
+An unknown scope is page only, not grantable, and needs a session. An unknown or unreadable RAR entry is page only, not grantable, and needs user verification. The policy takes no input from the agent, so an Agent-Assertion can never lower what a request needs.
 
 ### Durable host policy vs session grant
 
@@ -223,12 +236,15 @@ Capability matching is intentionally narrow. The current evaluator supports:
 
 Within one grant, all constraints must pass. Across multiple grants for the same capability, any matching active grant is enough.
 
-For purchase-like requests, the evaluator extracts action parameters from `authorization_details`, including:
+For `payment_authorization` requests, the evaluator extracts action parameters from `authorization_details`:
 
 - `amount.value`
 - `amount.currency`
-- `merchant`
-- `item`
+- `amount.unit`
+- `recipient`
+- `chain.namespace` and `chain.reference`
+
+A payment grant approves only when it is bounded: a `max` constraint on `amount.value` or a `daily_limit_amount`.
 
 ### Usage limits
 
@@ -253,10 +269,13 @@ A `daily_limit_amount` applies to one currency and unit. The amount must be a no
 The evaluator refuses automatic approval in these cases:
 
 - any request containing identity scopes
-- any request whose derived capability is missing
-- any capability whose approval strength is `biometric`
+- any request that spans more than one capability, or includes a scope or RAR entry no grantable capability covers, such as `compliance:read` with `email`, or a payment with proof scopes
+- any request whose capability is not grantable, such as `purchase` and `my_profile`
+- any payment whose grant has no amount bound
 - any request without an active matching grant
 - any request that exceeds cooldown or daily limits
+
+One grant approves one capability. A request that needs two capabilities goes to the user, even when the agent holds a grant for each.
 
 That refusal is as important as the happy path. Containment works because the "no" cases are crisp.
 
@@ -272,9 +291,9 @@ The approval router produces three practical outcomes:
 
 | Outcome | When it happens | Human interruption |
 | --- | --- | --- |
-| Silent approval | Matching active grant and non-biometric capability | None |
-| Push approval | No matching grant, identity scope present, or manual approval required | Push notification and approval page |
-| Biometric approval | Capability strength is `biometric` | Always push and explicit approval |
+| Silent approval | Every item maps to one grantable capability and an active grant matches | None |
+| Push approval | No matching grant, or the request spans capabilities or ungrantable scopes | Push notification and approval page |
+| User-verified approval | The policy ceremony is `user_verification`, such as a payment or a purchase | Push links to the approval page, which asks for a passkey assertion |
 
 A silent approval is recorded for the user who owns the host, with `approval_method` set to `capability_grant`. No one authenticates during a silent approval. The issued tokens therefore carry the authentication that registered the agent session: its `amr`, its `auth_time`, and its authentication context. If the session has no recorded authentication, the request falls back to push approval and no usage limit is consumed.
 
@@ -320,10 +339,10 @@ sequenceDiagram
   AS->>AS: Snapshot runtime metadata
   AS->>AS: Evaluate session grants
 
-  alt Matching active grant and non-biometric capability
+  alt One grantable capability and a matching active grant
     AS->>AS: Mark CIBA request approved
     AS-->>Agent: Poll returns token
-  else Manual or biometric approval required
+  else Manual or user-verified approval required
     AS->>User: Push notification
     User->>AS: Approve in browser
     AS-->>Agent: Poll returns token
@@ -334,10 +353,10 @@ sequenceDiagram
 
 The difference between profile reads and purchases is structural rather than cosmetic:
 
-- `read_profile` always remains an explicit approval because identity scopes require vault unlock in a full browser context.
-- `purchase` cannot because its approval strength is `biometric`.
+- `my_profile` always remains an explicit approval because identity scopes require vault unlock in a full browser context.
+- `purchase` is not grantable, and its manual ceremony is `user_verification`.
 
-That means both profile disclosure and purchase execution stay on the human approval boundary, with purchase additionally requiring biometric-grade verification.
+That means both profile disclosure and purchase execution stay on the human approval boundary, with purchase additionally requiring a user-verified passkey assertion.
 
 ---
 

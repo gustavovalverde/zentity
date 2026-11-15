@@ -7,11 +7,6 @@ import { importJWK, jwtVerify } from "jose";
 import { z } from "zod";
 
 import { resolveAgentSubForClient } from "@/lib/agents/actor-subject";
-import {
-  type AuthorizationDetail,
-  deriveCapabilityName,
-  resolveCapabilityApprovalStrength,
-} from "@/lib/agents/capability";
 import { db } from "@/lib/db/connection";
 import {
   agentHosts,
@@ -233,10 +228,8 @@ async function verifyAgentAssertion(
 
 interface BoundAgentAssertion {
   agentName: string;
-  approvalStrength?: string | undefined;
   /** The user's authentication that registered the agent session. */
   authContextId: string | null;
-  capabilityName: string | null;
   registeredAgent: {
     attestationProvider?: string | null;
     attestationTier?: string | null;
@@ -250,9 +243,7 @@ interface BoundAgentAssertion {
 
 interface BindAgentAssertionParams {
   assertionJwt: string;
-  authorizationDetails: AuthorizationDetail[];
   authReqId: string;
-  scope: string;
 }
 
 export async function bindAgentAssertionToCibaRequest(
@@ -323,12 +314,6 @@ export async function bindAgentAssertionToCibaRequest(
     return null;
   }
 
-  const capabilityName = deriveCapabilityName(
-    params.authorizationDetails,
-    params.scope
-  );
-  const approvalStrength =
-    await resolveCapabilityApprovalStrength(capabilityName);
   const pairwiseActSub = await resolveAgentSubForClient(
     session.id,
     cibaRow.clientId
@@ -365,8 +350,6 @@ export async function bindAgentAssertionToCibaRequest(
         taskHash: assertion.taskDescriptionHash,
         assertionVerified: true,
         pairwiseActSub,
-        approvedCapabilityName: capabilityName,
-        approvalStrength,
         attestationProvider: host.attestationProvider ?? null,
         attestationTier: host.attestationTier ?? "unverified",
       })
@@ -388,8 +371,6 @@ export async function bindAgentAssertionToCibaRequest(
     sessionId: session.id,
     agentName: session.displayName,
     authContextId: session.authContextId,
-    capabilityName,
-    approvalStrength,
     registeredAgent: {
       name: session.displayName,
       model: session.model,

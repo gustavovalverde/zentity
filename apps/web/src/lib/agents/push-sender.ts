@@ -42,7 +42,6 @@ interface CibaNotificationData {
   clientName?: string | undefined;
   /** The CIBA request id the approval page and decision route take. */
   requestId: string;
-  requiresBiometric?: boolean | undefined;
   scope: string;
 }
 
@@ -58,7 +57,6 @@ type CibaPushData = {
   requestId: string;
   kind?: "payment_authorization";
   payment?: PaymentAuthorizationProjection;
-  requiresBiometric: boolean;
   requiresVaultUnlock: boolean;
 } & Record<string, unknown>;
 
@@ -187,7 +185,6 @@ export function buildCibaPushPayload(
     data: {
       requestId: data.requestId,
       approvalUrl,
-      requiresBiometric: data.requiresBiometric ?? false,
       requiresVaultUnlock,
     },
   };

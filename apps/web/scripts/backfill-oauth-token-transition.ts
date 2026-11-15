@@ -32,6 +32,11 @@
  *    once `pnpm db:push` has dropped the column.
  * 6. Decodes `access_token_claims` rows written while drizzle's json mode
  *    encoded the adapter's JSON a second time.
+ * 7. Adds `agent_capability.grantable` with the DDL `pnpm db:push` would emit.
+ *    drizzle-kit 0.31 reads the column's `false` default as no default and
+ *    empties `agent_capability` before it adds a not-null column, which would
+ *    cascade into every host policy and session grant. The previous release
+ *    never writes the column, so its default serves those rows.
  *
  * Rollout order:
  *
@@ -145,6 +150,9 @@ const FIRST_PARTY_APPS_DDL = [
   "CREATE INDEX IF NOT EXISTS `first_party_failure_budget_reset_at_idx` ON `first_party_failure_budget` (`reset_at`)",
 ];
 
+const AGENT_CAPABILITY_GRANTABLE_DDL =
+  "ALTER TABLE `agent_capability` ADD `grantable` integer DEFAULT false NOT NULL";
+
 // `drizzle-kit push` output for this column in oauth-provider.ts.
 const ACCESS_TOKEN_AUTH_CONTEXT_DDL =
   "ALTER TABLE `oauth_access_token` ADD `auth_context_id` text REFERENCES authentication_context(id) ON DELETE set null ON UPDATE no action";
@@ -152,6 +160,14 @@ const ACCESS_TOKEN_AUTH_CONTEXT_DDL =
 const url = process.env.TURSO_DATABASE_URL || "file:./.data/dev.db";
 const authToken = process.env.TURSO_AUTH_TOKEN;
 const client = createClient(authToken ? { url, authToken } : { url });
+
+async function hasTable(table: string): Promise<boolean> {
+  const result = await client.execute({
+    sql: "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?",
+    args: [table],
+  });
+  return result.rows.length > 0;
+}
 
 async function hasColumn(table: string, column: string): Promise<boolean> {
   const result = await client.execute({
@@ -195,11 +211,15 @@ async function main(): Promise<void> {
   ));
 
   const timestampDefaults = await isoTimestampDefaultStatements();
+  const addGrantable =
+    (await hasTable("agent_capability")) &&
+    !(await hasColumn("agent_capability", "grantable"));
   const schema = [
     ...timestampDefaults,
     ...HUMANITY_CREDENTIAL_UNIQUE_INDEXES,
     ...(addAccessTokenAuthContext ? [ACCESS_TOKEN_AUTH_CONTEXT_DDL] : []),
     ...FIRST_PARTY_APPS_DDL,
+    ...(addGrantable ? [AGENT_CAPABILITY_GRANTABLE_DDL] : []),
   ];
 
   const statements: InStatement[] = [
@@ -248,6 +268,9 @@ async function main(): Promise<void> {
   console.log(`timestamp defaults moved: ${timestampDefaults.length}`);
   console.log(
     `oauth_access_token.auth_context_id: ${addAccessTokenAuthContext ? "added" : "already present"}`
+  );
+  console.log(
+    `agent_capability.grantable: ${addGrantable ? "added" : "already present"}`
   );
   console.log(`revocation markers added: ${markers?.rowsAffected ?? 0}`);
   console.log(`access_token_claims decoded: ${decoded?.rowsAffected ?? 0}`);

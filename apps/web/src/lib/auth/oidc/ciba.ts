@@ -149,7 +149,6 @@ type CibaApprovalGrant =
       grantId: string | null;
       hostPolicyId: string | null;
       method: "capability_grant";
-      strength: string | null;
     };
 
 interface CibaDecisionInput {
@@ -254,7 +253,6 @@ export function createCibaApproval(
                 approvedConstraints: grant.constraints,
                 approvedGrantId: grant.grantId,
                 approvedHostPolicyId: grant.hostPolicyId,
-                approvalStrength: grant.strength,
               }
             : {}),
         })

@@ -9,7 +9,10 @@ vi.hoisted(() => {
   process.env.WALLET_AUDIENCE = "urn:zentity:wallet:capability-grant-test";
 });
 
-import { ensureCapabilitiesSeeded } from "@/lib/agents/capability";
+import {
+  approvalPolicy,
+  ensureCapabilitiesSeeded,
+} from "@/lib/agents/capability";
 import { auth } from "@/lib/auth/auth-config";
 import {
   AUTHENTICATION_CONTEXT_CLAIM,
@@ -246,6 +249,19 @@ async function requestBackchannelAuth(
   return json.auth_req_id as string;
 }
 
+function readStoredRequest(authReqId: string) {
+  return db
+    .select({
+      authorizationDetails: cibaRequests.authorizationDetails,
+      scope: cibaRequests.scope,
+      status: cibaRequests.status,
+    })
+    .from(cibaRequests)
+    .where(eq(cibaRequests.authReqId, hashCibaAuthReqId(authReqId)))
+    .limit(1)
+    .get();
+}
+
 function readRequest(authReqId: string) {
   return db
     .select({
@@ -424,5 +440,86 @@ describe("CIBA approval from capability grants", () => {
     expect(await ledgerEntries(agent.sessionId)).toEqual([
       { capabilityName: "payment_authorization:sign" },
     ]);
+  });
+  // R13: one capability does not decide the whole request.
+  it("asks the user when a request spans more than the granted capability", async () => {
+    const agent = await registerAgent(userId, delegationAuthContextId);
+
+    const authReqId = await requestBackchannelAuth(agent, userId, {
+      scope: "openid compliance:read email offline_access proof:nationality",
+    });
+
+    const stored = await readStoredRequest(authReqId);
+    expect(stored?.status).toBe("pending");
+    expect(approvalPolicy({ scope: stored?.scope ?? "" }).pageOnly).toBe(true);
+    expect(await ledgerEntries(agent.sessionId)).toEqual([]);
+  });
+
+  const boundedPaymentPolicy: HostPolicyFixture = {
+    capabilityName: "payment_authorization:sign",
+    constraints: [{ field: "amount.value", op: "max", value: 100 }],
+    source: "user_grant",
+    status: "active",
+  };
+  const paymentEntry = (value: string) =>
+    JSON.stringify([
+      {
+        type: "payment_authorization",
+        chain: { namespace: "zcash", reference: "test" },
+        recipient: "zcash:test:utest1qq0",
+        amount: { currency: "ZEC", value, unit: "base" },
+        payment_id: `pay_${crypto.randomUUID()}`,
+        intent_hash: `v1:sha256:${"A".repeat(43)}`,
+        expires_at: { kind: "block_height", value: 4_056_276 },
+      },
+    ]);
+
+  // R14: a payment grant does not cover scopes added to the payment.
+  it("asks the user, with a passkey, when proof scopes ride along a bounded payment", async () => {
+    const agent = await registerAgent(userId, delegationAuthContextId, [
+      boundedPaymentPolicy,
+    ]);
+
+    const authReqId = await requestBackchannelAuth(agent, userId, {
+      scope: `openid ${PAYMENT_AUTHORIZATION_SCOPE} proof:age`,
+      authorization_details: paymentEntry("50"),
+    });
+
+    const stored = await readStoredRequest(authReqId);
+    expect(stored?.status).toBe("pending");
+    expect(
+      approvalPolicy({
+        scope: stored?.scope ?? "",
+        authorizationDetails: stored?.authorizationDetails,
+      }).ceremony
+    ).toBe("user_verification");
+    expect(await ledgerEntries(agent.sessionId)).toEqual([]);
+  });
+
+  // R22: the payment scope is a grantable item only with its payment entry.
+  it("approves the payment scope with its entry and asks the user without one", async () => {
+    const agent = await registerAgent(userId, delegationAuthContextId, [
+      boundedPaymentPolicy,
+    ]);
+
+    const withEntry = await requestBackchannelAuth(agent, userId, {
+      scope: `openid ${PAYMENT_AUTHORIZATION_SCOPE}`,
+      authorization_details: paymentEntry("50"),
+    });
+    const scopeOnly = await requestBackchannelAuth(agent, userId, {
+      scope: `openid ${PAYMENT_AUTHORIZATION_SCOPE}`,
+    });
+
+    expect((await readRequest(withEntry))?.status).toBe("approved");
+    const stored = await readStoredRequest(scopeOnly);
+    expect(stored?.status).toBe("pending");
+    expect(approvalPolicy({ scope: stored?.scope ?? "" })).toEqual(
+      expect.objectContaining({
+        ceremony: "user_verification",
+        grantCapability: null,
+        pageOnly: true,
+      })
+    );
+    expect(await ledgerEntries(agent.sessionId)).toHaveLength(1);
   });
 });

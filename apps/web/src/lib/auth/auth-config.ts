@@ -52,7 +52,8 @@ import { decodeJwt, jwtVerify } from "jose";
 import { env } from "@/env";
 import { evaluateSessionGrants } from "@/lib/agents/approval-evaluate";
 import {
-  deriveCapabilityName,
+  type ApprovalPolicy,
+  approvalPolicy,
   normalizeAuthorizationDetails,
 } from "@/lib/agents/capability";
 import { buildCibaPushPayload, sendWebPush } from "@/lib/agents/push-sender";
@@ -1449,10 +1450,13 @@ interface RegisteredAgentNotice {
 async function approveFromCapabilityGrant(input: {
   agent: { authContextId: string | null; sessionId: string };
   authorizationDetails: ReturnType<typeof normalizeAuthorizationDetails>;
+  policy: ApprovalPolicy;
   requestId: string;
-  scope: string;
   userId: string;
 }): Promise<boolean> {
+  if (!input.policy.grantCapability) {
+    return false;
+  }
   // Resolved before evaluation, which consumes usage limits.
   const authentication = await resolveAuthenticationContext({
     authContextId: input.agent.authContextId,
@@ -1462,16 +1466,10 @@ async function approveFromCapabilityGrant(input: {
   }
   const grantResult = await evaluateSessionGrants(
     input.agent.sessionId,
-    input.scope,
+    input.policy,
     input.authorizationDetails
   );
-  if (!grantResult.approved) {
-    return false;
-  }
-  const capabilityName =
-    grantResult.capabilityName ??
-    deriveCapabilityName(input.authorizationDetails, input.scope);
-  if (!capabilityName) {
+  if (!(grantResult.approved && grantResult.capabilityName)) {
     return false;
   }
   try {
@@ -1481,11 +1479,10 @@ async function approveFromCapabilityGrant(input: {
       authentication,
       grant: {
         method: "capability_grant",
-        capabilityName,
+        capabilityName: grantResult.capabilityName,
         constraints: grantResult.constraints ?? null,
         grantId: grantResult.grantId ?? null,
         hostPolicyId: grantResult.hostPolicyId ?? null,
-        strength: grantResult.approvalStrength ?? null,
       },
     });
     return true;
@@ -1511,6 +1508,10 @@ async function notifyCibaRequest(
   const authDetails = normalizeAuthorizationDetails(
     notification.authorizationDetails
   );
+  const policy = approvalPolicy({
+    scope,
+    authorizationDetails: notification.authorizationDetails,
+  });
   const stored = await db
     .select({ authReqId: cibaRequests.authReqId })
     .from(cibaRequests)
@@ -1526,7 +1527,6 @@ async function notifyCibaRequest(
   let verifiedAgent:
     | { authContextId: string | null; sessionId: string }
     | undefined;
-  let requiresBiometric = false;
   const assertionHeader =
     ctx.headers?.get("Agent-Assertion") ??
     ctx.request?.headers.get("Agent-Assertion");
@@ -1534,8 +1534,6 @@ async function notifyCibaRequest(
     const boundAssertion = await bindAgentAssertionToCibaRequest({
       assertionJwt: assertionHeader,
       authReqId: stored.authReqId,
-      authorizationDetails: authDetails,
-      scope,
     });
     if (boundAssertion) {
       verifiedAgent = {
@@ -1544,7 +1542,6 @@ async function notifyCibaRequest(
       };
       agentName = boundAssertion.agentName;
       registeredAgent = boundAssertion.registeredAgent;
-      requiresBiometric = boundAssertion.approvalStrength === "biometric";
     }
   }
 
@@ -1563,8 +1560,8 @@ async function notifyCibaRequest(
     (await approveFromCapabilityGrant({
       agent: verifiedAgent,
       authorizationDetails: authDetails,
+      policy,
       requestId,
-      scope,
       userId: user.id,
     }))
   ) {
@@ -1580,7 +1577,6 @@ async function notifyCibaRequest(
     authorizationDetails: authDetails,
     bindingMessage: notification.bindingMessage,
     clientName: notification.clientName,
-    requiresBiometric,
   });
   await Promise.allSettled([
     sendWebPush(user.id, pushPayload),
