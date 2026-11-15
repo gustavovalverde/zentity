@@ -449,7 +449,7 @@ export function AgentApprovalView({
   // every return to this one.
   const { data: posture } = useQuery(
     trpc.assurance.profile.queryOptions(undefined, {
-      enabled: hasProofScopes && state === "ready" && vaultStatus === "loaded",
+      enabled: hasProofScopes && state === "ready",
       refetchOnWindowFocus: true,
       retry: false,
       staleTime: 0,

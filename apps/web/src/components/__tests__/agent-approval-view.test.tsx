@@ -34,7 +34,6 @@ const vaultMocks = vi.hoisted(() => ({
     },
   },
   resetToGesture: vi.fn(),
-  vaultState: { status: "loaded" as const },
 }));
 
 vi.mock("@/components/vault-unlock", () => ({
@@ -47,7 +46,12 @@ vi.mock("@/components/vault-unlock", () => ({
     () => "identity.address identity.dob identity.name openid"
   ),
   fetchIntentFromEndpoint: vi.fn(),
-  useVaultUnlock: () => vaultMocks,
+  useVaultUnlock: ({ active }: { active: boolean }) => ({
+    ...vaultMocks,
+    vaultState: active
+      ? { status: "loaded" as const }
+      : { status: "idle" as const },
+  }),
   VaultUnlockPanel: () => <div>Vault ready</div>,
 }));
 
