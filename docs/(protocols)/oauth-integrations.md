@@ -22,7 +22,7 @@ The endpoints below cluster by lifecycle stage: discovery, authorization, token 
 | Endpoint | Standard | Purpose |
 | --- | --- | --- |
 | `POST /api/auth/oauth2/par` | RFC 9126 | Pushed Authorization Request (optional) |
-| `GET /api/auth/oauth2/authorize` | OAuth 2.1 | Authorization request (interactive) |
+| `GET` or `POST /api/auth/oauth2/authorize` | OAuth 2.1 | Authorization request (interactive; query string or form-encoded body) |
 | `POST /api/auth/oauth2/bc-authorize` | OIDC CIBA | Backchannel authorization (headless) |
 | `POST /api/auth/oauth2/consent` | OAuth 2.1 | User consent submission |
 | `POST /api/auth/oauth2/authorize-challenge` | draft-ietf-oauth-first-party-apps | First-party app challenge (headless, no redirect) |
@@ -107,7 +107,7 @@ sequenceDiagram
 
 **Grant type**: `authorization_code`
 
-PAR is optional: a client may push its authorization request to the PAR endpoint and pass the returned `request_uri` (60-second TTL) to the authorize endpoint, or send the request parameters directly.
+PAR is optional: a client may push its authorization request to the PAR endpoint and pass the returned `request_uri` (60-second TTL) to the authorize endpoint, or send the request parameters directly, in the query string of a GET or the form-encoded body of a POST. Zentity applies the same `acr_values` step-up check to both.
 
 ### First-Party Challenge (headless, no redirect)
 

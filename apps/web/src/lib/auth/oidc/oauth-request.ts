@@ -33,6 +33,42 @@ export async function verifySignedOAuthQuery(
   return params;
 }
 
+// ---------------------------------------------------------------------------
+// Authorization request parameters
+// ---------------------------------------------------------------------------
+
+interface AuthorizeHookContext {
+  /** Set by the provider when it re-runs authorize inside another request. */
+  authorizeSettings?: { isAuthorize?: boolean };
+  body?: unknown;
+  method?: string;
+  query?: unknown;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+/**
+ * The parameters of an `/oauth2/authorize` request, read where the provider
+ * reads them (`getAuthorizationRequestParameters`): the form body of a direct
+ * POST, otherwise the query. The provider also re-runs authorize after
+ * sign-in, consent, and continue, and those runs carry the request in the
+ * query even inside a POST.
+ *
+ * The returned record is the request's own object, so changes to it reach the
+ * provider.
+ */
+export function authorizeRequestParameters(
+  ctx: AuthorizeHookContext
+): Record<string, unknown> {
+  const isDirect =
+    ctx.authorizeSettings === undefined ||
+    ctx.authorizeSettings.isAuthorize === true;
+  const source = ctx.method === "POST" && isDirect ? ctx.body : ctx.query;
+  return isRecord(source) ? source : {};
+}
+
 export function parseRequestedScopes(queryParams: URLSearchParams): string[] {
   return (queryParams.get("scope") ?? "")
     .split(" ")

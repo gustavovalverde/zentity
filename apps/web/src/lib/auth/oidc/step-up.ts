@@ -2,7 +2,7 @@
  * Step-Up Authentication: Zentity assurance tiers requested via acr_values.
  *
  * - Pure helpers: parse and evaluate acr_values
- * - Authorize endpoint hook: enforceAuthorizeAcr (PAR + direct query paths)
+ * - Authorize endpoint hook: enforceAuthorizeAcr (PAR + direct GET or POST)
  * - CIBA enforcement: token-exchange safety net (approval-time checks run in
  *   the CIBA approval decision, `oidc/ciba.ts`)
  *
@@ -20,6 +20,7 @@ import { eq } from "drizzle-orm";
 
 import { getAccountAssurance } from "@/lib/assurance/posture";
 import { oauthProviderApi } from "@/lib/auth/oidc/haip/dpop";
+import { authorizeRequestParameters } from "@/lib/auth/oidc/oauth-request";
 import { parseStoredStringArray } from "@/lib/db/adapter-compat";
 import {
   authChallengeSessions,
@@ -201,10 +202,9 @@ async function enforceFromPar(
   ctx: any,
   // biome-ignore lint/suspicious/noExplicitAny: drizzle schema generic
   db: LibSQLDatabase<any>,
-  requestUri: string
+  requestUri: string,
+  clientId: string | undefined
 ) {
-  const clientId =
-    typeof ctx.query?.client_id === "string" ? ctx.query.client_id : undefined;
   if (!clientId) {
     return;
   }
@@ -233,21 +233,22 @@ async function enforceFromPar(
   await rejectAcr(db, clientId, params, rejection);
 }
 
-async function enforceFromQuery(
+async function enforceFromRequest(
   // biome-ignore lint/suspicious/noExplicitAny: middleware context is untyped
   ctx: any,
   // biome-ignore lint/suspicious/noExplicitAny: drizzle schema generic
-  db: LibSQLDatabase<any>
+  db: LibSQLDatabase<any>,
+  request: Record<string, unknown>,
+  clientId: string | undefined
 ) {
-  const query = ctx.query ?? {};
-  const clientId =
-    typeof query.client_id === "string" ? query.client_id : undefined;
   const params: AcrRequest = {
     acr_values:
-      typeof query.acr_values === "string" ? query.acr_values : undefined,
+      typeof request.acr_values === "string" ? request.acr_values : undefined,
     redirect_uri:
-      typeof query.redirect_uri === "string" ? query.redirect_uri : undefined,
-    state: typeof query.state === "string" ? query.state : undefined,
+      typeof request.redirect_uri === "string"
+        ? request.redirect_uri
+        : undefined,
+    state: typeof request.state === "string" ? request.state : undefined,
   };
   if (!(params.acr_values && clientId)) {
     return;
@@ -266,20 +267,22 @@ async function enforceFromQuery(
 
 /**
  * Enforce Zentity assurance tiers requested through `acr_values` on the
- * authorize endpoint. The provider treats `acr_values` as voluntary and owns
- * `max_age`; an unmet tier returns `interaction_required` to the client.
+ * authorize endpoint, whether the request arrives as a GET query or a POST
+ * form. The provider treats `acr_values` as voluntary and owns `max_age`; an
+ * unmet tier returns `interaction_required` to the client.
  */
 // biome-ignore lint/suspicious/noExplicitAny: middleware context is untyped
 export async function enforceAuthorizeAcr(ctx: any, db: LibSQLDatabase<any>) {
+  const request = authorizeRequestParameters(ctx);
+  const clientId =
+    typeof request.client_id === "string" ? request.client_id : undefined;
   const requestUri =
-    typeof ctx.query?.request_uri === "string"
-      ? ctx.query.request_uri
-      : undefined;
+    typeof request.request_uri === "string" ? request.request_uri : undefined;
 
   if (requestUri?.startsWith(PAR_URI_PREFIX)) {
-    await enforceFromPar(ctx, db, requestUri);
+    await enforceFromPar(ctx, db, requestUri, clientId);
   } else {
-    await enforceFromQuery(ctx, db);
+    await enforceFromRequest(ctx, db, request, clientId);
   }
 }
 

@@ -137,7 +137,10 @@ import {
   signingKeyOptions,
   signJwt,
 } from "@/lib/auth/oidc/jwt-signer";
-import { validateResourceUri } from "@/lib/auth/oidc/oauth-request";
+import {
+  authorizeRequestParameters,
+  validateResourceUri,
+} from "@/lib/auth/oidc/oauth-request";
 import {
   adoptZentityPairwiseSector,
   resolveSubForClientId,
@@ -1284,10 +1287,14 @@ function beforeTokenValidateResource(ctx: HookCtx) {
   }
 }
 
-async function beforeAuthorizeVerifyConsentHmac(ctx: HookCtx) {
+async function beforeAuthorizeVerifyConsentHmac(
+  ctx: HookCtx,
+  request: Record<string, unknown>
+) {
   const session = await getSessionFromCtx(ctx);
   const userId = session?.user?.id;
-  const clientId = ctx.query?.client_id as string | undefined;
+  const clientId =
+    typeof request.client_id === "string" ? request.client_id : undefined;
   if (!(userId && clientId)) {
     return;
   }
@@ -1648,10 +1655,13 @@ async function notifyCibaRequest(
 // redirects there and the consent and continue endpoints refuse it.
 const CIBA_INTERACTION_PARAMETER = "ciba_request_id";
 
-function cibaInteractionRequestId(ctx: HookCtx): string | undefined {
-  const fromQuery = ctx.query?.[CIBA_INTERACTION_PARAMETER];
-  if (typeof fromQuery === "string" && fromQuery) {
-    return fromQuery;
+function cibaInteractionRequestId(
+  ctx: HookCtx,
+  request: Record<string, unknown> | undefined = ctx.query
+): string | undefined {
+  const direct = request?.[CIBA_INTERACTION_PARAMETER];
+  if (typeof direct === "string" && direct) {
+    return direct;
   }
   const oauthQuery = ctx.body?.oauth_query ?? ctx.query?.oauth_query;
   if (typeof oauthQuery === "string") {
@@ -1663,8 +1673,11 @@ function cibaInteractionRequestId(ctx: HookCtx): string | undefined {
   return undefined;
 }
 
-function redirectCibaInteraction(ctx: HookCtx) {
-  const requestId = cibaInteractionRequestId(ctx);
+function redirectCibaInteraction(
+  ctx: HookCtx,
+  request: Record<string, unknown>
+) {
+  const requestId = cibaInteractionRequestId(ctx, request);
   if (requestId) {
     throw ctx.redirect(cibaApprovalUrl(appUrl, requestId));
   }
@@ -1937,12 +1950,11 @@ export const auth = betterAuth({
         return;
       }
       if (ctx.path === "/oauth2/authorize") {
-        redirectCibaInteraction(ctx);
+        const request = authorizeRequestParameters(ctx);
+        redirectCibaInteraction(ctx, request);
         await enforceAuthorizeAcr(ctx, db);
-        await beforeAuthorizeVerifyConsentHmac(ctx);
-        if (ctx.query) {
-          normalizeUserTokenResources(ctx.query);
-        }
+        await beforeAuthorizeVerifyConsentHmac(ctx, request);
+        normalizeUserTokenResources(request);
         return;
       }
     }),

@@ -17,6 +17,7 @@ const TEST_CLIENT_ID = "step-up-test-client";
 const REDIRECT_URI = "http://localhost:3102/callback";
 const AUTHORIZE_URL = "http://localhost:3000/api/auth/oauth2/authorize";
 const PAR_URL = "http://localhost:3000/api/auth/oauth2/par";
+const SESSION_LIFETIME_MS = 7 * 24 * 60 * 60 * 1000;
 
 async function createTestClient() {
   await db
@@ -33,10 +34,11 @@ async function createTestClient() {
 
 async function insertSession(
   userId: string,
-  opts: { token?: string; createdAt?: Date } = {}
+  opts: { token?: string; createdAt?: Date; expiresAt?: Date } = {}
 ) {
   const token = opts.token ?? crypto.randomUUID();
   const createdAt = opts.createdAt ?? new Date();
+  const expiresAt = opts.expiresAt ?? new Date(Date.now() + 3_600_000);
   const authContext = await createAuthenticationContext({
     userId,
     loginMethod: "passkey",
@@ -52,7 +54,7 @@ async function insertSession(
       userId,
       token,
       authContextId: authContext.id,
-      expiresAt: new Date(Date.now() + 3_600_000),
+      expiresAt,
       createdAt,
       updatedAt: createdAt,
     })
@@ -299,7 +301,11 @@ describe("step-up authentication: direct authorize requests", () => {
     await resetDatabase();
     const userId = await createTestUser();
     await createTestClient();
-    sessionToken = await insertSession(userId);
+    // A session too new to refresh sets no session cookie, so the provider's
+    // post-login hook does not run authorize a second time from the query.
+    sessionToken = await insertSession(userId, {
+      expiresAt: new Date(Date.now() + SESSION_LIFETIME_MS),
+    });
   });
 
   function buildDirectAuthorizeRequest(redirectUri: string) {
@@ -336,6 +342,62 @@ describe("step-up authentication: direct authorize requests", () => {
     expect(response.headers.get("location")).toBeNull();
     const body = (await response.json()) as { error?: string };
     expect(body.error).toBe("invalid_request");
+  });
+
+  function buildPostAuthorizeRequest(params: Record<string, string>) {
+    return new Request(AUTHORIZE_URL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded",
+        cookie: `better-auth.session_token=${sessionToken}`,
+      },
+      body: new URLSearchParams(params),
+      redirect: "manual",
+    });
+  }
+
+  it("rejects an unmet tier requested in a POST form body", async () => {
+    const response = await auth.handler(
+      buildPostAuthorizeRequest(
+        baseParParams({ acr_values: "urn:zentity:assurance:tier-2" })
+      )
+    );
+
+    expect(response.status).toBe(302);
+    const location = getRedirectLocation(response);
+    expect(location?.origin).toBe(new URL(REDIRECT_URI).origin);
+    expect(location?.searchParams.get("error")).toBe("interaction_required");
+    expect(location?.searchParams.get("state")).toBe("test-state");
+  });
+
+  it("rejects an unmet tier of a pushed request resumed by POST", async () => {
+    const requestUri = await pushParRequest(
+      baseParParams({ acr_values: "urn:zentity:assurance:tier-2" })
+    );
+    const response = await auth.handler(
+      buildPostAuthorizeRequest({
+        client_id: TEST_CLIENT_ID,
+        request_uri: requestUri,
+      })
+    );
+
+    expect(response.status).toBe(302);
+    const location = getRedirectLocation(response);
+    expect(location?.origin).toBe(new URL(REDIRECT_URI).origin);
+    expect(location?.searchParams.get("error")).toBe("interaction_required");
+  });
+
+  it("lets a POST form request through when the tier is met", async () => {
+    const response = await auth.handler(
+      buildPostAuthorizeRequest(
+        baseParParams({ acr_values: "urn:zentity:assurance:tier-0" })
+      )
+    );
+
+    expect(response.status).toBe(302);
+    const location = getRedirectLocation(response);
+    expect(location?.pathname).toBe("/oauth/consent");
+    expect(location?.searchParams.get("client_id")).toBe(TEST_CLIENT_ID);
   });
 });
 
