@@ -240,7 +240,10 @@ describe("Token Exchange (RFC 8693)", () => {
 
       const payload = await exchangedClaims(json.access_token as string);
       expect(payload.scope).toBe("openid identity.name");
-      expect(payload.act).toEqual({ sub: TEST_CLIENT_ID });
+      expect(payload.act).toEqual({
+        sub: TEST_CLIENT_ID,
+        sub_profile: "service",
+      });
     });
 
     it("preserves JWT access-token DPoP binding on exchange", async () => {
@@ -344,7 +347,10 @@ describe("Token Exchange (RFC 8693)", () => {
       expect(status).toBe(200);
       const payload = await exchangedClaims(json.access_token as string);
       expect(payload.cnf).toEqual({ jkt: resourceServerJkt });
-      expect(payload.act).toEqual({ sub: resourceServerClientId });
+      expect(payload.act).toEqual({
+        sub: resourceServerClientId,
+        sub_profile: "service",
+      });
     });
 
     it("rejects another client's token outside the resource server's audience", async () => {
@@ -582,7 +588,10 @@ describe("Token Exchange (RFC 8693)", () => {
       expect(status).toBe(200);
       const payload = await exchangedClaims(json.access_token as string);
 
-      expect(payload.act).toEqual(parentPayload.act);
+      expect(payload.act).toEqual({
+        ...(parentPayload.act as object),
+        sub_profile: "service",
+      });
       expect(payload.task).toEqual(parentPayload.task);
       expect(payload.capabilities).toEqual(parentPayload.capabilities);
       expect(payload.oversight).toEqual(parentPayload.oversight);
@@ -684,7 +693,10 @@ describe("Token Exchange (RFC 8693)", () => {
       expect(payload.sub).toBe(userId);
       expect(payload.iss).toBe(authIssuer);
       expect(payload.aud).toBe(TEST_CLIENT_ID);
-      expect(payload.act).toEqual({ sub: TEST_CLIENT_ID });
+      expect(payload.act).toEqual({
+        sub: TEST_CLIENT_ID,
+        sub_profile: "service",
+      });
       expect(payload[AUTHENTICATION_CONTEXT_CLAIM]).toBe(defaultAuthContextId);
 
       // at_hash binds the id_token to the subject access token (OIDC Core §3.3.2.11)
@@ -786,7 +798,10 @@ describe("Token Exchange (RFC 8693)", () => {
 
       const payload = await exchangedClaims(json.access_token as string);
       expect(payload.sub).toBe(userId);
-      expect(payload.act).toEqual({ sub: TEST_CLIENT_ID });
+      expect(payload.act).toEqual({
+        sub: TEST_CLIENT_ID,
+        sub_profile: "service",
+      });
     });
   });
 
@@ -878,7 +893,10 @@ describe("Token Exchange (RFC 8693)", () => {
       const firstPayload = await exchangedClaims(
         firstExchange.json.access_token as string
       );
-      expect(firstPayload.act).toEqual({ sub: TEST_CLIENT_ID });
+      expect(firstPayload.act).toEqual({
+        sub: TEST_CLIENT_ID,
+        sub_profile: "service",
+      });
 
       // The second hop is the resource server the first token was issued for.
       const resourceServerClientId = "mcp-resource-server";
@@ -900,7 +918,8 @@ describe("Token Exchange (RFC 8693)", () => {
       );
       expect(secondPayload.act).toEqual({
         sub: resourceServerClientId,
-        act: { sub: TEST_CLIENT_ID },
+        sub_profile: "service",
+        act: { sub: TEST_CLIENT_ID, sub_profile: "service" },
       });
     });
     it("reports the actor at introspection of an opaque exchanged token", async () => {
@@ -945,7 +964,10 @@ describe("Token Exchange (RFC 8693)", () => {
       );
       const introspection = (await response.json()) as Record<string, unknown>;
       expect(introspection.active).toBe(true);
-      expect(introspection.act).toEqual({ sub: clientId });
+      expect(introspection.act).toEqual({
+        sub: clientId,
+        sub_profile: "service",
+      });
     });
 
     it("nests the actor the provider stored on an opaque subject token", async () => {
@@ -989,6 +1011,7 @@ describe("Token Exchange (RFC 8693)", () => {
       const payload = await exchangedClaims(json.access_token as string);
       expect(payload.act).toEqual({
         sub: cibaClientId,
+        sub_profile: "service",
         act: { sub: "ciba-agent" },
       });
     });

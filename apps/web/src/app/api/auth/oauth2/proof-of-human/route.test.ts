@@ -195,7 +195,7 @@ describe("POST /api/auth/oauth2/proof-of-human", () => {
 
     expect(response.status).toBe(401);
     expect(response.headers.get("WWW-Authenticate")).toBe(
-      'Bearer resource_metadata="http://localhost:3000/.well-known/oauth-protected-resource"'
+      'Bearer resource_metadata="http://localhost:3000/.well-known/oauth-protected-resource", DPoP resource_metadata="http://localhost:3000/.well-known/oauth-protected-resource", algs="ES256"'
     );
     await expect(response.json()).resolves.not.toHaveProperty("error");
   });
@@ -247,7 +247,7 @@ describe("POST /api/auth/oauth2/proof-of-human", () => {
 
     expect(response.status).toBe(401);
     expect(response.headers.get("WWW-Authenticate")).toBe(
-      'DPoP error="invalid_token", error_description="access token must be DPoP-bound", algs="ES256"'
+      'DPoP error="invalid_token", error_description="access token must be DPoP-bound", resource_metadata="http://localhost:3000/.well-known/oauth-protected-resource", algs="ES256"'
     );
     expect(mocks.signJwt).not.toHaveBeenCalled();
   });

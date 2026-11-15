@@ -23,6 +23,8 @@ export interface CapabilityClaim {
 
 export interface AccessTokenActClaim {
 	sub: string;
+	/** RFC 8693 actor profile: the agent is a service, not a user. */
+	sub_profile?: "service";
 	did?: string;
 	host_attestation: HostAttestationTier;
 	session_id: string;

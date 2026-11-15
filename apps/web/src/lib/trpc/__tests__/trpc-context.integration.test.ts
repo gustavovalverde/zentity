@@ -99,7 +99,7 @@ describe("tRPC context", () => {
 
     expect(response.status).toBe(401);
     expect(response.headers.get("WWW-Authenticate")).toBe(
-      'Bearer resource_metadata="http://localhost:3000/.well-known/oauth-protected-resource"'
+      'Bearer resource_metadata="http://localhost:3000/.well-known/oauth-protected-resource", DPoP resource_metadata="http://localhost:3000/.well-known/oauth-protected-resource", algs="ES256"'
     );
   });
 });

@@ -113,9 +113,14 @@ export function resourceAccessTokenPlugin() {
             throw missingToken();
           }
           const provider = oauthProviderApi(ctx);
-          const payload = await provider.requireActiveAccessToken(
+          // Zentity's resources are outside the auth router, so the binding
+          // is enforced below against the resource's own method and URL.
+          const payload = await provider.validateAccessToken(
             authorization.token
           );
+          if (payload.active !== true) {
+            throw invalidToken("Invalid access token");
+          }
           if (!(await isZentityAccessToken(authorization.token, payload))) {
             throw invalidToken("invalid access token");
           }

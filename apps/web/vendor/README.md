@@ -4,13 +4,13 @@ This directory holds packages that are not published to a public registry. Each 
 
 ## Better Auth plugins
 
-`@better-auth/haip`, `@better-auth/oidc4vci`, and `@better-auth/oidc4vp` have no upstream release. They are built from the [`feat/zentity-plugins-v1.8`](https://github.com/gustavovalverde/better-auth/tree/feat/zentity-plugins-v1.8) branch of the Better Auth fork, which adds the three plugins on top of Better Auth `v1.8.0-beta.9` without changing any upstream package. Every tarball ships `dist` only and declares `better-auth`, `@better-auth/core`, and `@better-auth/oauth-provider` `^1.8.0-beta.9` as peers, so the published Better Auth packages in `apps/web/package.json` provide the runtime.
+`@better-auth/haip`, `@better-auth/oidc4vci`, and `@better-auth/oidc4vp` have no upstream release. They are built from the [`feat/zentity-plugins-v1.8`](https://github.com/gustavovalverde/better-auth/tree/feat/zentity-plugins-v1.8) branch of the Better Auth fork, which adds the three plugins on top of Better Auth `v1.8.0-beta.10` without changing any upstream package. Every tarball ships `dist` only and declares `better-auth`, `@better-auth/core`, and `@better-auth/oauth-provider` `^1.8.0-beta.10` as peers, so the published Better Auth packages in `apps/web/package.json` provide the runtime.
 
 | Tarball | Source commit | SHA-256 |
 | --- | --- | --- |
-| `better-auth-haip-1.8.0-beta.9.tgz` | `aaeee11ee8430449c40bbb27c817c91aa7a0f5ee` | `f5a6e4b7580c6487cb4b9903b1ba908c7f0e886ef8ac561dd7fad30baea64112` |
-| `better-auth-oidc4vci-1.8.0-beta.9.tgz` | `aaeee11ee8430449c40bbb27c817c91aa7a0f5ee` | `d357c61d0f566148b4cd630c5b3c6e28446f08b95633b7b692d33759549b6a8f` |
-| `better-auth-oidc4vp-1.8.0-beta.9.tgz` | `aaeee11ee8430449c40bbb27c817c91aa7a0f5ee` | `a4376fcb36f3886a62c67972b5d67d7f4f14e09ecd5ee4008166d3ec0f9f544b` |
+| `better-auth-haip-1.8.0-beta.10.tgz` | `6d5975a3c01d325d80cf8bac6f3f03a1d195f1c5` | `9da2507f3bc28b7650b6e9dade72508180ee31521b2c2789aaeef90dca9552f9` |
+| `better-auth-oidc4vci-1.8.0-beta.10.tgz` | `6d5975a3c01d325d80cf8bac6f3f03a1d195f1c5` | `173be454fa9703726fefda5a5ec8196619f44502518267350dc8029627cce90f` |
+| `better-auth-oidc4vp-1.8.0-beta.10.tgz` | `6d5975a3c01d325d80cf8bac6f3f03a1d195f1c5` | `658895f67c3a43018a86d732c427cd5b0cdad833aa11696fdea162ce479e0c77` |
 
 CIBA comes from the published `@better-auth/ciba` package. OpenID Connect for Identity Assurance (`verified_claims`) is implemented in Zentity itself as an OAuth provider claims extension, so it has no tarball.
 
