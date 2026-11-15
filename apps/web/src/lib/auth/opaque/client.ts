@@ -160,6 +160,172 @@ function wrapError(error: unknown): Result<never> {
   return { data: null, error: { message } };
 }
 
+interface RoundTripMessages {
+  /** Fallback when the challenge request fails without a usable message. */
+  challengeFailed: string;
+  /** Fallback when the complete request fails without a usable message. */
+  completeFailed: string;
+  /**
+   * Replaces the WASM deserialization errors ("invalid type", "unit value")
+   * that client.finish* throws for a malformed server response.
+   */
+  finishFailed?: string;
+}
+
+interface LoginMessages extends RoundTripMessages {
+  /** client.finishLogin returns undefined when the password is wrong. */
+  wrongPassword: string;
+}
+
+async function fetchOrThrow<T>(
+  $fetch: ClientFetch,
+  path: string,
+  body: Record<string, unknown>,
+  fallback: string
+): Promise<T> {
+  const response = await $fetch<T>(path, { method: "POST", body });
+  if (response.error || !response.data) {
+    throw new Error(extractErrorMessage(response.error, fallback));
+  }
+  return response.data;
+}
+
+function requireChallenge(challenge: unknown): string {
+  if (!challenge || typeof challenge !== "string") {
+    throw new Error("Server returned an invalid response. Please try again.");
+  }
+  return challenge;
+}
+
+function finishOrThrow<T>(finish: () => T, finishFailed?: string): T {
+  try {
+    return finish();
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (
+      finishFailed &&
+      (message.includes("invalid type") || message.includes("unit value"))
+    ) {
+      throw new Error(finishFailed);
+    }
+    throw error;
+  }
+}
+
+/**
+ * Runs both OPAQUE login rounds. The server key is checked after finishLogin
+ * and before the complete request.
+ */
+async function runOpaqueLogin<TComplete>(params: {
+  $fetch: ClientFetch;
+  options: OpaqueClientOptions;
+  password: string;
+  challengePath: string;
+  challengeBody?: Record<string, unknown>;
+  completePath: string;
+  completeBody?: Record<string, unknown>;
+  messages: LoginMessages;
+}): Promise<{ complete: TComplete; exportKey: Uint8Array }> {
+  await ready;
+  const { clientLoginState, startLoginRequest } = client.startLogin({
+    password: params.password,
+  });
+
+  const challenge = await fetchOrThrow<{ challenge: string; state: string }>(
+    params.$fetch,
+    params.challengePath,
+    { ...params.challengeBody, loginRequest: startLoginRequest },
+    params.messages.challengeFailed
+  );
+  const loginResponse = requireChallenge(challenge.challenge);
+
+  const loginResult = finishOrThrow(
+    () =>
+      client.finishLogin({
+        clientLoginState,
+        loginResponse,
+        password: params.password,
+      }),
+    params.messages.finishFailed
+  );
+  if (!loginResult) {
+    throw new Error(params.messages.wrongPassword);
+  }
+
+  await assertServerPublicKey(
+    loginResult.serverStaticPublicKey,
+    params.options
+  );
+
+  const complete = await fetchOrThrow<TComplete>(
+    params.$fetch,
+    params.completePath,
+    {
+      loginResult: loginResult.finishLoginRequest,
+      encryptedServerState: challenge.state,
+      ...params.completeBody,
+    },
+    params.messages.completeFailed
+  );
+
+  return { complete, exportKey: base64UrlToBytes(loginResult.exportKey) };
+}
+
+/**
+ * Runs both OPAQUE registration rounds. The server key is checked after
+ * finishRegistration and before the complete request.
+ */
+async function runOpaqueRegistration<
+  TChallenge extends { challenge: string },
+  TComplete,
+>(params: {
+  $fetch: ClientFetch;
+  options: OpaqueClientOptions;
+  password: string;
+  challengePath: string;
+  challengeBody?: Record<string, unknown>;
+  completePath: string;
+  completeBody?: (challenge: TChallenge) => Record<string, unknown>;
+  messages: RoundTripMessages;
+}): Promise<{ complete: TComplete; exportKey: Uint8Array }> {
+  await ready;
+  const { clientRegistrationState, registrationRequest } =
+    client.startRegistration({ password: params.password });
+
+  const challenge = await fetchOrThrow<TChallenge>(
+    params.$fetch,
+    params.challengePath,
+    { ...params.challengeBody, registrationRequest },
+    params.messages.challengeFailed
+  );
+  const registrationResponse = requireChallenge(challenge.challenge);
+
+  const { registrationRecord, exportKey, serverStaticPublicKey } =
+    finishOrThrow(
+      () =>
+        client.finishRegistration({
+          clientRegistrationState,
+          registrationResponse,
+          password: params.password,
+        }),
+      params.messages.finishFailed
+    );
+
+  await assertServerPublicKey(serverStaticPublicKey, params.options);
+
+  const complete = await fetchOrThrow<TComplete>(
+    params.$fetch,
+    params.completePath,
+    { ...params.completeBody?.(challenge), registrationRecord },
+    params.messages.completeFailed
+  );
+
+  return { complete, exportKey: base64UrlToBytes(exportKey) };
+}
+
+const PASSWORD_VERIFICATION_FAILED =
+  "Password verification failed. Please try again.";
+
 export const opaqueClient = (options: OpaqueClientOptions = {}) => {
   return {
     id: "opaque",
@@ -168,80 +334,41 @@ export const opaqueClient = (options: OpaqueClientOptions = {}) => {
         password: string;
       }): Promise<Result<{ success: boolean; exportKey: Uint8Array }>> => {
         try {
-          await ready;
-          const { clientRegistrationState, registrationRequest } =
-            client.startRegistration({
-              password: params.password,
-            });
-
-          const challengeResponse = await $fetch<{ challenge: string }>(
-            "/password/opaque/registration/challenge",
-            {
-              method: "POST",
-              body: {
-                registrationRequest,
-              },
-            }
-          );
-
-          // Check for error response
-          if (challengeResponse.error || !challengeResponse.data) {
-            const serverMessage = extractErrorMessage(
-              challengeResponse.error,
-              "Failed to set password. Please try again."
-            );
-            return wrapError(new Error(serverMessage));
-          }
-
-          // Validate the challenge is present
-          if (
-            !challengeResponse.data.challenge ||
-            typeof challengeResponse.data.challenge !== "string"
-          ) {
-            return wrapError(
-              new Error(
-                "Server returned an invalid response. Please try again."
-              )
-            );
-          }
-
-          const { registrationRecord, exportKey, serverStaticPublicKey } =
-            client.finishRegistration({
-              clientRegistrationState,
-              registrationResponse: challengeResponse.data.challenge,
-              password: params.password,
-            });
-
-          try {
-            await assertServerPublicKey(serverStaticPublicKey, options);
-          } catch (error) {
-            return wrapError(error);
-          }
-
-          const completeResponse = await $fetch<{ success: boolean }>(
-            "/password/opaque/registration/complete",
-            {
-              method: "POST",
-              body: { registrationRecord },
-            }
-          );
-
-          if (completeResponse.error || !completeResponse.data) {
-            const serverMessage = extractErrorMessage(
-              completeResponse.error,
-              "Failed to complete password setup. Please try again."
-            );
-            return wrapError(new Error(serverMessage));
-          }
-
-          return wrapResult({
-            success: true,
-            exportKey: base64UrlToBytes(exportKey),
+          const { exportKey } = await runOpaqueRegistration<
+            { challenge: string },
+            { success: boolean }
+          >({
+            $fetch,
+            options,
+            password: params.password,
+            challengePath: "/password/opaque/registration/challenge",
+            completePath: "/password/opaque/registration/complete",
+            messages: {
+              challengeFailed: "Failed to set password. Please try again.",
+              completeFailed:
+                "Failed to complete password setup. Please try again.",
+            },
           });
+          return wrapResult({ success: true, exportKey });
         } catch (error) {
           return wrapError(error);
         }
       };
+
+      const verifyCurrentPassword = (password: string, finishFailed: string) =>
+        runOpaqueLogin<{ success: boolean }>({
+          $fetch,
+          options,
+          password,
+          challengePath: "/password/opaque/verify/challenge",
+          completePath: "/password/opaque/verify/complete",
+          messages: {
+            challengeFailed: PASSWORD_VERIFICATION_FAILED,
+            completeFailed: PASSWORD_VERIFICATION_FAILED,
+            finishFailed,
+            wrongPassword: "Invalid password",
+          },
+        });
 
       return {
         signIn: {
@@ -258,109 +385,28 @@ export const opaqueClient = (options: OpaqueClientOptions = {}) => {
             }>
           > => {
             try {
-              await ready;
-              const { clientLoginState, startLoginRequest } = client.startLogin(
-                {
-                  password: params.password,
-                }
-              );
-
-              const challengeResponse = await $fetch<{
-                challenge: string;
-                state: string;
-              }>("/sign-in/opaque/challenge", {
-                method: "POST",
-                body: {
-                  identifier: params.identifier,
-                  loginRequest: startLoginRequest,
-                },
-              });
-
-              // Check for error response
-              if (challengeResponse.error || !challengeResponse.data) {
-                const serverMessage = extractErrorMessage(
-                  challengeResponse.error,
-                  "Sign-in failed. Please check your credentials and try again."
-                );
-                return wrapError(new Error(serverMessage));
-              }
-
-              // Validate the challenge is present
-              if (
-                !challengeResponse.data.challenge ||
-                typeof challengeResponse.data.challenge !== "string"
-              ) {
-                return wrapError(
-                  new Error(
-                    "Server returned an invalid response. Please try again."
-                  )
-                );
-              }
-
-              let loginResult: ReturnType<typeof client.finishLogin>;
-              try {
-                loginResult = client.finishLogin({
-                  clientLoginState,
-                  loginResponse: challengeResponse.data.challenge,
-                  password: params.password,
-                });
-              } catch (opaqueError) {
-                // Translate cryptic WASM errors to user-friendly messages
-                const message =
-                  opaqueError instanceof Error
-                    ? opaqueError.message
-                    : String(opaqueError);
-                if (
-                  message.includes("invalid type") ||
-                  message.includes("unit value")
-                ) {
-                  return wrapError(
-                    new Error(
-                      "Sign-in failed. Please check your credentials and try again."
-                    )
-                  );
-                }
-                return wrapError(opaqueError);
-              }
-
-              if (!loginResult) {
-                return wrapError(new Error("Login failed"));
-              }
-
-              try {
-                await assertServerPublicKey(
-                  loginResult.serverStaticPublicKey,
-                  options
-                );
-              } catch (error) {
-                return wrapError(error);
-              }
-
-              const completeResponse = await $fetch<{
+              const { complete, exportKey } = await runOpaqueLogin<{
                 success: boolean;
                 token: string;
                 user: { id: string };
-              }>("/sign-in/opaque/complete", {
-                method: "POST",
-                body: {
-                  loginResult: loginResult.finishLoginRequest,
-                  encryptedServerState: challengeResponse.data.state,
-                  rememberMe: params.rememberMe,
+              }>({
+                $fetch,
+                options,
+                password: params.password,
+                challengePath: "/sign-in/opaque/challenge",
+                challengeBody: { identifier: params.identifier },
+                completePath: "/sign-in/opaque/complete",
+                completeBody: { rememberMe: params.rememberMe },
+                messages: {
+                  challengeFailed:
+                    "Sign-in failed. Please check your credentials and try again.",
+                  completeFailed: "Sign-in failed. Please try again.",
+                  finishFailed:
+                    "Sign-in failed. Please check your credentials and try again.",
+                  wrongPassword: "Login failed",
                 },
               });
-
-              if (completeResponse.error || !completeResponse.data) {
-                const serverMessage = extractErrorMessage(
-                  completeResponse.error,
-                  "Sign-in failed. Please try again."
-                );
-                return wrapError(new Error(serverMessage));
-              }
-
-              return wrapResult({
-                ...completeResponse.data,
-                exportKey: base64UrlToBytes(loginResult.exportKey),
-              });
+              return wrapResult({ ...complete, exportKey });
             } catch (error) {
               return wrapError(error);
             }
@@ -379,111 +425,31 @@ export const opaqueClient = (options: OpaqueClientOptions = {}) => {
             }>
           > => {
             try {
-              await ready;
-
-              // Start OPAQUE registration
-              const { clientRegistrationState, registrationRequest } =
-                client.startRegistration({
-                  password: params.password,
-                });
-
-              // Get challenge from server
-              const challengeResponse = await $fetch<{
-                challenge: string;
-                signupToken: string;
-              }>("/sign-up/opaque/challenge", {
-                method: "POST",
-                body: {
-                  email: params.email,
-                  registrationRequest,
-                },
-              });
-
-              // Check for error response
-              if (challengeResponse.error || !challengeResponse.data) {
-                const serverMessage = extractErrorMessage(
-                  challengeResponse.error,
-                  "Sign-up failed. Please try again."
-                );
-                return wrapError(new Error(serverMessage));
-              }
-
-              // Validate the challenge is present
-              if (
-                !challengeResponse.data.challenge ||
-                typeof challengeResponse.data.challenge !== "string"
-              ) {
-                return wrapError(
-                  new Error(
-                    "Server returned an invalid response. Please try again."
-                  )
-                );
-              }
-
-              // Complete OPAQUE registration (derives export key client-side)
-              let registrationRecord: string;
-              let exportKey: string;
-              let serverStaticPublicKey: string;
-              try {
-                const result = client.finishRegistration({
-                  clientRegistrationState,
-                  registrationResponse: challengeResponse.data.challenge,
-                  password: params.password,
-                });
-                registrationRecord = result.registrationRecord;
-                exportKey = result.exportKey;
-                serverStaticPublicKey = result.serverStaticPublicKey;
-              } catch (opaqueError) {
-                // Translate cryptic WASM errors to user-friendly messages
-                const message =
-                  opaqueError instanceof Error
-                    ? opaqueError.message
-                    : String(opaqueError);
-                if (
-                  message.includes("invalid type") ||
-                  message.includes("unit value")
-                ) {
-                  return wrapError(
-                    new Error(
-                      "Sign-up failed. Please try again or contact support."
-                    )
-                  );
+              const { complete, exportKey } = await runOpaqueRegistration<
+                { challenge: string; signupToken: string },
+                {
+                  success: boolean;
+                  token: string;
+                  user: { id: string; email: string };
                 }
-                return wrapError(opaqueError);
-              }
-
-              // Verify server public key (if pinned)
-              try {
-                await assertServerPublicKey(serverStaticPublicKey, options);
-              } catch (error) {
-                return wrapError(error);
-              }
-
-              // Complete sign-up on server
-              const completeResponse = await $fetch<{
-                success: boolean;
-                token: string;
-                user: { id: string; email: string };
-              }>("/sign-up/opaque/complete", {
-                method: "POST",
-                body: {
-                  signupToken: challengeResponse.data.signupToken,
-                  registrationRecord,
+              >({
+                $fetch,
+                options,
+                password: params.password,
+                challengePath: "/sign-up/opaque/challenge",
+                challengeBody: { email: params.email },
+                completePath: "/sign-up/opaque/complete",
+                completeBody: (challenge) => ({
+                  signupToken: challenge.signupToken,
+                }),
+                messages: {
+                  challengeFailed: "Sign-up failed. Please try again.",
+                  completeFailed: "Sign-up failed. Please try again.",
+                  finishFailed:
+                    "Sign-up failed. Please try again or contact support.",
                 },
               });
-
-              if (completeResponse.error || !completeResponse.data) {
-                const serverMessage = extractErrorMessage(
-                  completeResponse.error,
-                  "Sign-up failed. Please try again."
-                );
-                return wrapError(new Error(serverMessage));
-              }
-
-              return wrapResult({
-                ...completeResponse.data,
-                exportKey: base64UrlToBytes(exportKey),
-              });
+              return wrapResult({ ...complete, exportKey });
             } catch (error) {
               return wrapError(error);
             }
@@ -500,77 +466,11 @@ export const opaqueClient = (options: OpaqueClientOptions = {}) => {
             }>
           > => {
             try {
-              await ready;
-              const { clientLoginState, startLoginRequest } = client.startLogin(
-                {
-                  password: params.password,
-                }
+              const { exportKey } = await verifyCurrentPassword(
+                params.password,
+                "Invalid password"
               );
-
-              const verifyChallenge = await $fetch<{
-                challenge: string;
-                state: string;
-              }>("/password/opaque/verify/challenge", {
-                method: "POST",
-                body: { loginRequest: startLoginRequest },
-              });
-
-              if (verifyChallenge.error || !verifyChallenge.data) {
-                const serverMessage = extractErrorMessage(
-                  verifyChallenge.error,
-                  "Password verification failed. Please try again."
-                );
-                return wrapError(new Error(serverMessage));
-              }
-
-              let verifyResult: ReturnType<typeof client.finishLogin>;
-              try {
-                verifyResult = client.finishLogin({
-                  clientLoginState,
-                  loginResponse: verifyChallenge.data.challenge,
-                  password: params.password,
-                });
-              } catch (opaqueError) {
-                const message =
-                  opaqueError instanceof Error
-                    ? opaqueError.message
-                    : String(opaqueError);
-                if (
-                  message.includes("invalid type") ||
-                  message.includes("unit value")
-                ) {
-                  return wrapError(new Error("Invalid password"));
-                }
-                return wrapError(opaqueError);
-              }
-
-              if (!verifyResult) {
-                return wrapError(new Error("Invalid password"));
-              }
-
-              const verifyComplete = await $fetch<{ success: boolean }>(
-                "/password/opaque/verify/complete",
-                {
-                  method: "POST",
-                  body: {
-                    loginResult: verifyResult.finishLoginRequest,
-                    encryptedServerState: verifyChallenge.data.state,
-                  },
-                }
-              );
-
-              if (verifyComplete.error || !verifyComplete.data) {
-                const serverMessage = extractErrorMessage(
-                  verifyComplete.error,
-                  "Password verification failed. Please try again."
-                );
-                return wrapError(new Error(serverMessage));
-              }
-
-              return wrapResult({
-                success: true,
-                exportKey: base64UrlToBytes(verifyResult.exportKey),
-              });
+              return wrapResult({ success: true, exportKey });
             } catch (error) {
               return wrapError(error);
             }
@@ -586,91 +486,22 @@ export const opaqueClient = (options: OpaqueClientOptions = {}) => {
             }>
           > => {
             try {
-              await ready;
-              const { clientLoginState, startLoginRequest } = client.startLogin(
-                {
-                  password: params.currentPassword,
-                }
+              const { exportKey: oldExportKey } = await verifyCurrentPassword(
+                params.currentPassword,
+                "Invalid current password"
               );
-
-              const verifyChallenge = await $fetch<{
-                challenge: string;
-                state: string;
-              }>("/password/opaque/verify/challenge", {
-                method: "POST",
-                body: { loginRequest: startLoginRequest },
-              });
-
-              // Check for error response
-              if (verifyChallenge.error || !verifyChallenge.data) {
-                const serverMessage = extractErrorMessage(
-                  verifyChallenge.error,
-                  "Password verification failed. Please try again."
-                );
-                return wrapError(new Error(serverMessage));
-              }
-
-              let verifyResult: ReturnType<typeof client.finishLogin>;
-              try {
-                verifyResult = client.finishLogin({
-                  clientLoginState,
-                  loginResponse: verifyChallenge.data.challenge,
-                  password: params.currentPassword,
-                });
-              } catch (opaqueError) {
-                const message =
-                  opaqueError instanceof Error
-                    ? opaqueError.message
-                    : String(opaqueError);
-                if (
-                  message.includes("invalid type") ||
-                  message.includes("unit value")
-                ) {
-                  return wrapError(new Error("Invalid current password"));
-                }
-                return wrapError(opaqueError);
-              }
-
-              if (!verifyResult) {
-                return wrapError(new Error("Invalid password"));
-              }
-
-              const verifyComplete = await $fetch<{ success: boolean }>(
-                "/password/opaque/verify/complete",
-                {
-                  method: "POST",
-                  body: {
-                    loginResult: verifyResult.finishLoginRequest,
-                    encryptedServerState: verifyChallenge.data.state,
-                  },
-                }
-              );
-
-              if (verifyComplete.error || !verifyComplete.data) {
-                const serverMessage = extractErrorMessage(
-                  verifyComplete.error,
-                  "Password verification failed. Please try again."
-                );
-                return wrapError(new Error(serverMessage));
-              }
 
               const setPasswordResult = await setPassword({
                 password: params.newPassword,
               });
-
-              if (!setPasswordResult.data || setPasswordResult.error) {
-                return {
-                  data: null,
-                  error: setPasswordResult.error || {
-                    message: "Failed to set new password",
-                  },
-                };
+              if (!setPasswordResult.data) {
+                return setPasswordResult;
               }
 
               return wrapResult({
                 success: true,
                 exportKey: setPasswordResult.data.exportKey,
-                oldExportKey: base64UrlToBytes(verifyResult.exportKey),
+                oldExportKey,
               });
             } catch (error) {
               return wrapError(error);
@@ -681,26 +512,19 @@ export const opaqueClient = (options: OpaqueClientOptions = {}) => {
             redirectTo?: string;
           }): Promise<Result<{ status: boolean; message: string }>> => {
             try {
-              const response = await $fetch<{
+              const response = await fetchOrThrow<{
                 status: boolean;
                 message: string;
-              }>("/password-reset/opaque/request", {
-                method: "POST",
-                body: {
+              }>(
+                $fetch,
+                "/password-reset/opaque/request",
+                {
                   identifier: params.identifier,
                   redirectTo: params.redirectTo,
                 },
-              });
-
-              if (response.error || !response.data) {
-                const serverMessage = extractErrorMessage(
-                  response.error,
-                  "Password reset request failed. Please try again."
-                );
-                return wrapError(new Error(serverMessage));
-              }
-
-              return wrapResult(response.data);
+                "Password reset request failed. Please try again."
+              );
+              return wrapResult(response);
             } catch (error) {
               return wrapError(error);
             }
@@ -710,101 +534,25 @@ export const opaqueClient = (options: OpaqueClientOptions = {}) => {
             newPassword: string;
           }): Promise<Result<{ success: boolean; exportKey: Uint8Array }>> => {
             try {
-              await ready;
-              const { clientRegistrationState, registrationRequest } =
-                client.startRegistration({
-                  password: params.newPassword,
-                });
-
-              const challengeResponse = await $fetch<{ challenge: string }>(
-                "/password-reset/opaque/challenge",
-                {
-                  method: "POST",
-                  body: {
-                    token: params.token,
-                    registrationRequest,
-                  },
-                }
-              );
-
-              // Check for error response
-              if (challengeResponse.error || !challengeResponse.data) {
-                const serverMessage = extractErrorMessage(
-                  challengeResponse.error,
-                  "Password reset failed. The link may have expired."
-                );
-                return wrapError(new Error(serverMessage));
-              }
-
-              // Validate the challenge is present
-              if (
-                !challengeResponse.data.challenge ||
-                typeof challengeResponse.data.challenge !== "string"
-              ) {
-                return wrapError(
-                  new Error(
-                    "Server returned an invalid response. Please try again."
-                  )
-                );
-              }
-
-              let registrationRecord: string;
-              let exportKey: string;
-              let serverStaticPublicKey: string;
-              try {
-                const result = client.finishRegistration({
-                  clientRegistrationState,
-                  registrationResponse: challengeResponse.data.challenge,
-                  password: params.newPassword,
-                });
-                registrationRecord = result.registrationRecord;
-                exportKey = result.exportKey;
-                serverStaticPublicKey = result.serverStaticPublicKey;
-              } catch (opaqueError) {
-                const message =
-                  opaqueError instanceof Error
-                    ? opaqueError.message
-                    : String(opaqueError);
-                if (
-                  message.includes("invalid type") ||
-                  message.includes("unit value")
-                ) {
-                  return wrapError(
-                    new Error("Password reset failed. Please try again.")
-                  );
-                }
-                return wrapError(opaqueError);
-              }
-
-              try {
-                await assertServerPublicKey(serverStaticPublicKey, options);
-              } catch (error) {
-                return wrapError(error);
-              }
-
-              const completeResponse = await $fetch<{ success: boolean }>(
-                "/password-reset/opaque/complete",
-                {
-                  method: "POST",
-                  body: {
-                    token: params.token,
-                    registrationRecord,
-                  },
-                }
-              );
-
-              if (completeResponse.error || !completeResponse.data) {
-                const serverMessage = extractErrorMessage(
-                  completeResponse.error,
-                  "Password reset failed. Please try again."
-                );
-                return wrapError(new Error(serverMessage));
-              }
-
-              return wrapResult({
-                success: true,
-                exportKey: base64UrlToBytes(exportKey),
+              const { exportKey } = await runOpaqueRegistration<
+                { challenge: string },
+                { success: boolean }
+              >({
+                $fetch,
+                options,
+                password: params.newPassword,
+                challengePath: "/password-reset/opaque/challenge",
+                challengeBody: { token: params.token },
+                completePath: "/password-reset/opaque/complete",
+                completeBody: () => ({ token: params.token }),
+                messages: {
+                  challengeFailed:
+                    "Password reset failed. The link may have expired.",
+                  completeFailed: "Password reset failed. Please try again.",
+                  finishFailed: "Password reset failed. Please try again.",
+                },
               });
+              return wrapResult({ success: true, exportKey });
             } catch (error) {
               return wrapError(error);
             }
