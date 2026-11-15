@@ -10,16 +10,13 @@ import { verifySignedOAuthQuery } from "@/lib/auth/oidc/oauth-request";
 import { db } from "@/lib/db/connection";
 import { sessions } from "@/lib/db/schema/auth";
 import { identityBundles } from "@/lib/db/schema/identity";
-import {
-  haipPushedRequests,
-  oauthClients,
-} from "@/lib/db/schema/oauth-provider";
+import { oauthClients } from "@/lib/db/schema/oauth-provider";
 import { createTestUser, resetDatabase } from "@/test-utils/db-test-utils";
 
 const TEST_CLIENT_ID = "step-up-test-client";
 const REDIRECT_URI = "http://localhost:3102/callback";
 const AUTHORIZE_URL = "http://localhost:3000/api/auth/oauth2/authorize";
-const PAR_URI_PREFIX = "urn:ietf:params:oauth:request_uri:";
+const PAR_URL = "http://localhost:3000/api/auth/oauth2/par";
 
 async function createTestClient() {
   await db
@@ -65,24 +62,23 @@ async function insertSession(
   return `${token}.${signature}`;
 }
 
-function insertParRequest(
-  requestId: string,
-  params: Record<string, string>,
-  opts: { expiresAt?: Date } = {}
-) {
-  return db
-    .insert(haipPushedRequests)
-    .values({
-      requestId,
-      clientId: TEST_CLIENT_ID,
-      requestParams: JSON.stringify(params),
-      expiresAt: opts.expiresAt ?? new Date(Date.now() + 60_000),
+async function pushParRequest(params: Record<string, string>) {
+  const response = await auth.handler(
+    new Request(PAR_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams(params),
     })
-    .run();
+  );
+  const body = (await response.json()) as { request_uri?: string };
+  if (response.status !== 201 || !body.request_uri) {
+    throw new Error(`PAR failed with ${response.status}`);
+  }
+  return body.request_uri;
 }
 
-function buildAuthorizeRequest(requestId: string, sessionToken: string) {
-  const url = `${AUTHORIZE_URL}?request_uri=${encodeURIComponent(`${PAR_URI_PREFIX}${requestId}`)}&client_id=${TEST_CLIENT_ID}`;
+function buildAuthorizeRequest(requestUri: string, sessionToken: string) {
+  const url = `${AUTHORIZE_URL}?request_uri=${encodeURIComponent(requestUri)}&client_id=${TEST_CLIENT_ID}`;
   return new Request(url, {
     method: "GET",
     headers: { cookie: `better-auth.session_token=${sessionToken}` },
@@ -99,6 +95,7 @@ function baseParParams(overrides: Record<string, string> = {}) {
     state: "test-state",
     code_challenge: "test-challenge-value",
     code_challenge_method: "S256",
+    resource: "http://localhost:3000",
     ...overrides,
   };
 }
@@ -145,14 +142,12 @@ describe("step-up authentication: acr_values", () => {
 
   it("tier-1 user rejected when acr_values=tier-2", async () => {
     await seedTier1User(userId);
-    const requestId = crypto.randomUUID();
-    await insertParRequest(
-      requestId,
+    const requestUri = await pushParRequest(
       baseParParams({ acr_values: "urn:zentity:assurance:tier-2" })
     );
 
     const response = await auth.handler(
-      buildAuthorizeRequest(requestId, sessionToken)
+      buildAuthorizeRequest(requestUri, sessionToken)
     );
 
     expect(response.status).toBe(302);
@@ -165,14 +160,12 @@ describe("step-up authentication: acr_values", () => {
   });
 
   it("tier-0 user (no FHE keys) rejected when acr_values=tier-1", async () => {
-    const requestId = crypto.randomUUID();
-    await insertParRequest(
-      requestId,
+    const requestUri = await pushParRequest(
       baseParParams({ acr_values: "urn:zentity:assurance:tier-1" })
     );
 
     const response = await auth.handler(
-      buildAuthorizeRequest(requestId, sessionToken)
+      buildAuthorizeRequest(requestUri, sessionToken)
     );
 
     expect(response.status).toBe(302);
@@ -183,14 +176,12 @@ describe("step-up authentication: acr_values", () => {
 
   it("tier-1 user passes when acr_values=tier-1", async () => {
     await seedTier1User(userId);
-    const requestId = crypto.randomUUID();
-    await insertParRequest(
-      requestId,
+    const requestUri = await pushParRequest(
       baseParParams({ acr_values: "urn:zentity:assurance:tier-1" })
     );
 
     const response = await auth.handler(
-      buildAuthorizeRequest(requestId, sessionToken)
+      buildAuthorizeRequest(requestUri, sessionToken)
     );
 
     // Step-up should NOT redirect to RP with an error. The authorize
@@ -204,14 +195,12 @@ describe("step-up authentication: acr_values", () => {
 
   it("higher tier satisfies lower request (tier-1 satisfies tier-0)", async () => {
     await seedTier1User(userId);
-    const requestId = crypto.randomUUID();
-    await insertParRequest(
-      requestId,
+    const requestUri = await pushParRequest(
       baseParParams({ acr_values: "urn:zentity:assurance:tier-0" })
     );
 
     const response = await auth.handler(
-      buildAuthorizeRequest(requestId, sessionToken)
+      buildAuthorizeRequest(requestUri, sessionToken)
     );
 
     const location = getRedirectLocation(response);
@@ -221,9 +210,7 @@ describe("step-up authentication: acr_values", () => {
   });
 
   it("preserves resolved PAR scope and redirect params on consent redirect", async () => {
-    const requestId = crypto.randomUUID();
-    await insertParRequest(
-      requestId,
+    const requestUri = await pushParRequest(
       baseParParams({
         scope: "openid email agent:host.register agent:session.register",
         state: "consent-state",
@@ -231,7 +218,7 @@ describe("step-up authentication: acr_values", () => {
     );
 
     const response = await auth.handler(
-      buildAuthorizeRequest(requestId, sessionToken)
+      buildAuthorizeRequest(requestUri, sessionToken)
     );
 
     expect(response.status).toBe(302);
@@ -243,7 +230,7 @@ describe("step-up authentication: acr_values", () => {
     );
     expect(location?.searchParams.get("redirect_uri")).toBe(REDIRECT_URI);
     expect(location?.searchParams.get("state")).toBe("consent-state");
-    expect(location?.searchParams.get("request_uri")).toBeNull();
+    expect(location?.searchParams.get("request_uri")).toBe(requestUri);
     expect(location?.searchParams.get("sig")).toBeTruthy();
 
     const verified = await verifySignedOAuthQuery(
@@ -255,17 +242,14 @@ describe("step-up authentication: acr_values", () => {
 
   it("preference order: first satisfiable ACR wins", async () => {
     await seedTier1User(userId);
-    const requestId = crypto.randomUUID();
-    // Request tier-3 first (can't satisfy), then tier-1 (can satisfy)
-    await insertParRequest(
-      requestId,
+    const requestUri = await pushParRequest(
       baseParParams({
         acr_values: "urn:zentity:assurance:tier-3 urn:zentity:assurance:tier-1",
       })
     );
 
     const response = await auth.handler(
-      buildAuthorizeRequest(requestId, sessionToken)
+      buildAuthorizeRequest(requestUri, sessionToken)
     );
 
     const location = getRedirectLocation(response);
@@ -276,14 +260,12 @@ describe("step-up authentication: acr_values", () => {
 
   it("error_description includes current tier and requested acr_values", async () => {
     await seedTier1User(userId);
-    const requestId = crypto.randomUUID();
-    await insertParRequest(
-      requestId,
+    const requestUri = await pushParRequest(
       baseParParams({ acr_values: "urn:zentity:assurance:tier-2" })
     );
 
     const response = await auth.handler(
-      buildAuthorizeRequest(requestId, sessionToken)
+      buildAuthorizeRequest(requestUri, sessionToken)
     );
 
     const location = getRedirectLocation(response);
@@ -293,23 +275,20 @@ describe("step-up authentication: acr_values", () => {
     expect(desc).toContain("urn:zentity:assurance:tier-2");
   });
 
-  it("PAR record consumed on acr_values rejection", async () => {
+  it("rejects a reloaded pushed request again", async () => {
     await seedTier1User(userId);
-    const requestId = crypto.randomUUID();
-    await insertParRequest(
-      requestId,
+    const requestUri = await pushParRequest(
       baseParParams({ acr_values: "urn:zentity:assurance:tier-2" })
     );
 
-    await auth.handler(buildAuthorizeRequest(requestId, sessionToken));
+    await auth.handler(buildAuthorizeRequest(requestUri, sessionToken));
+    const reload = await auth.handler(
+      buildAuthorizeRequest(requestUri, sessionToken)
+    );
 
-    // PAR record should be deleted
-    const record = await db
-      .select()
-      .from(haipPushedRequests)
-      .where(eq(haipPushedRequests.requestId, requestId))
-      .get();
-    expect(record).toBeUndefined();
+    expect(getRedirectLocation(reload)?.searchParams.get("error")).toBe(
+      "interaction_required"
+    );
   });
 });
 
@@ -371,18 +350,17 @@ describe("step-up authentication: max_age", () => {
 
   it("max_age=0 triggers redirect to login", async () => {
     const sessionToken = await insertSession(userId);
-    const requestId = crypto.randomUUID();
-    await insertParRequest(requestId, baseParParams({ max_age: "0" }));
+    const requestUri = await pushParRequest(baseParParams({ max_age: "0" }));
 
     const response = await auth.handler(
-      buildAuthorizeRequest(requestId, sessionToken)
+      buildAuthorizeRequest(requestUri, sessionToken)
     );
 
     expect(response.status).toBe(302);
     const location = getRedirectLocation(response);
     expect(location).not.toBeNull();
     expect(location?.pathname).toBe("/sign-in");
-    expect(location?.searchParams.get("request_uri")).toBeNull();
+    expect(location?.searchParams.get("request_uri")).toBe(requestUri);
     expect(location?.searchParams.get("client_id")).toBe(TEST_CLIENT_ID);
     expect(location?.searchParams.get("redirect_uri")).toBe(REDIRECT_URI);
     expect(location?.searchParams.get("max_age")).toBe("0");
@@ -391,11 +369,12 @@ describe("step-up authentication: max_age", () => {
 
   it("max_age=99999 with fresh session does not trigger step-up re-auth", async () => {
     const sessionToken = await insertSession(userId);
-    const requestId = crypto.randomUUID();
-    await insertParRequest(requestId, baseParParams({ max_age: "99999" }));
+    const requestUri = await pushParRequest(
+      baseParParams({ max_age: "99999" })
+    );
 
     const response = await auth.handler(
-      buildAuthorizeRequest(requestId, sessionToken)
+      buildAuthorizeRequest(requestUri, sessionToken)
     );
 
     // Step-up should NOT trigger its own redirect to /sign-in with callbackURL.
@@ -409,32 +388,16 @@ describe("step-up authentication: max_age", () => {
     }
   });
 
-  it("consumes PAR after signing resolved max_age re-entry parameters", async () => {
-    const sessionToken = await insertSession(userId);
-    const requestId = crypto.randomUUID();
-    await insertParRequest(requestId, baseParParams({ max_age: "0" }));
-
-    await auth.handler(buildAuthorizeRequest(requestId, sessionToken));
-
-    const record = await db
-      .select()
-      .from(haipPushedRequests)
-      .where(eq(haipPushedRequests.requestId, requestId))
-      .get();
-    expect(record).toBeUndefined();
-  });
-
   it("stale session (old createdAt) triggers max_age redirect", async () => {
     // Session created 10 minutes ago
     const staleCreatedAt = new Date(Date.now() - 600_000);
     const sessionToken = await insertSession(userId, {
       createdAt: staleCreatedAt,
     });
-    const requestId = crypto.randomUUID();
-    await insertParRequest(requestId, baseParParams({ max_age: "300" }));
+    const requestUri = await pushParRequest(baseParParams({ max_age: "300" }));
 
     const response = await auth.handler(
-      buildAuthorizeRequest(requestId, sessionToken)
+      buildAuthorizeRequest(requestUri, sessionToken)
     );
 
     expect(response.status).toBe(302);
@@ -454,38 +417,18 @@ describe("step-up authentication: prompt=none conflicts", () => {
 
   it("prompt=none + max_age=0 returns login_required", async () => {
     const sessionToken = await insertSession(userId);
-    const requestId = crypto.randomUUID();
-    await insertParRequest(
-      requestId,
+    const requestUri = await pushParRequest(
       baseParParams({ prompt: "none", max_age: "0" })
     );
 
     const response = await auth.handler(
-      buildAuthorizeRequest(requestId, sessionToken)
+      buildAuthorizeRequest(requestUri, sessionToken)
     );
 
     expect(response.status).toBe(302);
     const location = getRedirectLocation(response);
     expect(location?.searchParams.get("error")).toBe("login_required");
     expect(location?.searchParams.get("state")).toBe("test-state");
-  });
-
-  it("prompt=none + max_age=0 consumes PAR record", async () => {
-    const sessionToken = await insertSession(userId);
-    const requestId = crypto.randomUUID();
-    await insertParRequest(
-      requestId,
-      baseParParams({ prompt: "none", max_age: "0" })
-    );
-
-    await auth.handler(buildAuthorizeRequest(requestId, sessionToken));
-
-    const record = await db
-      .select()
-      .from(haipPushedRequests)
-      .where(eq(haipPushedRequests.requestId, requestId))
-      .get();
-    expect(record).toBeUndefined();
   });
 });
 
@@ -501,9 +444,7 @@ describe("step-up authentication: combined max_age + acr_values", () => {
   it("fresh session + satisfied acr_values passes both checks", async () => {
     await seedTier1User(userId);
     const sessionToken = await insertSession(userId);
-    const requestId = crypto.randomUUID();
-    await insertParRequest(
-      requestId,
+    const requestUri = await pushParRequest(
       baseParParams({
         max_age: "99999",
         acr_values: "urn:zentity:assurance:tier-1",
@@ -511,7 +452,7 @@ describe("step-up authentication: combined max_age + acr_values", () => {
     );
 
     const response = await auth.handler(
-      buildAuthorizeRequest(requestId, sessionToken)
+      buildAuthorizeRequest(requestUri, sessionToken)
     );
 
     // Step-up should NOT redirect to RP with an error
@@ -527,9 +468,7 @@ describe("step-up authentication: combined max_age + acr_values", () => {
     const sessionToken = await insertSession(userId, {
       createdAt: staleCreatedAt,
     });
-    const requestId = crypto.randomUUID();
-    await insertParRequest(
-      requestId,
+    const requestUri = await pushParRequest(
       baseParParams({
         max_age: "300",
         acr_values: "urn:zentity:assurance:tier-1",
@@ -537,7 +476,7 @@ describe("step-up authentication: combined max_age + acr_values", () => {
     );
 
     const response = await auth.handler(
-      buildAuthorizeRequest(requestId, sessionToken)
+      buildAuthorizeRequest(requestUri, sessionToken)
     );
 
     // max_age should trigger login redirect, not acr_values error
@@ -558,14 +497,12 @@ describe("step-up authentication: session resolution edge cases", () => {
 
   it("missing session cookie skips step-up (no crash)", async () => {
     await seedTier1User(userId);
-    const requestId = crypto.randomUUID();
-    await insertParRequest(
-      requestId,
+    const requestUri = await pushParRequest(
       baseParParams({ acr_values: "urn:zentity:assurance:tier-2" })
     );
 
     // Request WITHOUT session cookie — step-up hook should skip gracefully
-    const url = `${AUTHORIZE_URL}?request_uri=${encodeURIComponent(`${PAR_URI_PREFIX}${requestId}`)}&client_id=${TEST_CLIENT_ID}`;
+    const url = `${AUTHORIZE_URL}?request_uri=${encodeURIComponent(requestUri)}&client_id=${TEST_CLIENT_ID}`;
     const request = new Request(url, { method: "GET", redirect: "manual" });
 
     const response = await auth.handler(request);
@@ -606,16 +543,14 @@ describe("step-up authentication: session resolution edge cases", () => {
       })
       .run();
 
-    const requestId = crypto.randomUUID();
-    await insertParRequest(
-      requestId,
+    const requestUri = await pushParRequest(
       baseParParams({ acr_values: "urn:zentity:assurance:tier-2" })
     );
 
     // Cookie with valid token but WRONG signature — getSessionFromCtx
     // verifies the HMAC and rejects it, returning null
     const badSignature = `${token}.bad-signature-value`;
-    const request = buildAuthorizeRequest(requestId, badSignature);
+    const request = buildAuthorizeRequest(requestUri, badSignature);
 
     const response = await auth.handler(request);
 
@@ -628,6 +563,3 @@ describe("step-up authentication: session resolution edge cases", () => {
     }
   });
 });
-
-// Re-export eq for PAR record assertions
-import { eq } from "drizzle-orm";

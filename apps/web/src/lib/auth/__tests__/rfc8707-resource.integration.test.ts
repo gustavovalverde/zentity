@@ -1,17 +1,14 @@
-import { eq } from "drizzle-orm";
 import { decodeJwt } from "jose";
 import { beforeEach, describe, expect, it } from "vitest";
 
 import { env } from "@/env";
 import { auth } from "@/lib/auth/auth-config";
 import { db } from "@/lib/db/connection";
-import {
-  haipPushedRequests,
-  oauthClients,
-} from "@/lib/db/schema/oauth-provider";
+import { oauthClients } from "@/lib/db/schema/oauth-provider";
 import {
   createTestCibaRequest,
   createTestUser,
+  findPushedAuthorizationQueries,
   resetDatabase,
 } from "@/test-utils/db-test-utils";
 import { postTokenWithDpop } from "@/test-utils/dpop-test-utils";
@@ -38,8 +35,8 @@ async function postPar(body: Record<string, string>) {
   const response = await auth.handler(
     new Request(PAR_URL, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams(body),
     })
   );
   const text = await response.text();
@@ -129,36 +126,27 @@ describe("RFC 8707: Resource Indicator Enforcement", () => {
         throw new Error(`PAR failed with ${status}`);
       }
 
-      return await db
-        .select({
-          requestParams: haipPushedRequests.requestParams,
-          resource: haipPushedRequests.resource,
-        })
-        .from(haipPushedRequests)
-        .where(eq(haipPushedRequests.clientId, TEST_CLIENT_ID))
-        .limit(1)
-        .get();
+      const [query] = await findPushedAuthorizationQueries();
+      return query;
     }
 
-    it("persists a resource outside Zentity on the PAR record", async () => {
-      const record = await pushAndReadRecord(env.MCP_PUBLIC_URL);
+    it("keeps a resource outside Zentity in the pushed request", async () => {
+      const query = await pushAndReadRecord(env.MCP_PUBLIC_URL);
 
-      expect(record?.resource).toBe(env.MCP_PUBLIC_URL);
+      expect([query?.resource].flat()).toEqual([env.MCP_PUBLIC_URL]);
     });
 
     it("stores a trailing-slash resource in its registered form", async () => {
-      const record = await pushAndReadRecord(`${env.MCP_PUBLIC_URL}/`);
+      const query = await pushAndReadRecord(`${env.MCP_PUBLIC_URL}/`);
 
-      expect(record?.resource).toBe(env.MCP_PUBLIC_URL);
+      expect([query?.resource].flat()).toEqual([env.MCP_PUBLIC_URL]);
     });
 
     it("drops a Zentity-hosted resource so the token is opaque", async () => {
-      const record = await pushAndReadRecord(VALID_RESOURCE);
+      const query = await pushAndReadRecord(VALID_RESOURCE);
 
-      expect(record?.resource).toBeNull();
-      expect(JSON.parse(record?.requestParams ?? "{}")).not.toHaveProperty(
-        "resource"
-      );
+      expect(query).toBeDefined();
+      expect(query).not.toHaveProperty("resource");
     });
   });
 

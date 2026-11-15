@@ -112,6 +112,8 @@ export function buildAapClaims(
   return {
     act: {
       sub: input.act.sub,
+      // Already pairwise for the client, so the provider presents it as is.
+      sub_profile: "service",
       host_attestation: input.act.hostAttestation,
       session_id: input.act.sessionId,
       ...(input.act.hostAttestation === "attested" && input.act.did
@@ -167,6 +169,7 @@ export function getAapClaimsFromPayload(
   ) {
     parsedClaims.act = {
       sub: act.sub,
+      ...(act.sub_profile === "service" ? { sub_profile: "service" } : {}),
       host_attestation: act.host_attestation as HostAttestationTier,
       session_id: act.session_id,
       ...(typeof act.did === "string" ? { did: act.did } : {}),

@@ -73,6 +73,10 @@ export const oauthClients = sqliteTable(
     firstParty: integer("first_party", { mode: "boolean" })
       .notNull()
       .default(false),
+    requirePushedAuthorizationRequests: integer(
+      "require_pushed_authorization_requests",
+      { mode: "boolean" }
+    ).default(false),
   },
   (table) => [
     uniqueIndex("oauth_client_client_id_unique").on(table.clientId),
@@ -97,6 +101,7 @@ export const oauthRefreshTokens = sqliteTable(
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
     referenceId: text("reference_id"),
+    grantId: text("grant_id"),
     resources: text("resources"),
     authorizationCodeId: text("authorization_code_id"),
     requestedUserInfoClaims: text("requested_user_info_claims"),
@@ -143,6 +148,7 @@ export const oauthAccessTokens = sqliteTable(
       onDelete: "set null",
     }),
     referenceId: text("reference_id"),
+    grantId: text("grant_id"),
     resources: text("resources"),
     authorizationCodeId: text("authorization_code_id"),
     requestedUserInfoClaims: text("requested_user_info_claims"),
@@ -156,6 +162,7 @@ export const oauthAccessTokens = sqliteTable(
     revoked: integer("revoked", { mode: "timestamp_ms" }),
     confirmation: text("confirmation"),
     act: text("act"),
+    accessTokenClaims: text("access_token_claims", { mode: "json" }),
     scopes: text("scopes").notNull(),
     exchangeClaims: text("exchange_claims"),
   },
@@ -166,6 +173,7 @@ export const oauthAccessTokens = sqliteTable(
     index("oauth_access_token_authorization_code_id_idx").on(
       table.authorizationCodeId
     ),
+    index("oauth_access_token_grant_id_idx").on(table.grantId),
   ]
 );
 
@@ -384,29 +392,8 @@ export type Jwk = typeof jwks.$inferSelect;
 export type NewJwk = typeof jwks.$inferInsert;
 
 // ---------------------------------------------------------------------------
-// HAIP: pushed authorization requests + VP sessions
+// HAIP: VP sessions
 // ---------------------------------------------------------------------------
-
-export const haipPushedRequests = sqliteTable(
-  "haip_pushed_request",
-  {
-    id: text("id").primaryKey().default(defaultId),
-    requestId: text("request_id").notNull().unique(),
-    clientId: text("client_id")
-      .notNull()
-      .references(() => oauthClients.clientId, { onDelete: "cascade" }),
-    requestParams: text("request_params").notNull(),
-    resource: text("resource"),
-    expiresAt: integer("expires_at", { mode: "timestamp_ms" }).notNull(),
-    createdAt: integer("created_at", { mode: "timestamp_ms" })
-      .notNull()
-      .default(sql`(unixepoch() * 1000)`),
-  },
-  (table) => [
-    index("haip_pushed_request_client_id_idx").on(table.clientId),
-    index("haip_pushed_request_expires_at_idx").on(table.expiresAt),
-  ]
-);
 
 export const haipVpSessions = sqliteTable(
   "haip_vp_session",
@@ -428,8 +415,6 @@ export const haipVpSessions = sqliteTable(
   (table) => [index("haip_vp_session_expires_at_idx").on(table.expiresAt)]
 );
 
-export type HaipPushedRequest = typeof haipPushedRequests.$inferSelect;
-export type NewHaipPushedRequest = typeof haipPushedRequests.$inferInsert;
 export type HaipVpSession = typeof haipVpSessions.$inferSelect;
 export type NewHaipVpSession = typeof haipVpSessions.$inferInsert;
 

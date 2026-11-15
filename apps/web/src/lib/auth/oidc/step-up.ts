@@ -23,7 +23,6 @@ import { oauthProviderApi } from "@/lib/auth/oidc/haip/dpop";
 import { parseStoredStringArray } from "@/lib/db/adapter-compat";
 import {
   authChallengeSessions,
-  haipPushedRequests,
   oauthClients,
 } from "@/lib/db/schema/oauth-provider";
 
@@ -35,6 +34,10 @@ const ACR_TIER_PATTERN = /^urn:zentity:assurance:tier-(\d)$/;
 const WHITESPACE = /\s+/;
 const PAR_URI_PREFIX = "urn:ietf:params:oauth:request_uri:";
 const SESSION_LIFETIME_MS = 10 * 60 * 1000;
+const PUSHED_ACR_PREFIX = "zentity:par-acr:";
+// Outlives the request_uri and the signed query that carries it through
+// sign-in, so every visit to the authorize endpoint finds the request.
+const PUSHED_ACR_LIFETIME_MS = 10 * 60 * 1000;
 
 function parseAcrValues(raw: string): string[] {
   return raw.split(WHITESPACE).filter(Boolean);
@@ -157,6 +160,42 @@ async function rejectAcr(
   );
 }
 
+interface PushedAcrRequest extends AcrRequest {
+  clientId: string;
+}
+
+/**
+ * Keeps the step-up parameters of a pushed request. The provider resolves a
+ * `request_uri` inside `/oauth2/authorize`, after its before hooks run, so
+ * `enforceAuthorizeAcr` reads them from here.
+ */
+export async function rememberPushedAcrRequest(
+  // biome-ignore lint/suspicious/noExplicitAny: middleware context is untyped
+  ctx: any,
+  requestUri: string
+): Promise<void> {
+  const body = (ctx.body ?? {}) as Record<string, unknown>;
+  const clientId =
+    typeof body.client_id === "string" ? body.client_id : undefined;
+  const acrValues =
+    typeof body.acr_values === "string" ? body.acr_values : undefined;
+  if (!(clientId && acrValues && requestUri.startsWith(PAR_URI_PREFIX))) {
+    return;
+  }
+  const value: PushedAcrRequest = {
+    clientId,
+    acr_values: acrValues,
+    redirect_uri:
+      typeof body.redirect_uri === "string" ? body.redirect_uri : undefined,
+    state: typeof body.state === "string" ? body.state : undefined,
+  };
+  await ctx.context.internalAdapter.createVerificationValue({
+    identifier: `${PUSHED_ACR_PREFIX}${requestUri}`,
+    value: JSON.stringify(value),
+    expiresAt: new Date(Date.now() + PUSHED_ACR_LIFETIME_MS),
+  });
+}
+
 async function enforceFromPar(
   // biome-ignore lint/suspicious/noExplicitAny: middleware context is untyped
   ctx: any,
@@ -170,24 +209,14 @@ async function enforceFromPar(
     return;
   }
 
-  const requestId = requestUri.slice(PAR_URI_PREFIX.length);
-  const record = await db
-    .select({
-      id: haipPushedRequests.id,
-      requestParams: haipPushedRequests.requestParams,
-      clientId: haipPushedRequests.clientId,
-    })
-    .from(haipPushedRequests)
-    .where(eq(haipPushedRequests.requestId, requestId))
-    .limit(1)
-    .get();
-
-  if (!record || record.clientId !== clientId) {
+  const record = await ctx.context.internalAdapter.findVerificationValue(
+    `${PUSHED_ACR_PREFIX}${requestUri}`
+  );
+  if (!record || new Date(record.expiresAt).getTime() <= Date.now()) {
     return;
   }
-
-  const params = JSON.parse(record.requestParams) as AcrRequest;
-  if (!params.acr_values) {
+  const params = JSON.parse(record.value) as PushedAcrRequest;
+  if (params.clientId !== clientId || !params.acr_values) {
     return;
   }
 
@@ -201,10 +230,6 @@ async function enforceFromPar(
     return;
   }
 
-  await db
-    .delete(haipPushedRequests)
-    .where(eq(haipPushedRequests.id, record.id))
-    .run();
   await rejectAcr(db, clientId, params, rejection);
 }
 

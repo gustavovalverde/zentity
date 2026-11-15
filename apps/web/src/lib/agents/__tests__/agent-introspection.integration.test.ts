@@ -301,6 +301,7 @@ describe("Agent Introspection", () => {
       host_id: hostId,
       session_id: sessionId,
       sub: expectedActorId,
+      sub_profile: "service",
       type: "mcp-agent",
     });
     expect(result.body.task).toEqual({

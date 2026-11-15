@@ -319,7 +319,7 @@ describe("userinfo disclosure binding", () => {
     expect(secondUserInfo.status).toBe(401);
     expect(secondBody.error).toBe("invalid_token");
     expect(secondUserInfo.headers.get("WWW-Authenticate")).toBe(
-      'DPoP error="invalid_token", error_description="identity_payload_missing", algs="ES256"'
+      'DPoP error="invalid_token", error_description="identity_payload_missing", resource_metadata="http://localhost:3000/.well-known/oauth-protected-resource", algs="ES256"'
     );
   });
 

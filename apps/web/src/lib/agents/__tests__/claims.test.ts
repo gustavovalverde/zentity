@@ -54,6 +54,7 @@ describe("AAP claims", () => {
         operator: "user-1",
         session_id: "session-1",
         sub: "agent-sub",
+        sub_profile: "service",
         type: "agent",
       },
       audit: {
@@ -120,6 +121,7 @@ describe("AAP claims", () => {
       host_attestation: "unverified",
       session_id: "session-1",
       sub: "agent-sub",
+      sub_profile: "service",
     });
     expect(claims.task).not.toHaveProperty("constraints");
     expect(claims.audit).not.toHaveProperty("request_id");

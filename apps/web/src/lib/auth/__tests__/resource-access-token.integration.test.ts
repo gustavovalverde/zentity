@@ -326,7 +326,7 @@ describe("protected resource access tokens", () => {
 
       expect(response.status).toBe(401);
       expect(response.headers.get("WWW-Authenticate")).toBe(
-        `Bearer resource_metadata="${RESOURCE_METADATA_URL}"`
+        `Bearer resource_metadata="${RESOURCE_METADATA_URL}", DPoP resource_metadata="${RESOURCE_METADATA_URL}", algs="ES256"`
       );
     });
 
@@ -344,7 +344,7 @@ describe("protected resource access tokens", () => {
 
       expect(response.status).toBe(401);
       expect(response.headers.get("WWW-Authenticate")).toBe(
-        'DPoP error="invalid_dpop_proof", error_description="DPoP proof htu does not match the request URL", algs="ES256"'
+        'DPoP error="invalid_dpop_proof", error_description="DPoP proof htu does not match the request URL", resource_metadata="http://localhost:3000/.well-known/oauth-protected-resource", algs="ES256"'
       );
       await expect(response.json()).resolves.toMatchObject({
         error: "invalid_dpop_proof",

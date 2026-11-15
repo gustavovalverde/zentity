@@ -223,7 +223,11 @@ async function verifyAccessTokenSubject(
   provider: OAuthExtensionGrantHandlerInput["provider"],
   token: string
 ): Promise<JWTPayload> {
-  const payload = await provider.requireActiveAccessToken(token);
+  // The subject token's DPoP binding is checked by the exchange, not here.
+  const payload = await provider.validateAccessToken(token);
+  if (payload.active !== true) {
+    throw new Error("Subject token is not active");
+  }
   if (!(await isZentityAccessToken(token, payload))) {
     throw new Error("Subject token is not a Zentity access token");
   }
@@ -554,7 +558,10 @@ function createTokenExchangeHandler(): OAuthExtensionGrantHandler {
     }
 
     // Build act claim with nesting (RFC 8693 §4.4)
-    const actClaim: OAuthActorClaim = { sub: client.clientId };
+    const actClaim: OAuthActorClaim = {
+      sub: client.clientId,
+      sub_profile: "service",
+    };
     if (subjectPayload.act && typeof subjectPayload.act === "object") {
       actClaim.act = subjectPayload.act as OAuthActorClaim;
     }

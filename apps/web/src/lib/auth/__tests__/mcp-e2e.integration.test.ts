@@ -78,8 +78,8 @@ describe("MCP End-to-End: Discovery → CIMD → Resource-Bound Tokens", () => {
       const parResponse = await auth.handler(
         new Request(PAR_URL, {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
+          headers: { "Content-Type": "application/x-www-form-urlencoded" },
+          body: new URLSearchParams({
             client_id: CIMD_CLIENT_ID,
             response_type: "code",
             redirect_uri: REDIRECT_URI,

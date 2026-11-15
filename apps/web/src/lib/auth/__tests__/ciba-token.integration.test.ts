@@ -356,6 +356,7 @@ describe("CIBA token endpoint", () => {
         host_id: hostId,
         session_id: sessionId,
         sub: actorId,
+        sub_profile: "service",
         type: "mcp-agent",
       });
       expect(tokenShape.payload.task).toEqual({
@@ -417,7 +418,10 @@ describe("CIBA token endpoint", () => {
       expect(tokenShape.payload).not.toHaveProperty("agent_sub");
       expect(tokenShape.payload).not.toHaveProperty("zentity_context_id");
       expect(tokenShape.payload).not.toHaveProperty("zentity_release_id");
-      expect(tokenShape.payload.act).toEqual({ sub: TEST_CLIENT_ID });
+      expect(tokenShape.payload.act).toEqual({
+        sub: TEST_CLIENT_ID,
+        sub_profile: "service",
+      });
       expect(tokenShape.payload.task).toBeUndefined();
       expect(tokenShape.payload.capabilities).toBeUndefined();
       expect(tokenShape.payload.oversight).toBeUndefined();
@@ -444,6 +448,7 @@ describe("CIBA token endpoint", () => {
     if (tokenShape.kind === "opaque") {
       expect(tokenShape.record.act).toEqual({
         sub: TEST_CLIENT_ID,
+        sub_profile: "service",
       });
     }
   });

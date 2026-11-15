@@ -18,12 +18,12 @@ import { accounts, sessions, walletAddresses } from "@/lib/db/schema/auth";
 import { identityBundles } from "@/lib/db/schema/identity";
 import {
   authChallengeSessions,
-  haipPushedRequests,
   oauthClients,
 } from "@/lib/db/schema/oauth-provider";
 import {
   createTestCibaRequest,
   createTestUser,
+  findPushedAuthorizationQueries,
   resetDatabase,
 } from "@/test-utils/db-test-utils";
 import {
@@ -161,11 +161,7 @@ async function callChallenge(
 const CODE_VERIFIER = "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk";
 const CODE_CHALLENGE = "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM";
 async function countPushedRequests() {
-  const rows = await db
-    .select({ requestId: haipPushedRequests.requestId })
-    .from(haipPushedRequests)
-    .all();
-  return rows.length;
+  return (await findPushedAuthorizationQueries()).length;
 }
 
 async function completeOpaqueFlow(

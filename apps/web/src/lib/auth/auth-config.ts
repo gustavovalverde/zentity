@@ -13,7 +13,6 @@ import {
   createDcqlMatcher,
   createJarmHandler,
   createKeyAttestationValidator,
-  createParResolver,
   createVpSessionResolver,
   createX5cHeaders,
   haip,
@@ -31,7 +30,11 @@ import { type Oidc4vciOptions, oidc4vci } from "@better-auth/oidc4vci";
 import { oidc4vp } from "@better-auth/oidc4vp";
 import { passkey } from "@better-auth/passkey";
 import { setGlobalConfig as setOpenid4vcConfig } from "@openid4vc/utils";
-import { decodeJwtPayloadStrict } from "@zentity/sdk/protocol";
+import {
+  decodeJwtPayloadStrict,
+  PAYMENT_AUTHORIZATION_TYPE,
+  PaymentAuthorizationSchema,
+} from "@zentity/sdk/protocol";
 import { APIError, type BetterAuthPlugin, betterAuth } from "better-auth";
 import {
   createAuthMiddleware,
@@ -47,7 +50,7 @@ import {
   twoFactor,
 } from "better-auth/plugins";
 import { organization } from "better-auth/plugins/organization";
-import { and, desc, eq, inArray, isNull } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import { createRemoteJWKSet, decodeJwt, jwtVerify } from "jose";
 
 import { env } from "@/env";
@@ -126,7 +129,7 @@ import {
   PROOF_SCOPES,
 } from "@/lib/auth/oidc/disclosure/registry";
 import { verifiedClaimsPlugin } from "@/lib/auth/oidc/disclosure/verified-claims";
-import { challengeMissingTokenDpopNonce } from "@/lib/auth/oidc/haip/dpop";
+import { oauthProviderApi } from "@/lib/auth/oidc/haip/dpop";
 import { getJarmDecryptionKey } from "@/lib/auth/oidc/haip/jarm-key";
 import {
   getProtectedResourceAudiences,
@@ -155,6 +158,7 @@ import {
 import {
   enforceAuthorizeAcr,
   enforceCibaTokenAcr,
+  rememberPushedAcrRequest,
 } from "@/lib/auth/oidc/step-up";
 import { resolveSybilNullifier } from "@/lib/auth/oidc/sybil";
 import { tokenExchangePlugin } from "@/lib/auth/oidc/token-exchange";
@@ -187,7 +191,6 @@ import {
 } from "@/lib/db/schema/auth";
 import { cibaRequests } from "@/lib/db/schema/ciba";
 import {
-  haipPushedRequests,
   haipVpSessions,
   jwks,
   oauthAccessTokens,
@@ -242,7 +245,6 @@ const betterAuthSchema = {
   oidc4vciOffer: oidc4vciOffers,
   oidc4vciIssuedCredential: oidc4vciIssuedCredentials,
   oidc4vciStatusList: oidc4vciStatusLists,
-  haipPushedRequest: haipPushedRequests,
   haipVpSession: haipVpSessions,
   cibaRequest: cibaRequests,
 };
@@ -618,7 +620,6 @@ async function validateDcrRegistration(
 
 type HookCtx = Parameters<Parameters<typeof createAuthMiddleware>[0]>[0];
 
-const PAR_URI_PREFIX = "urn:ietf:params:oauth:request_uri:";
 const ACCESS_TOKEN_SCHEME_RE = /^(Bearer|DPoP)\s+/i;
 
 const USER_TOKEN_GRANT_TYPES = new Set<unknown>([
@@ -1415,82 +1416,13 @@ async function afterConsentPairwiseCleanup(ctx: HookCtx) {
   }
 }
 
-async function afterParPersistResource(ctx: HookCtx) {
-  const resource =
-    typeof ctx.body?.resource === "string" ? ctx.body.resource : undefined;
-  const clientId =
-    typeof ctx.body?.client_id === "string" ? ctx.body.client_id : undefined;
-  if (!(resource && clientId)) {
-    return;
-  }
-  const returned = (ctx as HookCtx & { returned?: unknown }).returned as
-    | { request_uri?: unknown }
-    | undefined;
-  const requestUri = returned?.request_uri;
-  if (typeof requestUri === "string" && requestUri.startsWith(PAR_URI_PREFIX)) {
-    const requestId = requestUri.slice(PAR_URI_PREFIX.length);
-    const result = await db
-      .update(haipPushedRequests)
-      .set({ resource })
-      .where(eq(haipPushedRequests.requestId, requestId))
-      .run();
-    if (result.rowsAffected > 0) {
-      return;
-    }
-  }
-
-  // Better Auth's PAR endpoint persists the full request body in `requestParams`
-  // but does not always expose the created `request_uri` through `ctx.returned`.
-  // Fall back to the latest unresolved PAR row for this client with a matching
-  // serialized request payload so the dedicated `resource` column stays in sync.
-  const normalizedBody = JSON.stringify(
-    Object.fromEntries(
-      Object.entries(ctx.body as Record<string, unknown>)
-        .filter(([, value]) => typeof value === "string")
-        .sort(([left], [right]) => left.localeCompare(right))
-    )
+async function afterParRememberAcr(ctx: HookCtx) {
+  const pushed = await readReturnedResponseBody(
+    (ctx.context as { returned?: unknown }).returned
   );
-  const candidates = await db
-    .select({
-      id: haipPushedRequests.id,
-      requestParams: haipPushedRequests.requestParams,
-    })
-    .from(haipPushedRequests)
-    .where(
-      and(
-        eq(haipPushedRequests.clientId, clientId),
-        isNull(haipPushedRequests.resource)
-      )
-    )
-    .orderBy(desc(haipPushedRequests.createdAt))
-    .limit(10)
-    .all();
-  const matchingRequest = candidates.find((candidate) => {
-    try {
-      const parsed = JSON.parse(candidate.requestParams) as Record<
-        string,
-        unknown
-      >;
-      const normalizedCandidate = JSON.stringify(
-        Object.fromEntries(
-          Object.entries(parsed)
-            .filter(([, value]) => typeof value === "string")
-            .sort(([left], [right]) => left.localeCompare(right))
-        )
-      );
-      return normalizedCandidate === normalizedBody;
-    } catch {
-      return false;
-    }
-  });
-  if (!matchingRequest) {
-    return;
+  if (typeof pushed?.request_uri === "string") {
+    await rememberPushedAcrRequest(ctx, pushed.request_uri);
   }
-  await db
-    .update(haipPushedRequests)
-    .set({ resource })
-    .where(eq(haipPushedRequests.id, matchingRequest.id))
-    .run();
 }
 
 function expireSessionDataCookie(ctx: HookCtx) {
@@ -1984,7 +1916,9 @@ export const auth = betterAuth({
         return;
       }
       if (ctx.path === "/oauth2/token") {
-        await challengeMissingTokenDpopNonce(ctx);
+        // Before any hook stages state for the grant, so the client's retry
+        // with the nonce redeems the same grant (RFC 9449 §8).
+        await oauthProviderApi(ctx).challengeDpopNonce();
         if (ctx.body?.grant_type === CIBA_GRANT_TYPE) {
           await beforeCibaTokenLoadRequest(ctx);
         }
@@ -2038,7 +1972,7 @@ export const auth = betterAuth({
         return;
       }
       if (ctx.path === "/oauth2/par") {
-        await afterParPersistResource(ctx);
+        await afterParRememberAcr(ctx);
         return;
       }
       if (ctx.path === "/oauth2/token") {
@@ -2114,7 +2048,8 @@ export const auth = betterAuth({
         signingAlgorithms: ["ES256"],
         nonce: { required: true, expiresIn: 300 },
       },
-      requestUriResolver: createParResolver(),
+      // Optional at the provider: remote MCP hosts authorize without PAR.
+      pushedAuthorizationRequests: { enabled: true, expiresIn: 60 },
       pairwiseSecret: env.PAIRWISE_SECRET,
       scopes: [...OAUTH_SCOPES, PAYMENT_AUTHORIZATION_SCOPE],
       grantTypes: [
@@ -2400,11 +2335,6 @@ export const auth = betterAuth({
       allowPasswordless: true,
     }),
     haip({
-      // Only advertised; the plugin does not enforce PAR at /oauth2/authorize.
-      // Remote MCP hosts (MCP SDK clients) authorize without PAR, so it stays
-      // optional.
-      requirePar: false,
-      parExpiresInSeconds: 60,
       vpRequestExpiresInSeconds: 300,
       ...(trustedWalletIssuers
         ? { walletAttestation: { trustedIssuers: trustedWalletIssuers } }
@@ -2431,6 +2361,12 @@ export const auth = betterAuth({
           : null;
       },
       sendNotification: notifyCibaRequest,
+      authorizationDetailsTypes: {
+        [PAYMENT_AUTHORIZATION_TYPE]: {
+          validate: (detail) =>
+            PaymentAuthorizationSchema.safeParse(detail).success,
+        },
+      },
     }),
     cibaApprovalPlugin(cibaApproval),
     tokenExchangePlugin(),

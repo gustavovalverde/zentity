@@ -3,7 +3,7 @@ import type { NewCibaRequest } from "@/lib/db/schema/ciba";
 import crypto from "node:crypto";
 
 import { getConfirmationJkt } from "@better-auth/core/oauth2";
-import { eq } from "drizzle-orm";
+import { and, eq, like, notLike } from "drizzle-orm";
 
 import { createAuthenticationContext } from "@/lib/auth/auth-context";
 import { parseStoredStringArray } from "@/lib/db/adapter-compat";
@@ -33,7 +33,6 @@ import {
 } from "@/lib/db/schema/identity";
 import {
   authChallengeSessions,
-  haipPushedRequests,
   haipVpSessions,
   oauthAccessTokens,
   oauthClients,
@@ -100,7 +99,6 @@ export async function resetDatabase(): Promise<void> {
     await tx.delete(pushSubscriptions).run();
     await tx.delete(authChallengeSessions).run();
     await tx.delete(cibaRequests).run();
-    await tx.delete(haipPushedRequests).run();
     await tx.delete(haipVpSessions).run();
     // OAuth tables (delete children before parents)
     await tx.delete(agentTokenSnapshots).run();
@@ -304,4 +302,26 @@ export async function findStoredOpaqueAccessToken(token: string) {
         : {},
     scopes: parseStoredStringArray(row.scopes),
   };
+}
+
+/**
+ * Authorization requests the OAuth provider holds for `request_uri` values
+ * from `/oauth2/par`, before their first visit to the authorize endpoint.
+ */
+export async function findPushedAuthorizationQueries(): Promise<
+  Record<string, unknown>[]
+> {
+  const rows = await db
+    .select({ value: verifications.value })
+    .from(verifications)
+    .where(
+      and(
+        like(verifications.identifier, "pushed_authorization_request:%"),
+        notLike(verifications.identifier, "%:loaded")
+      )
+    )
+    .all();
+  return rows.map(
+    (row) => (JSON.parse(row.value) as { query: Record<string, unknown> }).query
+  );
 }

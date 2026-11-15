@@ -339,7 +339,7 @@ describe("RFC 7009 token revocation", () => {
     ).toEqual({
       status: 401,
       challenge:
-        'DPoP error="invalid_token", error_description="access token revoked", algs="ES256"',
+        'DPoP error="invalid_token", error_description="access token revoked", resource_metadata="http://localhost:3000/.well-known/oauth-protected-resource", algs="ES256"',
     });
     expect(
       await userInfoRefusal({ authorization: `Bearer ${tokens.accessToken}` })

@@ -62,7 +62,7 @@ describe("GET /api/auth/oauth2/validity", () => {
 
     expect(response.status).toBe(401);
     expect(response.headers.get("WWW-Authenticate")).toBe(
-      `Bearer ${RESOURCE_METADATA}`
+      `Bearer ${RESOURCE_METADATA}, DPoP ${RESOURCE_METADATA}, algs="ES256"`
     );
     await expect(response.json()).resolves.not.toHaveProperty("error");
   });
@@ -98,7 +98,7 @@ describe("GET /api/auth/oauth2/validity", () => {
     );
 
     expect(response.headers.get("WWW-Authenticate")).toBe(
-      'DPoP error="invalid_token", error_description="Invalid access token", algs="ES256"'
+      'DPoP error="invalid_token", error_description="Invalid access token", resource_metadata="http://localhost:3000/.well-known/oauth-protected-resource", algs="ES256"'
     );
   });
 
@@ -116,7 +116,7 @@ describe("GET /api/auth/oauth2/validity", () => {
 
     expect(response.status).toBe(401);
     expect(response.headers.get("WWW-Authenticate")).toBe(
-      `DPoP error="invalid_dpop_proof", error_description="DPoP proof typ must be 'dpop+jwt'", algs="ES256"`
+      `DPoP error="invalid_dpop_proof", error_description="DPoP proof typ must be 'dpop+jwt'", resource_metadata="http://localhost:3000/.well-known/oauth-protected-resource", algs="ES256"`
     );
     await expect(response.json()).resolves.toMatchObject({
       error: "invalid_dpop_proof",

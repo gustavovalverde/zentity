@@ -173,7 +173,9 @@ async function resolveCibaActor(
     pending && pending.authReqIdHash === params.referenceId
       ? pending.agentClaims?.act
       : undefined;
-  return agentActor ? { ...agentActor } : { sub: params.client.clientId };
+  return agentActor
+    ? { ...agentActor }
+    : { sub: params.client.clientId, sub_profile: "service" };
 }
 
 /**
