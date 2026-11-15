@@ -8,39 +8,28 @@ import {
   getBbJsVersion,
   getCircuitIdentity,
 } from "@/lib/privacy/zk/noir/verifier";
-import { PROOF_TYPE_SPECS } from "@/lib/privacy/zk/proof-types";
+import { PROOF_TYPE_SPECS, ProofType } from "@/lib/privacy/zk/proof-types";
 
 export async function GET(request: Request) {
   const requestContext = resolveRequestContext(request.headers);
   attachRequestContextToSpan(requestContext);
   const bbVersion = getBbJsVersion();
-  const [age, docValidity, nationality, faceMatch] = await Promise.all([
-    getCircuitIdentity("age_verification"),
-    getCircuitIdentity("doc_validity"),
-    getCircuitIdentity("nationality_membership"),
-    getCircuitIdentity("face_match"),
-  ]);
+  const circuits = await Promise.all(
+    Object.values(ProofType).map(
+      async (circuit) =>
+        [
+          circuit,
+          {
+            ...(await getCircuitIdentity(circuit)),
+            spec: PROOF_TYPE_SPECS[circuit],
+          },
+        ] as const
+    )
+  );
 
   return NextResponse.json({
     generatedAt: new Date().toISOString(),
     bbVersion,
-    circuits: {
-      age_verification: {
-        ...age,
-        spec: PROOF_TYPE_SPECS.age_verification,
-      },
-      doc_validity: {
-        ...docValidity,
-        spec: PROOF_TYPE_SPECS.doc_validity,
-      },
-      nationality_membership: {
-        ...nationality,
-        spec: PROOF_TYPE_SPECS.nationality_membership,
-      },
-      face_match: {
-        ...faceMatch,
-        spec: PROOF_TYPE_SPECS.face_match,
-      },
-    },
+    circuits: Object.fromEntries(circuits),
   });
 }
