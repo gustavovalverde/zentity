@@ -9,6 +9,7 @@
  * 2. Set type to "confidential" (encrypted)
  * 3. Configure contracts addresses via env vars
  * 4. Enable via NEXT_PUBLIC_ENABLE_{NETWORK}=true
+ * 5. Add the viem chain to VIEM_CHAINS so getViemChain resolves its chain ID
  */
 import "server-only";
 

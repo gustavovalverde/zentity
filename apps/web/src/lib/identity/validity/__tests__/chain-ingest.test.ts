@@ -178,6 +178,18 @@ describe("ingestChainValidityEvents", () => {
     expect(attestation?.blockNumber).toBe(10);
   });
 
+  it("rejects an unsupported chain before reading any block", async () => {
+    mockNetwork.chainId = 1;
+    try {
+      await expect(
+        ingestChainValidityEvents({ networkId: "confidential_sepolia" })
+      ).rejects.toThrow("Unsupported chain ID: 1");
+      expect(mockGetBlockNumber).not.toHaveBeenCalled();
+    } finally {
+      mockNetwork.chainId = 11_155_111;
+    }
+  });
+
   it("treats a replayed chain revocation as a duplicate and keeps the attestation unrevoked", async () => {
     const { attestationId, userId } = await seedConfirmedAttestation();
     await db
