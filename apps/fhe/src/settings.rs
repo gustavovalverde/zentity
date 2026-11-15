@@ -126,10 +126,6 @@ Set INTERNAL_SERVICE_TOKEN or INTERNAL_SERVICE_TOKEN_REQUIRED=0."
         self.internal_token.clone()
     }
 
-    pub fn internal_token_required(&self) -> bool {
-        self.internal_token_required
-    }
-
     pub fn body_limit_bytes(&self) -> usize {
         self.body_limit_bytes
     }
@@ -149,6 +145,11 @@ Set INTERNAL_SERVICE_TOKEN or INTERNAL_SERVICE_TOKEN_REQUIRED=0."
         self
     }
 
+    pub fn with_request_timeout(mut self, timeout: Duration) -> Self {
+        self.request_timeout_ms = u64::try_from(timeout.as_millis()).unwrap_or(u64::MAX);
+        self
+    }
+
     pub fn concurrency_limit(&self) -> usize {
         self.concurrency_limit
     }
@@ -159,9 +160,5 @@ Set INTERNAL_SERVICE_TOKEN or INTERNAL_SERVICE_TOKEN_REQUIRED=0."
 
     pub fn request_timeout(&self) -> Duration {
         Duration::from_millis(self.request_timeout_ms)
-    }
-
-    pub fn request_timeout_ms(&self) -> u64 {
-        self.request_timeout_ms
     }
 }

@@ -3,9 +3,6 @@
 use std::sync::Arc;
 use std::thread;
 
-use axum::body::Bytes;
-use axum::http::HeaderMap;
-use axum::response::Response;
 use serde::{Deserialize, Serialize};
 use serde_bytes::ByteBuf;
 use tracing::info_span;
@@ -13,7 +10,7 @@ use tracing::info_span;
 use super::run_cpu_bound;
 use crate::crypto;
 use crate::error::FheError;
-use crate::transport;
+use crate::transport::MsgPack;
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -36,10 +33,10 @@ pub struct EncryptBatchResponse {
     liveness_score_ciphertext: Option<ByteBuf>,
 }
 
-#[tracing::instrument(skip(headers, body), fields(request_bytes = body.len()))]
-pub async fn encrypt_batch(headers: HeaderMap, body: Bytes) -> Result<Response, FheError> {
-    let payload: EncryptBatchRequest = transport::decode_msgpack(&headers, body)?;
-
+#[tracing::instrument(skip_all)]
+pub async fn encrypt_batch(
+    MsgPack(payload): MsgPack<EncryptBatchRequest>,
+) -> Result<MsgPack<EncryptBatchResponse>, FheError> {
     if payload.dob_days.is_none()
         && payload.country_code.is_none()
         && payload.compliance_level.is_none()
@@ -150,5 +147,5 @@ pub async fn encrypt_batch(headers: HeaderMap, body: Bytes) -> Result<Response, 
     })
     .await?;
 
-    transport::encode_msgpack(&headers, &response)
+    Ok(MsgPack(response))
 }

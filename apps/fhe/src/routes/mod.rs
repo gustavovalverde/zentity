@@ -1,8 +1,6 @@
 //! HTTP Route handlers
 
 mod batch;
-mod compliance;
-mod country;
 mod dob;
 mod health;
 mod keys;
@@ -17,12 +15,10 @@ use tokio::task;
 use crate::error::FheError;
 
 pub use batch::encrypt_batch;
-pub use compliance::encrypt_compliance_level;
-pub use country::encrypt_country_code;
-pub use dob::{encrypt_dob_days, verify_age_from_dob};
+pub use dob::verify_age_from_dob;
 pub use health::{build_info, health};
 pub use keys::register_key;
-pub use liveness::{encrypt_liveness, verify_liveness_threshold};
+pub use liveness::verify_liveness_threshold;
 
 struct CpuLimiter {
     semaphore: Arc<Semaphore>,
@@ -41,24 +37,14 @@ impl CpuLimiter {
 
 static CPU_LIMITER: OnceLock<CpuLimiter> = OnceLock::new();
 
-fn default_cpu_limit() -> usize {
-    std::env::var("FHE_CPU_CONCURRENCY_LIMIT")
-        .ok()
-        .and_then(|value| value.parse::<usize>().ok())
-        .filter(|value| *value > 0)
-        .unwrap_or_else(|| {
-            std::thread::available_parallelism()
-                .map(|value| value.get())
-                .unwrap_or(4)
-        })
-}
-
 pub(crate) fn init_cpu_limiter(limit: usize) {
     let _ = CPU_LIMITER.set(CpuLimiter::new(limit));
 }
 
 fn cpu_limiter() -> &'static CpuLimiter {
-    CPU_LIMITER.get_or_init(|| CpuLimiter::new(default_cpu_limit()))
+    CPU_LIMITER
+        .get()
+        .expect("build_router initializes the CPU limiter before any handler runs")
 }
 
 pub(crate) async fn run_cpu_bound<F, T>(f: F) -> Result<T, FheError>

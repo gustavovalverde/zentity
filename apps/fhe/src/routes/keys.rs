@@ -1,8 +1,5 @@
 //! Key registration endpoints.
 
-use axum::body::Bytes;
-use axum::http::HeaderMap;
-use axum::response::Response;
 use serde::{Deserialize, Serialize};
 use std::time::Instant;
 use tracing::info_span;
@@ -10,7 +7,7 @@ use tracing::info_span;
 use super::run_cpu_bound;
 use crate::crypto;
 use crate::error::FheError;
-use crate::transport;
+use crate::transport::MsgPack;
 
 const MIN_KEY_BYTES: usize = 16;
 const MAX_PUBLIC_KEY_BYTES: usize = 16 * 1024 * 1024; // 16 MB
@@ -57,12 +54,10 @@ fn validate_key_sizes(public_key_bytes: usize, server_key_bytes: usize) -> Resul
     Ok(())
 }
 
-#[tracing::instrument(
-    skip(headers, body),
-    fields(request_bytes = body.len(), decode_ms = tracing::field::Empty)
-)]
-pub async fn register_key(headers: HeaderMap, body: Bytes) -> Result<Response, FheError> {
-    let payload: RegisterKeyRequest = transport::decode_msgpack(&headers, body)?;
+#[tracing::instrument(skip_all, fields(decode_ms = tracing::field::Empty))]
+pub async fn register_key(
+    MsgPack(payload): MsgPack<RegisterKeyRequest>,
+) -> Result<MsgPack<RegisterKeyResponse>, FheError> {
     let RegisterKeyRequest {
         server_key,
         public_key,
@@ -91,5 +86,5 @@ pub async fn register_key(headers: HeaderMap, body: Bytes) -> Result<Response, F
     .await?;
     tracing::Span::current().record("decode_ms", tracing::field::display(decode_ms));
 
-    transport::encode_msgpack(&headers, &RegisterKeyResponse { key_id })
+    Ok(MsgPack(RegisterKeyResponse { key_id }))
 }
