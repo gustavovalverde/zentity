@@ -86,6 +86,20 @@ describe("CIBA", () => {
     );
   });
 
+  it("throws a status-only error when the poll error body is not JSON", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      new Response("<html>Bad Gateway</html>", { status: 502 })
+    );
+
+    await expect(
+      pollCibaTokenOnce(BASE_PARAMS, {
+        authReqId: "req-abc",
+        expiresIn: 300,
+        intervalSeconds: 5,
+      })
+    ).rejects.toThrow("CIBA poll error: HTTP 502");
+  });
+
   it("rejects an approved token response without access_token", async () => {
     vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
       new Response(JSON.stringify({ token_type: "DPoP" }), { status: 200 })
