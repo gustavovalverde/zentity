@@ -43,6 +43,7 @@
     "node-tfhe",
     "pino-pretty",
     "tailwindcss",
+    "tfhe",
     "tw-animate-css"
   ],
   "ignoreBinaries": ["nargo"],
