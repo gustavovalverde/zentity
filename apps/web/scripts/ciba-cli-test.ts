@@ -9,6 +9,9 @@
  * Usage: pnpm exec tsx scripts/ciba-cli-test.ts --login-hint <subject> [options]
  */
 
+import { setTimeout as sleep } from "node:timers/promises";
+import { parseArgs as parseCliArgs, stripVTControlCharacters } from "node:util";
+
 import { createDpopClient, type DpopClient } from "@zentity/sdk/rp";
 import { calculateJwkThumbprint, decodeJwt } from "jose";
 
@@ -39,23 +42,19 @@ function heading(step: string, title: string) {
   console.log(`\n${c.bold}${c.blue}━━━ Step ${step}: ${title} ━━━${c.reset}\n`);
 }
 function box(lines: string[]) {
-  const maxLen = Math.max(...lines.map((l) => stripAnsi(l).length));
+  const maxLen = Math.max(
+    ...lines.map((l) => stripVTControlCharacters(l).length)
+  );
   const border = "─".repeat(maxLen + 2);
   console.log(`${c.yellow}  ┌${border}┐${c.reset}`);
   for (const line of lines) {
-    const pad = " ".repeat(maxLen - stripAnsi(line).length);
+    const pad = " ".repeat(maxLen - stripVTControlCharacters(line).length);
     console.log(
       `${c.yellow}  │${c.reset} ${line}${pad} ${c.yellow}│${c.reset}`
     );
   }
   console.log(`${c.yellow}  └${border}┘${c.reset}`);
 }
-// biome-ignore lint/suspicious/noControlCharactersInRegex: ANSI escape stripping requires matching ESC control character
-const ANSI_RE = /\x1b\[[0-9;]*m/g;
-function stripAnsi(s: string): string {
-  return s.replace(ANSI_RE, "");
-}
-
 // ── Arg parsing ─────────────────────────────────────────────────────────────
 
 interface Args {
@@ -67,63 +66,48 @@ interface Args {
   timeout: number;
 }
 
-function parseArgs(): Args {
-  const argv = process.argv.slice(2);
-  const args: Partial<Args> = {
-    baseUrl: "http://localhost:3000",
-    scope: "openid",
-    timeout: 300,
-  };
+function readCliValues() {
+  try {
+    return parseCliArgs({
+      options: {
+        "login-hint": { type: "string" },
+        "base-url": { type: "string", default: "http://localhost:3000" },
+        "client-id": { type: "string" },
+        scope: { type: "string", default: "openid" },
+        "binding-message": { type: "string" },
+        timeout: { type: "string", default: "300" },
+        help: { type: "boolean", short: "h" },
+      },
+    }).values;
+  } catch (error) {
+    fail(error instanceof Error ? error.message : String(error));
+    printUsage();
+    process.exit(1);
+  }
+}
 
-  for (let i = 0; i < argv.length; i++) {
-    const arg = argv[i];
-    const next = argv[i + 1] ?? "";
-    switch (arg) {
-      case "--login-hint":
-        args.loginHint = next;
-        i++;
-        break;
-      case "--base-url":
-        args.baseUrl = next;
-        i++;
-        break;
-      case "--client-id":
-        args.clientId = next;
-        i++;
-        break;
-      case "--scope":
-        args.scope = next;
-        i++;
-        break;
-      case "--binding-message":
-        args.bindingMessage = next;
-        i++;
-        break;
-      case "--timeout":
-        args.timeout = Number.parseInt(next ?? "30000", 10);
-        i++;
-        break;
-      case "--help":
-      case "-h":
-        printUsage();
-        process.exit(0);
-        break;
-      case "--":
-        break;
-      default:
-        fail(`Unknown option: ${arg}`);
-        printUsage();
-        process.exit(1);
-    }
+function parseArgs(): Args {
+  const values = readCliValues();
+  if (values.help) {
+    printUsage();
+    process.exit(0);
   }
 
-  if (!args.loginHint) {
+  const loginHint = values["login-hint"];
+  if (!loginHint) {
     fail("--login-hint is required");
     printUsage();
     process.exit(1);
   }
 
-  return args as Args;
+  return {
+    baseUrl: values["base-url"],
+    bindingMessage: values["binding-message"],
+    clientId: values["client-id"],
+    loginHint,
+    scope: values.scope,
+    timeout: Number.parseInt(values.timeout, 10),
+  };
 }
 
 function printUsage() {
@@ -551,10 +535,6 @@ async function step5ProtectedResource(base: string) {
 }
 
 // ── Main ────────────────────────────────────────────────────────────────────
-
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
 
 async function main() {
   const args = parseArgs();

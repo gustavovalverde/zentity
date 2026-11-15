@@ -1,5 +1,6 @@
 import crypto from "node:crypto";
 import { writeFileSync } from "node:fs";
+import { parseArgs } from "node:util";
 import { gunzipSync, gzipSync } from "node:zlib";
 
 import {
@@ -197,37 +198,25 @@ async function fetchFhe<T>(path: string, payload: unknown): Promise<T> {
   return decode(decodedBytes) as T;
 }
 
-function parseArgs(argv: string[]) {
-  const args = new Map<string, string | true>();
-  for (let i = 0; i < argv.length; i++) {
-    const raw = argv[i];
-    if (!raw?.startsWith("--")) {
-      continue;
-    }
-    const key = raw;
-    const next = argv[i + 1];
-    if (!next || next.startsWith("--")) {
-      args.set(key, true);
-    } else {
-      args.set(key, next);
-      i++;
-    }
-  }
+function parseBenchmarkArgs(argv: string[]) {
+  const { values } = parseArgs({
+    args: argv,
+    options: {
+      out: { type: "string", default: "docs/papers/zkproof8/benchmarks.json" },
+      "runs-zk": { type: "string", default: "10" },
+      "runs-fhe": { type: "string", default: "1" },
+      "skip-fhe": { type: "boolean", default: false },
+      "only-zk": { type: "boolean", default: false },
+      "only-fhe": { type: "boolean", default: false },
+    },
+  });
   return {
-    out:
-      (args.get("--out") as string | undefined) ??
-      "docs/papers/zkproof8/benchmarks.json",
-    runsZk: Number.parseInt(
-      (args.get("--runs-zk") as string | undefined) ?? "10",
-      10
-    ),
-    runsFhe: Number.parseInt(
-      (args.get("--runs-fhe") as string | undefined) ?? "1",
-      10
-    ),
-    skipFhe: Boolean(args.get("--skip-fhe")),
-    onlyZk: Boolean(args.get("--only-zk")),
-    onlyFhe: Boolean(args.get("--only-fhe")),
+    out: values.out,
+    runsZk: Number.parseInt(values["runs-zk"], 10),
+    runsFhe: Number.parseInt(values["runs-fhe"], 10),
+    skipFhe: values["skip-fhe"],
+    onlyZk: values["only-zk"],
+    onlyFhe: values["only-fhe"],
   };
 }
 
@@ -569,7 +558,7 @@ function printSummary(out: BenchmarkOutput): void {
 }
 
 async function main() {
-  const args = parseArgs(process.argv.slice(2));
+  const args = parseBenchmarkArgs(process.argv.slice(2));
   if (args.onlyZk && args.onlyFhe) {
     throw new Error("Use only one of --only-zk or --only-fhe");
   }
