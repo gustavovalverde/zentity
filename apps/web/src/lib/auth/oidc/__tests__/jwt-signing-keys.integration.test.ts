@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { afterAll, beforeEach, describe, expect, it } from "vitest";
 
 import { db } from "@/lib/db/connection";
 import { jwks } from "@/lib/db/schema/oauth-provider";
@@ -13,6 +13,12 @@ import {
 describe("getJwtSigningKeys", () => {
   beforeEach(async () => {
     await resetDatabase();
+    await db.delete(jwks).run();
+  });
+
+  // resetDatabase keeps signing keys, so the fake keys above would otherwise
+  // sign tokens in whichever integration file runs next.
+  afterAll(async () => {
     await db.delete(jwks).run();
   });
 
