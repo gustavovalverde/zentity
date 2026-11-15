@@ -80,7 +80,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
         <style>{"html { scroll-behavior: smooth; }"}</style>
       </head>
       <body className="antialiased">
-        {children}
+        <RootProvider>{children}</RootProvider>
         <ScrollRestoration />
         <Scripts />
       </body>
@@ -89,9 +89,5 @@ export function Layout({ children }: { children: React.ReactNode }) {
 }
 
 export default function Root() {
-  return (
-    <RootProvider>
-      <Outlet />
-    </RootProvider>
-  );
+  return <Outlet />;
 }

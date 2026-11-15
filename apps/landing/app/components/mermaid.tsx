@@ -16,7 +16,7 @@ export function Mermaid({ chart }: { chart: string }) {
   const { resolvedTheme: theme } = useTheme();
 
   useEffect(() => {
-    // next-themes resolves the theme after mount.
+    // No resolved theme on the server or outside the provider.
     if (!theme) return;
     const key = getCacheKey(chart, theme);
     const cached = cache.get(key);
