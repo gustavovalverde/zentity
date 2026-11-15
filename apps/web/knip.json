@@ -3,7 +3,16 @@
   "entry": [
     "vitest.global-setup.ts",
     "vitest.setup.mts",
-    "vitest.integration.setup.mts"
+    "vitest.integration.setup.mts",
+    "e2e/run-global-setup.ts",
+    "e2e/automation/*.ts",
+    "e2e/wallet-setup/*.ts",
+    "scripts/*.ts"
+  ],
+  "project": [
+    "**/*.{js,mjs,cjs,jsx,ts,tsx,mts,cts}!",
+    "!e2e/**!",
+    "!scripts/**!"
   ],
   "ignoreIssues": {
     "src/components/ui/**": ["exports", "types"],
@@ -24,11 +33,8 @@
     "src/lib/trpc/routers/zk.ts": ["exports"]
   },
   "ignore": [
-    "scripts/**",
-    "playwright.config.mts",
     "public/coi-serviceworker.js",
     "public/push-sw.js",
-    "e2e/**",
     "src/test-utils/**",
     "src/lib/turbopack-stubs/**",
     "src/**/*.d.ts",
@@ -47,7 +53,10 @@
     "tfhe",
     "tw-animate-css"
   ],
-  "ignoreBinaries": ["nargo"],
+  "ignoreBinaries": ["nargo", "tsx"],
+  "playwright": {
+    "config": ["playwright.config.mts"]
+  },
   "vitest": {
     "config": ["vitest.config.mts", "vitest.unit.config.mts"]
   }

@@ -26,7 +26,7 @@
     "type-check": "tsc --noEmit",
     "check-all": "run-p --aggregate-output type-check lint:check lint:md:check lint:types knip circuits:check-versions build",
     "fix-all": "pnpm run type-check && pnpm run lint:fix && pnpm run lint:md && pnpm run knip:fix",
-    "knip": "knip --strict --treat-config-hints-as-errors",
+    "knip": "knip --strict --treat-config-hints-as-errors && knip --include files,exports --no-config-hints",
     "knip:production": "knip --strict --production --treat-config-hints-as-errors",
     "knip:fix": "knip --fix --strict --allow-remove-files",
     "format": "biome format --write .",
