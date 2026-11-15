@@ -3,6 +3,7 @@ import { parseArgs } from "node:util";
 
 const DEFAULT_MCP_PORT = 3300;
 const MIN_DPOP_NONCE_SECRET_LENGTH = 32;
+const DECIMAL_INTEGER_RE = /^\d+$/;
 
 /** Reads `--transport` and `--port` (also as `--port=3300`); other flags are ignored. */
 export function parseCliArgs(args: string[]): {
@@ -25,10 +26,10 @@ export function parseCliArgs(args: string[]): {
   const port =
     values.port === undefined ? DEFAULT_MCP_PORT : Number(values.port);
   if (
-    typeof values.port === "boolean" ||
-    !Number.isInteger(port) ||
-    port < 0 ||
-    port > 65_535
+    values.port !== undefined &&
+    (typeof values.port !== "string" ||
+      !DECIMAL_INTEGER_RE.test(values.port) ||
+      port > 65_535)
   ) {
     throw new Error(`--port must be a port number, got "${values.port}"`);
   }

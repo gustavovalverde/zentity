@@ -39,6 +39,7 @@ describe("parseCliArgs", () => {
 
   it("rejects a port that is missing or not a number", () => {
     expect(() => parseCliArgs(["--port"])).toThrow("--port must be");
+    expect(() => parseCliArgs(["--port="])).toThrow("--port must be");
     expect(() => parseCliArgs(["--port", "abc"])).toThrow("--port must be");
   });
 });
