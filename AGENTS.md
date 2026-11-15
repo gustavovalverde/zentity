@@ -488,5 +488,5 @@ NEXT_PUBLIC_ZKPASSPORT_ENABLED=false     # Enable NFC chip verification via ZKPa
 DOCUMENT_OCR_ENABLED=false               # Offer document scan (requires the OCR service)
 
 # Optional overrides
-OIDC4VP_JWKS_URL=                        # Override JWKS endpoint for VP token verification
+OIDC4VP_JWKS_URL=                        # Fetch VP issuer keys from this URL instead of the in-process JWKS
 ```

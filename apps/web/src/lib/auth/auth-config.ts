@@ -137,7 +137,11 @@ import {
   normalizeUserTokenResources,
 } from "@/lib/auth/oidc/haip/resource-metadata";
 import { loadX5cChain } from "@/lib/auth/oidc/haip/x5c-chain";
-import { signingKeyOptions, signJwt } from "@/lib/auth/oidc/jwt-signer";
+import {
+  getPublishedJwks,
+  signingKeyOptions,
+  signJwt,
+} from "@/lib/auth/oidc/jwt-signer";
 import { validateResourceUri } from "@/lib/auth/oidc/oauth-request";
 import {
   adoptZentityPairwiseSector,
@@ -2318,10 +2322,16 @@ export const auth = betterAuth({
           supportedEnc: ["A128GCM", "A256GCM"],
         }),
       },
-      resolveIssuerJwks: async (issuer: string) => {
-        const jwksUrl =
-          env.OIDC4VP_JWKS_URL ?? joinAuthIssuerPath(issuer, "oauth2/jwks");
-        const response = await fetch(jwksUrl);
+      // allowedIssuers admits only this issuer, so credentials verify against
+      // its published keys. Status list tokens reach the resolver without the
+      // allowedIssuers check, so their `iss` never chooses a URL to fetch.
+      resolveIssuerJwks: async () => {
+        if (!env.OIDC4VP_JWKS_URL) {
+          return (await getPublishedJwks()).keys;
+        }
+        const response = await fetch(env.OIDC4VP_JWKS_URL, {
+          signal: AbortSignal.timeout(5000),
+        });
         if (!response.ok) {
           throw new Error("Unable to resolve issuer JWKS");
         }

@@ -2,7 +2,7 @@ import type { Session } from "@/lib/auth/auth-config";
 
 import { eq } from "drizzle-orm";
 import { decodeProtectedHeader } from "jose";
-import { afterAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { verifyAuthIssuedJwt } from "@/lib/auth/jwt";
 import { getAuthIssuer } from "@/lib/auth/oidc/well-known";
@@ -224,6 +224,27 @@ describe("JWKS signing key rotation", () => {
 
       expect(served).toEqual(await getPublishedJwks());
       expect(served.keys.map((key) => key.kid)).not.toContain(original);
+    });
+
+    it("gives the OID4VP verifier the published keys whatever issuer it names", async () => {
+      await signedKid("RS256");
+      const { auth } = await import("@/lib/auth/auth-config");
+      const plugin = auth.options.plugins.find(
+        (candidate) => candidate.id === "oidc4vp"
+      ) as unknown as {
+        options: {
+          resolveIssuerJwks: (issuer: string) => Promise<unknown>;
+        };
+      };
+      const fetchSpy = vi.spyOn(globalThis, "fetch");
+
+      const keys = await plugin.options.resolveIssuerJwks(
+        "https://issuer.example"
+      );
+
+      expect(keys).toEqual((await getPublishedJwks()).keys);
+      expect(fetchSpy).not.toHaveBeenCalled();
+      fetchSpy.mockRestore();
     });
   });
 
