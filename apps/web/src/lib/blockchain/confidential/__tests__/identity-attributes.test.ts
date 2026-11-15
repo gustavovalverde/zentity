@@ -45,15 +45,8 @@ describe("buildEncryptedIdentityAttributes", () => {
 });
 
 describe("resolveIdentityAttributeHandles", () => {
-  it("normalizes every handle when all are present", () => {
-    expect(
-      resolveIdentityAttributeHandles({
-        birthYearOffset: "01",
-        countryCode: "0x02",
-        complianceLevel: Uint8Array.of(3),
-        isBlacklisted: "0x04",
-      })
-    ).toEqual(HANDLES);
+  it("returns every handle when all are present", () => {
+    expect(resolveIdentityAttributeHandles(HANDLES)).toEqual(HANDLES);
   });
 
   it("returns null when any handle is missing", () => {

@@ -308,7 +308,7 @@ export function OnChainAttestation({
         walletAddress: address,
         attestedWalletAddress:
           selectedNetworkData.attestation?.walletAddress ?? null,
-        currentRevision: (currentRevision as bigint | undefined) ?? 0n,
+        currentRevision: currentRevision ?? 0n,
         status: selectedNetworkData.attestation?.status ?? null,
         needsReAttestation,
       });

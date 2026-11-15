@@ -6,8 +6,8 @@ const HEX_STRING_PATTERN = /^0x[0-9a-fA-F]+$/;
 
 export type EncryptedHandle = `0x${string}`;
 
-export function normalizeEncryptedHandle(
-  encryptedHandle: unknown
+function normalizeEncryptedHandle(
+  encryptedHandle: Uint8Array | string | undefined
 ): EncryptedHandle | undefined {
   if (!encryptedHandle) {
     return;
@@ -20,11 +20,7 @@ export function normalizeEncryptedHandle(
     return HEX_STRING_PATTERN.test(hex) ? (hex as EncryptedHandle) : undefined;
   }
 
-  if (encryptedHandle instanceof Uint8Array) {
-    return bytesToHex(encryptedHandle) as EncryptedHandle;
-  }
-
-  return;
+  return bytesToHex(encryptedHandle);
 }
 
 function requireNormalizedHex(
