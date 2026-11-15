@@ -1,6 +1,6 @@
 import "server-only";
 
-import { gunzipSync, gzipSync } from "node:zlib";
+import { gzipSync } from "node:zlib";
 
 import { decode, encode } from "@msgpack/msgpack";
 
@@ -99,15 +99,13 @@ async function fetchMsgpack<T>(
     });
   }
 
-  const buffer = Buffer.from(await response.arrayBuffer());
-  const hasGzipMagic =
-    buffer.length >= 2 && buffer[0] === 0x1f && buffer[1] === 0x8b;
-  const decodedBytes = hasGzipMagic ? gunzipSync(buffer) : buffer;
+  // fetch already undoes the response's Content-Encoding.
+  const bytes = new Uint8Array(await response.arrayBuffer());
 
   try {
-    return decode(decodedBytes) as T;
+    return decode(bytes) as T;
   } catch {
-    const bodyText = buffer.toString("utf8");
+    const bodyText = new TextDecoder().decode(bytes);
     throw new HttpError({
       message: "Invalid msgpack response",
       status: response.status,
