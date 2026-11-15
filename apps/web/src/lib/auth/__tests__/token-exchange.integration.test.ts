@@ -176,7 +176,7 @@ async function exchangedClaims(
     throw new Error("Exchanged opaque token is not stored");
   }
   return {
-    ...row.exchangeClaims,
+    ...row.accessTokenClaims,
     sub: row.userId,
     scope: row.scopes.join(" "),
     jti: row.referenceId,
@@ -1016,6 +1016,9 @@ describe("Token Exchange (RFC 8693)", () => {
         sub: clientId,
         sub_profile: "service",
       });
+      expect(introspection[AUTHENTICATION_CONTEXT_CLAIM]).toBe(
+        defaultAuthContextId
+      );
     });
 
     it("nests the actor the provider stored on an opaque subject token", async () => {
@@ -1028,8 +1031,10 @@ describe("Token Exchange (RFC 8693)", () => {
       await db
         .insert(oauthAccessTokens)
         .values({
+          accessTokenClaims: JSON.stringify({
+            [AUTHENTICATION_CONTEXT_CLAIM]: defaultAuthContextId,
+          }),
           act: JSON.stringify({ sub: "ciba-agent" }),
-          authContextId: defaultAuthContextId,
           clientId: cibaClientId,
           confirmation: JSON.stringify({
             jkt: await calculateJwkThumbprint(dpopKeyPair.jwk),

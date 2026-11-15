@@ -49,10 +49,7 @@ import {
 } from "@/lib/auth/auth-context";
 import { verifyAuthIssuedJwt } from "@/lib/auth/jwt";
 import { PROTECTED_RESOURCE_METADATA_FIELD } from "@/lib/auth/oidc/client-metadata";
-import {
-  loadOpaqueAccessTokenExtensions,
-  mintOpaqueAccessToken,
-} from "@/lib/auth/oidc/haip/opaque-access-token";
+import { mintOpaqueAccessToken } from "@/lib/auth/oidc/haip/opaque-access-token";
 import {
   getProtectedResourceAudiences,
   isZentityHostedResource,
@@ -362,26 +359,20 @@ function createTokenExchangeHandler(): OAuthExtensionGrantHandler {
             typeof verified.reference_id === "string"
               ? verified.reference_id
               : undefined;
-          const [extensions, tokenSnapshot] = await Promise.all([
-            loadOpaqueAccessTokenExtensions(subjectToken),
-            referenceId
-              ? resolveTokenSnapshotForTokenJti(referenceId, subjectClientId)
-              : null,
-          ]);
+          const tokenSnapshot = referenceId
+            ? await resolveTokenSnapshotForTokenJti(
+                referenceId,
+                subjectClientId
+              )
+            : null;
 
+          // The provider returns the token's stored claims in its payload. The
+          // audience is left out: only a JWT subject may be exchanged by the
+          // resource server it names.
+          const { aud: _audience, ...storedPayload } = verified;
           subjectPayload = {
-            sub: subjectUserId,
-            azp: subjectClientId,
-            client_id: subjectClientId,
-            scope: verified.scope,
-            exp: verified.exp,
-            ...(typeof verified.sid === "string" ? { sid: verified.sid } : {}),
-            ...(extensions?.authContextId
-              ? { [AUTHENTICATION_CONTEXT_CLAIM]: extensions.authContextId }
-              : {}),
+            ...storedPayload,
             ...(referenceId ? { jti: referenceId } : {}),
-            ...(verified.act ? { act: verified.act } : {}),
-            ...(extensions?.exchangeClaims ?? {}),
             ...(tokenSnapshot?.claims ?? {}),
           };
         }
@@ -765,19 +756,22 @@ function createTokenExchangeHandler(): OAuthExtensionGrantHandler {
     const { act: agentActor, ...agentClaims } =
       exchangedAccessTokenClaims ?? {};
     const act: OAuthActorClaim = agentActor ? { ...agentActor } : actClaim;
-    const exchangeClaims: Record<string, unknown> = {
+    // A session-bound token resolves its authentication through the session.
+    const accessTokenClaims: Record<string, unknown> = {
       ...(includesBootstrapScope
         ? { zentity_token_use: AGENT_BOOTSTRAP_TOKEN_USE }
         : {}),
+      ...(subjectSessionId
+        ? {}
+        : { [AUTHENTICATION_CONTEXT_CLAIM]: subjectAuth.id }),
       ...agentClaims,
     };
     const accessToken = isZentityHostedResource(targetAudience)
       ? await mintOpaqueAccessToken({
+          accessTokenClaims,
           act,
-          authContextId: subjectSessionId ? undefined : subjectAuth.id,
           clientId: client.clientId,
           dpopJkt,
-          exchangeClaims,
           expiresAt: new Date(exp * 1000),
           referenceId: jti,
           scopes: targetScopes,
@@ -795,10 +789,7 @@ function createTokenExchangeHandler(): OAuthExtensionGrantHandler {
             iat: now,
             exp,
             ...(subjectSessionId ? { sid: subjectSessionId } : {}),
-            ...(subjectSessionId
-              ? {}
-              : { [AUTHENTICATION_CONTEXT_CLAIM]: subjectAuth.id }),
-            ...exchangeClaims,
+            ...accessTokenClaims,
             act,
             ...(dpopJkt ? { cnf: { jkt: dpopJkt } } : {}),
           },

@@ -4,80 +4,22 @@ import type { OAuthActorClaim } from "@better-auth/oauth-provider";
 
 import { createHash, randomBytes } from "node:crypto";
 
-import { eq } from "drizzle-orm";
-
 import { db } from "@/lib/db/connection";
 import { oauthAccessTokens } from "@/lib/db/schema/oauth-provider";
 
 /**
- * Zentity's opaque access tokens live in the OAuth provider's token store, so
- * the provider validates, introspects, and revokes them like natively issued
- * ones, `act` included. Zentity keeps two extension columns the provider never
- * reads: the other claims a token exchange would otherwise put in a JWT, and
- * the authentication context of a token issued without a session.
- */
-
-interface OpaqueAccessTokenExtensions {
-  authContextId: string | null;
-  exchangeClaims: Record<string, unknown>;
-}
-
-// The provider's default `storeTokens: "hashed"` storage key.
-function hashOpaqueAccessToken(token: string): string {
-  return createHash("sha256").update(token).digest("base64url");
-}
-
-function parseExchangeClaims(raw: string | null): Record<string, unknown> {
-  if (!raw) {
-    return {};
-  }
-  try {
-    const parsed = JSON.parse(raw) as unknown;
-    return parsed && typeof parsed === "object"
-      ? (parsed as Record<string, unknown>)
-      : {};
-  } catch {
-    return {};
-  }
-}
-
-/**
- * Reads the Zentity extension columns of an opaque access token. Validate the
- * token with the provider first; this read checks nothing.
- */
-export async function loadOpaqueAccessTokenExtensions(
-  token: string
-): Promise<OpaqueAccessTokenExtensions | null> {
-  const row = await db
-    .select({
-      authContextId: oauthAccessTokens.authContextId,
-      exchangeClaims: oauthAccessTokens.exchangeClaims,
-    })
-    .from(oauthAccessTokens)
-    .where(eq(oauthAccessTokens.token, hashOpaqueAccessToken(token)))
-    .limit(1)
-    .get();
-  if (!row) {
-    return null;
-  }
-  return {
-    authContextId: row.authContextId,
-    exchangeClaims: parseExchangeClaims(row.exchangeClaims),
-  };
-}
-
-/**
  * Mints an opaque access token in the OAuth provider's token store, so
  * userinfo, introspection, and Zentity's resource servers resolve it like a
- * natively issued one. Claims the token would otherwise carry in a JWT are
- * kept server-side, `act` in the provider's own column.
+ * natively issued one. The claims the token would otherwise carry in a JWT
+ * are stored the way the provider stores a grant's per-issuance claims: `act`
+ * in its actor column and the rest in its claims column. The provider's
+ * `validateAccessToken` returns both in the token's payload.
  */
 export async function mintOpaqueAccessToken(input: {
+  accessTokenClaims?: Record<string, unknown> | undefined;
   act?: OAuthActorClaim | undefined;
-  authContextId?: string | undefined;
   clientId: string;
   dpopJkt?: string | undefined;
-  exchangeClaims: Record<string, unknown>;
   expiresAt: Date;
   referenceId: string;
   scopes: string[];
@@ -85,13 +27,14 @@ export async function mintOpaqueAccessToken(input: {
   userId: string;
 }): Promise<string> {
   const token = randomBytes(32).toString("base64url");
+  const accessTokenClaims = input.accessTokenClaims ?? {};
   await db
     .insert(oauthAccessTokens)
     .values({
-      token: hashOpaqueAccessToken(token),
+      // The provider's default `storeTokens: "hashed"` storage key.
+      token: createHash("sha256").update(token).digest("base64url"),
       clientId: input.clientId,
       sessionId: input.sessionId ?? null,
-      authContextId: input.authContextId ?? null,
       userId: input.userId,
       referenceId: input.referenceId,
       scopes: JSON.stringify(input.scopes),
@@ -100,7 +43,10 @@ export async function mintOpaqueAccessToken(input: {
         ? JSON.stringify({ jkt: input.dpopJkt })
         : null,
       act: input.act ? JSON.stringify(input.act) : null,
-      exchangeClaims: JSON.stringify(input.exchangeClaims),
+      accessTokenClaims:
+        Object.keys(accessTokenClaims).length > 0
+          ? JSON.stringify(accessTokenClaims)
+          : null,
     })
     .run();
   return token;

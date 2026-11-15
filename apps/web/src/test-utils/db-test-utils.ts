@@ -291,15 +291,15 @@ export async function findStoredOpaqueAccessToken(token: string) {
   if (!row) {
     return null;
   }
-  const exchangeClaims = parseJson(row.exchangeClaims);
+  const accessTokenClaims = parseJson(row.accessTokenClaims);
   return {
     ...row,
+    accessTokenClaims:
+      accessTokenClaims && typeof accessTokenClaims === "object"
+        ? (accessTokenClaims as Record<string, unknown>)
+        : {},
     act: parseJson(row.act),
     dpopJkt: getConfirmationJkt(parseJson(row.confirmation)) ?? null,
-    exchangeClaims:
-      exchangeClaims && typeof exchangeClaims === "object"
-        ? (exchangeClaims as Record<string, unknown>)
-        : {},
     scopes: parseStoredStringArray(row.scopes),
   };
 }

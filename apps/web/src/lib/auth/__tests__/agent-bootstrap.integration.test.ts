@@ -5,7 +5,10 @@ import { calculateJwkThumbprint } from "jose";
 import { beforeEach, describe, expect, it } from "vitest";
 
 import { AGENT_BOOTSTRAP_TOKEN_USE } from "@/lib/agents/session";
-import { createAuthenticationContext } from "@/lib/auth/auth-context";
+import {
+  AUTHENTICATION_CONTEXT_CLAIM,
+  createAuthenticationContext,
+} from "@/lib/auth/auth-context";
 import { TOKEN_EXCHANGE_GRANT_TYPE } from "@/lib/auth/oidc/token-exchange";
 import { db } from "@/lib/db/connection";
 import {
@@ -100,7 +103,9 @@ describe("agent bootstrap token exchange", () => {
     await db
       .insert(oauthAccessTokens)
       .values({
-        authContextId,
+        accessTokenClaims: JSON.stringify({
+          [AUTHENTICATION_CONTEXT_CLAIM]: authContextId,
+        }),
         clientId: CLIENT_ID,
         confirmation: JSON.stringify({ jkt: dpopJkt }),
         expiresAt: new Date(Date.now() + 3_600_000),
@@ -128,7 +133,7 @@ describe("agent bootstrap token exchange", () => {
 
     const bootstrapToken = json.access_token as string;
     const stored = await findStoredOpaqueAccessToken(bootstrapToken);
-    expect(stored?.exchangeClaims.zentity_token_use).toBe(
+    expect(stored?.accessTokenClaims.zentity_token_use).toBe(
       AGENT_BOOTSTRAP_TOKEN_USE
     );
     expect(stored?.scopes.join(" ")).toBe(BOOTSTRAP_SCOPE);
@@ -174,7 +179,9 @@ describe("agent bootstrap token exchange", () => {
     await db
       .insert(oauthAccessTokens)
       .values({
-        authContextId,
+        accessTokenClaims: JSON.stringify({
+          [AUTHENTICATION_CONTEXT_CLAIM]: authContextId,
+        }),
         clientId: CLIENT_ID,
         expiresAt: new Date(Date.now() + 3_600_000),
         scopes: JSON.stringify(["openid"]),
@@ -216,7 +223,9 @@ describe("agent bootstrap token exchange", () => {
     await db
       .insert(oauthAccessTokens)
       .values({
-        authContextId,
+        accessTokenClaims: JSON.stringify({
+          [AUTHENTICATION_CONTEXT_CLAIM]: authContextId,
+        }),
         clientId: WEB_CLIENT_ID,
         confirmation: JSON.stringify({ jkt: dpopJkt }),
         expiresAt: new Date(Date.now() + 3_600_000),

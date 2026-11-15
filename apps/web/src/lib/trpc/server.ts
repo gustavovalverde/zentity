@@ -26,8 +26,10 @@ import { eq } from "drizzle-orm";
 import { getSecurityPosture } from "@/lib/assurance/posture";
 import { canAccessFeature, getBlockedReason } from "@/lib/assurance/tier";
 import { auth, type Session } from "@/lib/auth/auth-config";
-import { resolveAuthenticationContext } from "@/lib/auth/auth-context";
-import { loadOpaqueAccessTokenExtensions } from "@/lib/auth/oidc/haip/opaque-access-token";
+import {
+  AUTHENTICATION_CONTEXT_CLAIM,
+  resolveAuthenticationContext,
+} from "@/lib/auth/auth-context";
 import {
   invalidAccessToken,
   missingAccessToken,
@@ -149,9 +151,9 @@ async function resolveOAuthSession(req: Request): Promise<ResolvedAuthSession> {
 
   const sessionId =
     typeof verified.payload.sid === "string" ? verified.payload.sid : null;
-  const extensions = await loadOpaqueAccessTokenExtensions(verified.token);
+  const authContextId = verified.payload[AUTHENTICATION_CONTEXT_CLAIM];
   const authContext = await resolveAuthenticationContext({
-    authContextId: extensions?.authContextId ?? null,
+    authContextId: typeof authContextId === "string" ? authContextId : null,
     sessionId,
   });
 

@@ -296,17 +296,16 @@ describe("server-provided DPoP nonces", () => {
   async function mintDpopBoundToken(
     keyPair: DpopKeyPair,
     input: {
+      accessTokenClaims?: Record<string, unknown>;
       clientId?: string;
-      exchangeClaims?: Record<string, unknown>;
       scopes: string[];
     }
   ): Promise<string> {
     return mintOpaqueAccessToken({
+      accessTokenClaims: input.accessTokenClaims,
       act: { sub: input.clientId ?? CODE_CLIENT_ID },
-      authContextId,
       clientId: input.clientId ?? CODE_CLIENT_ID,
       dpopJkt: await calculateJwkThumbprint(keyPair.jwk),
-      exchangeClaims: input.exchangeClaims ?? {},
       expiresAt: new Date(Date.now() + 3_600_000),
       referenceId: crypto.randomUUID(),
       scopes: input.scopes,
@@ -509,7 +508,7 @@ describe("server-provided DPoP nonces", () => {
   it("asks for a nonce at agent host registration", async () => {
     const keyPair = await createTestDpopKeyPair();
     const bootstrapToken = await mintDpopBoundToken(keyPair, {
-      exchangeClaims: { zentity_token_use: AGENT_BOOTSTRAP_TOKEN_USE },
+      accessTokenClaims: { zentity_token_use: AGENT_BOOTSTRAP_TOKEN_USE },
       scopes: [AGENT_HOST_REGISTER_SCOPE],
     });
     await runDpopNonceRoundTrip({

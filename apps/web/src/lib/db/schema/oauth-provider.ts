@@ -142,10 +142,6 @@ export const oauthAccessTokens = sqliteTable(
       .notNull()
       .references(() => oauthClients.clientId, { onDelete: "cascade" }),
     sessionId: text("session_id"),
-    authContextId: text("auth_context_id").references(
-      () => authenticationContexts.id,
-      { onDelete: "set null" }
-    ),
     userId: text("user_id").references(() => users.id, {
       onDelete: "set null",
     }),
@@ -164,9 +160,8 @@ export const oauthAccessTokens = sqliteTable(
     revoked: integer("revoked", { mode: "timestamp_ms" }),
     confirmation: text("confirmation"),
     act: text("act"),
-    accessTokenClaims: text("access_token_claims", { mode: "json" }),
+    accessTokenClaims: text("access_token_claims"),
     scopes: text("scopes").notNull(),
-    exchangeClaims: text("exchange_claims"),
   },
   (table) => [
     uniqueIndex("oauth_access_token_token_unique").on(table.token),
