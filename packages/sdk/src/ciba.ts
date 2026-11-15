@@ -1,4 +1,5 @@
 import { z } from "zod";
+import type { OversightMethod } from "./protocol/claims";
 import type { DpopClient } from "./rp/dpop-client";
 
 const DEFAULT_POLL_INTERVAL_MS = 5000;
@@ -10,11 +11,18 @@ const cibaAuthResponseSchema = z.object({
   interval: z.number().nonnegative().optional(),
 });
 
+const oversightSchema = z.object({
+  approved_at: z.number(),
+  method: z.enum(["capability_grant", "session", "user_verification"]),
+});
+
 const cibaTokenResponseSchema = z.object({
   access_token: z.string().min(1),
   authorization_details: z.array(z.unknown()).optional(),
   expires_in: z.number().optional(),
   id_token: z.string().optional(),
+  // A member this SDK does not understand must not fail the token response.
+  oversight: oversightSchema.optional().catch(undefined),
 });
 
 const cibaErrorResponseSchema = z.object({
@@ -66,11 +74,19 @@ export interface CibaRequest {
   tokenEndpoint: string;
 }
 
+/** How the user approved the request, as Zentity recorded it. */
+export interface CibaOversight {
+  /** When the decision was recorded, in seconds since the epoch. */
+  approved_at: number;
+  method: OversightMethod;
+}
+
 export interface CibaTokenSet {
   accessToken: string;
   authorizationDetails?: unknown[];
   expiresAt: number;
   idToken?: string;
+  oversight?: CibaOversight;
 }
 
 export type CibaPollResult =
@@ -309,6 +325,9 @@ async function parsePollResponse(
           ? { authorizationDetails: tokenResponse.authorization_details }
           : {}),
         ...(tokenResponse.id_token ? { idToken: tokenResponse.id_token } : {}),
+        ...(tokenResponse.oversight
+          ? { oversight: tokenResponse.oversight }
+          : {}),
       },
     };
   }

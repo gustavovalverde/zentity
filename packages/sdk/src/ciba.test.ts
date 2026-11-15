@@ -409,6 +409,41 @@ describe("CIBA", () => {
     expect(result.authorizationDetails).toEqual(authorizationDetails);
   });
 
+  it.each([
+    [
+      "states how the user approved",
+      { method: "user_verification", approved_at: 1_763_200_000 },
+      { method: "user_verification", approved_at: 1_763_200_000 },
+    ],
+    [
+      "ignores an oversight member it does not understand",
+      { method: "biometric", approved_at: 1_763_200_000 },
+      undefined,
+    ],
+  ])("%s", async (_case, oversight, expected) => {
+    vi.spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({ auth_req_id: "req-ov", expires_in: 300, interval: 0 }),
+          { status: 200 }
+        )
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            access_token: "ov-token",
+            token_type: "DPoP",
+            oversight,
+          }),
+          { status: 200 }
+        )
+      );
+
+    const result = await settle(requestCibaApproval(BASE_PARAMS));
+
+    expect(result.oversight).toEqual(expected);
+  });
+
   it("pollCibaToken completes approval with an immediate token response", async () => {
     vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
       new Response(
