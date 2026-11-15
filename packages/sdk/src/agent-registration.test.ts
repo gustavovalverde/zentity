@@ -186,6 +186,59 @@ describe("agent registration", () => {
     expect(session.sessionPublicKey.kty).toBe("OKP");
   });
 
+  it("treats a non-array grants field as no grants and rejects malformed entries", async () => {
+    const dpopClient = await createDpopClient();
+    const hostKey = await createHostKey();
+    const register = (grants: unknown) =>
+      registerAgentSession({
+        accessToken: "bootstrap-token",
+        display: { name: "Claude Code" },
+        dpopClient,
+        endpoint: "https://issuer.example/api/auth/agent/register",
+        fetch: vi.fn<typeof fetch>().mockResolvedValue(
+          new Response(
+            JSON.stringify({
+              did: "did:key:zSession",
+              sessionId: "session-123",
+              status: "active",
+              grants,
+            }),
+            { status: 201 }
+          )
+        ),
+        hostId: "host-123",
+        hostKey,
+      });
+
+    await expect(register(undefined)).resolves.toMatchObject({ grants: [] });
+    await expect(register([{ capability: "purchase" }])).rejects.toThrow(
+      "Invalid session registration response"
+    );
+  });
+
+  it("rejects host registration responses with an unknown attestation tier", async () => {
+    await expect(
+      registerHost({
+        accessToken: "bootstrap-token",
+        dpopClient: await createDpopClient(),
+        endpoint: "https://issuer.example/api/auth/agent/host/register",
+        fetch: vi.fn<typeof fetch>().mockResolvedValue(
+          new Response(
+            JSON.stringify({
+              attestation_tier: "gold",
+              created: true,
+              did: "did:key:zHost",
+              hostId: "host-123",
+            }),
+            { status: 201 }
+          )
+        ),
+        hostKey: await createHostKey(),
+        hostName: "host",
+      })
+    ).rejects.toThrow("Invalid host registration response");
+  });
+
   it("signs agent assertions with stable task metadata", async () => {
     const { privateKey, publicKey } = await generateKeyPair("EdDSA", {
       crv: "Ed25519",
