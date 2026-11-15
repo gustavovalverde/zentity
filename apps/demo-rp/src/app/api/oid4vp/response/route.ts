@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { env } from "@/lib/env";
 import { getVpSessionByState, updateVpSession } from "@/lib/oid4vp";
 import { verifyVpToken } from "@/lib/verify";
+import type { DcqlQuery } from "@/scenarios/veripass/verifier-scenario";
 
 /**
  * Handles the wallet's `direct_post.jwt` response.
@@ -71,9 +72,7 @@ export async function POST(request: Request) {
       unknown
     >;
 
-    const vpToken =
-      typeof decrypted.vp_token === "string" ? decrypted.vp_token : undefined;
-    if (!vpToken) {
+    if (decrypted.vp_token === undefined) {
       await updateVpSession(session.id, { status: "failed" });
       return NextResponse.json(
         { error: "No vp_token in decrypted response" },
@@ -83,11 +82,11 @@ export async function POST(request: Request) {
 
     // OpenID4VP 1.0 sets the KB-JWT audience to the full Client Identifier
     // the request advertised (`x509_hash:<thumbprint>`).
-    const claims = await verifyVpToken(
-      vpToken,
-      session.nonce,
-      session.clientId
-    );
+    const claims = await verifyVpToken(decrypted.vp_token, {
+      audience: session.clientId,
+      dcqlQuery: JSON.parse(session.dcqlQuery) as DcqlQuery,
+      nonce: session.nonce,
+    });
 
     if (!claims) {
       await updateVpSession(session.id, {
