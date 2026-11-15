@@ -23,9 +23,8 @@ vi.mock("viem", async () => {
   };
 });
 
-vi.mock("@/lib/blockchain/networks", () => ({
-  getBaseSepoliaMirrorConfig: () => null,
-  getNetworkById: () => ({
+const { mockNetwork } = vi.hoisted(() => ({
+  mockNetwork: {
     id: "confidential_sepolia",
     name: "Zama Confidential Sepolia",
     chainId: 11_155_111,
@@ -37,8 +36,20 @@ vi.mock("@/lib/blockchain/networks", () => ({
       identityRegistry: "0x0000000000000000000000000000000000000001",
     },
     enabled: true,
-  }),
+  },
 }));
+
+vi.mock("@/lib/blockchain/networks", async () => {
+  const actual = await vi.importActual<
+    typeof import("@/lib/blockchain/networks")
+  >("@/lib/blockchain/networks");
+
+  return {
+    ...actual,
+    getBaseSepoliaMirrorConfig: () => null,
+    getNetworkById: () => mockNetwork,
+  };
+});
 
 import { db } from "@/lib/db/connection";
 import {
