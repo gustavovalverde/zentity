@@ -23,7 +23,7 @@ function submitCibaDecision(requestId, decision) {
     method: "POST",
     credentials: "same-origin",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ request_id: requestId, decision }),
+    body: JSON.stringify({ request_id: requestId, decision, channel: "push" }),
   });
 }
 
@@ -49,24 +49,24 @@ self.addEventListener("push", (event) => {
   const requestId = data?.requestId;
   const approvalUrl = data?.approvalUrl ?? "/dashboard/agents";
   const requiresVaultUnlock = data?.requiresVaultUnlock === true;
+  // The server decides which requests a notification may approve, and
+  // refuses a notification approval of any other. A payload without the
+  // flag gets no Approve action.
+  const inlineApprove = data?.inlineApprove === true && !requiresVaultUnlock;
   const kind = data?.kind;
   const payment = data?.payment;
 
-  // payment_authorization: never inline-approve. The user must see the
-  // full card on the approval page (D-7 displayed equals signed). We show
-  // the approve action so the click handler can route to the confirmation
-  // prompt instead of POSTing approve directly.
   let actions;
-  if (requiresVaultUnlock) {
-    actions = [{ action: "deny", title: "Deny" }];
-  } else if (kind === "payment_authorization") {
-    actions = [
-      { action: "review", title: "Review" },
-      { action: "deny", title: "Deny" },
-    ];
-  } else {
+  if (inlineApprove) {
     actions = [
       { action: "approve", title: "Approve" },
+      { action: "deny", title: "Deny" },
+    ];
+  } else if (requiresVaultUnlock) {
+    actions = [{ action: "deny", title: "Deny" }];
+  } else {
+    actions = [
+      { action: "review", title: "Review" },
       { action: "deny", title: "Deny" },
     ];
   }
@@ -81,6 +81,7 @@ self.addEventListener("push", (event) => {
     data: {
       requestId,
       approvalUrl,
+      inlineApprove,
       requiresVaultUnlock,
       kind,
       payment,
@@ -121,8 +122,14 @@ function showPaymentConfirmation(requestId, approvalUrl, payment) {
 self.addEventListener("notificationclick", (event) => {
   event.notification.close();
 
-  const { requestId, approvalUrl, requiresVaultUnlock, kind, payment } =
-    event.notification.data ?? {};
+  const {
+    requestId,
+    approvalUrl,
+    inlineApprove,
+    requiresVaultUnlock,
+    kind,
+    payment,
+  } = event.notification.data ?? {};
   const action = event.action;
 
   // Identity-scoped requests always route to the approval page.
@@ -172,7 +179,10 @@ self.addEventListener("notificationclick", (event) => {
     return;
   }
 
-  if (requestId && (action === "approve" || action === "deny")) {
+  if (
+    requestId &&
+    (action === "deny" || (action === "approve" && inlineApprove === true))
+  ) {
     event.waitUntil(
       submitCibaDecision(
         requestId,

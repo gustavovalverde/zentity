@@ -1606,7 +1606,7 @@ async function notifyCibaRequest(
     clientName: notification.clientName,
   });
   await Promise.allSettled([
-    sendWebPush(user.id, pushPayload),
+    sendWebPush(user.id, pushPayload, { expiresAt: notification.expiresAt }),
     sendCibaNotification({
       userId: user.id,
       requestId,

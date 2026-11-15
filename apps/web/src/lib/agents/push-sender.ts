@@ -8,6 +8,7 @@ import { eq } from "drizzle-orm";
 import { sendNotification, WebPushError } from "web-push";
 
 import { env } from "@/env";
+import { approvalPolicy, type ScopeLabel } from "@/lib/agents/capability";
 import { formatPaymentAmount } from "@/lib/agents/labels";
 import { isIdentityScope } from "@/lib/auth/oidc/disclosure/registry";
 import { db } from "@/lib/db/connection";
@@ -54,6 +55,8 @@ interface PaymentAuthorizationProjection {
 
 type CibaPushData = {
   approvalUrl: string;
+  /** Whether the notification may offer Approve; the server enforces it. */
+  inlineApprove: boolean;
   requestId: string;
   kind?: "payment_authorization";
   payment?: PaymentAuthorizationProjection;
@@ -151,12 +154,23 @@ function buildNotificationBody(
   return `${clientLabel} is requesting access`;
 }
 
+/** Names, in server text, what an inline approval shares. */
+function withSharedLabels(body: string, labels: ScopeLabel[]): string {
+  return labels.length > 0
+    ? `${body}\nShares: ${labels.map((entry) => entry.label).join(", ")}`
+    : body;
+}
+
 export function buildCibaPushPayload(
   data: CibaNotificationData
 ): CibaPushPayload {
   const approvalUrl = data.approvalUrl;
   const clientLabel = data.clientName ?? "An application";
   const requiresVaultUnlock = data.scope.split(" ").some(isIdentityScope);
+  const policy = approvalPolicy({
+    scope: data.scope,
+    authorizationDetails: data.authorizationDetails,
+  });
 
   const paymentEntry = findPaymentAuthorization(data.authorizationDetails);
   const paymentProjection = paymentEntry
@@ -167,13 +181,16 @@ export function buildCibaPushPayload(
     ? undefined
     : sanitizeBindingMessage(data.bindingMessage);
 
-  const body = paymentProjection
+  const summary = paymentProjection
     ? buildPaymentNotificationBody(clientLabel, paymentProjection)
     : buildNotificationBody(
         clientLabel,
         safeBindingMessage,
         data.authorizationDetails
       );
+  const body = policy.inlineApprove
+    ? withSharedLabels(summary, policy.labels)
+    : summary;
 
   const title = data.agentName
     ? `${data.agentName} requests approval`
@@ -185,6 +202,7 @@ export function buildCibaPushPayload(
     data: {
       requestId: data.requestId,
       approvalUrl,
+      inlineApprove: policy.inlineApprove,
       requiresVaultUnlock,
     },
   };
@@ -208,7 +226,8 @@ interface PushPayload {
 }
 
 /**
- * Send a Web Push notification to all devices registered by a user.
+ * Send a Web Push notification to all devices registered by a user. The push
+ * service keeps it only until the request it announces expires.
  *
  * Fire-and-forget: errors are logged but never thrown.
  * Stale subscriptions (410 Gone) are auto-deleted.
@@ -216,7 +235,8 @@ interface PushPayload {
  */
 export async function sendWebPush(
   userId: string,
-  payload: PushPayload
+  payload: PushPayload,
+  options: { expiresAt: Date }
 ): Promise<void> {
   const VAPID_PUBLIC_KEY = env.VAPID_PUBLIC_KEY;
   const VAPID_PRIVATE_KEY = env.VAPID_PRIVATE_KEY;
@@ -239,6 +259,10 @@ export async function sendWebPush(
   }
 
   const body = JSON.stringify(payload);
+  const ttl = Math.max(
+    0,
+    Math.ceil((options.expiresAt.getTime() - Date.now()) / 1000)
+  );
 
   await Promise.all(
     subscriptions.map(async (sub) => {
@@ -255,7 +279,7 @@ export async function sendWebPush(
               publicKey: VAPID_PUBLIC_KEY,
               privateKey: VAPID_PRIVATE_KEY,
             },
-            TTL: 300,
+            TTL: ttl,
           }
         );
       } catch (error) {
