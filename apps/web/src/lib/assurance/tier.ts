@@ -21,6 +21,7 @@ import {
   type AccountTier,
   type AuthenticationState,
   type AuthStrength,
+  LOGIN_METHODS,
   type LoginMethod,
   TIER_NAMES,
   type VerificationDetails,
@@ -41,19 +42,8 @@ export type FeatureName =
 
 // ─── Login method and auth strength ────────────────────────────────
 
-const VALID_LOGIN_METHODS = new Set<LoginMethod>([
-  "passkey",
-  "opaque",
-  "magic-link",
-  "oauth",
-  "eip712",
-  "credential",
-]);
-
 export function isValidLoginMethod(method: unknown): method is LoginMethod {
-  return (
-    typeof method === "string" && VALID_LOGIN_METHODS.has(method as LoginMethod)
-  );
+  return (LOGIN_METHODS as readonly unknown[]).includes(method);
 }
 
 export function deriveAuthStrength(
