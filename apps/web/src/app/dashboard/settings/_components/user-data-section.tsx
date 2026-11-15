@@ -24,6 +24,7 @@ import {
 } from "@/components/ui/item";
 import { Redacted } from "@/components/ui/redacted";
 import { Spinner } from "@/components/ui/spinner";
+import { formatDate } from "@/lib/date-format";
 import { getStoredProfile } from "@/lib/privacy/secrets/profile";
 import { useTRPC } from "@/lib/trpc/client";
 
@@ -96,22 +97,6 @@ const VerificationLevelBadge = memo(function VerificationLevelBadge({
     "Not Verified";
   return <Badge variant={variant}>{label}</Badge>;
 });
-
-function formatDate(dateString: string | null): string {
-  if (!dateString) {
-    return "Unknown";
-  }
-  try {
-    const date = new Date(dateString);
-    return date.toLocaleDateString("en-US", {
-      year: "numeric",
-      month: "long",
-      day: "numeric",
-    });
-  } catch {
-    return "Unknown";
-  }
-}
 
 function getCredentialMethodLabel(method: string): string {
   return (
@@ -257,7 +242,7 @@ export function UserDataSection() {
             </ItemMedia>
             <ItemContent>
               <ItemDescription>Member Since</ItemDescription>
-              <ItemTitle>{formatDate(data.createdAt)}</ItemTitle>
+              <ItemTitle>{formatDate(data.createdAt, "Unknown")}</ItemTitle>
             </ItemContent>
           </Item>
         </ItemGroup>
@@ -287,7 +272,7 @@ export function UserDataSection() {
           {data.verification.verificationExpiresAt ? (
             <p className="text-muted-foreground text-xs">
               Verification expires{" "}
-              {formatDate(data.verification.verificationExpiresAt)}
+              {formatDate(data.verification.verificationExpiresAt, "Unknown")}
             </p>
           ) : null}
           <div className="flex flex-wrap gap-2">
@@ -339,7 +324,7 @@ export function UserDataSection() {
                       {getCredentialMethodLabel(credential.method)}
                     </p>
                     <p className="text-muted-foreground text-xs">
-                      Verified {formatDate(credential.verifiedAt)}
+                      Verified {formatDate(credential.verifiedAt, "Unknown")}
                     </p>
                   </div>
 

@@ -27,11 +27,7 @@ import { Spinner } from "@/components/ui/spinner";
 import { useVaultKeyPrompt } from "@/components/vault-unlock";
 import { reportRejection } from "@/lib/async-handler";
 import { authClient } from "@/lib/auth/auth-client";
-import {
-  getPasswordLengthError,
-  PASSWORD_MAX_LENGTH,
-  PASSWORD_MIN_LENGTH,
-} from "@/lib/auth/password";
+import { getPasswordLengthError } from "@/lib/auth/password";
 import { addVaultCredential } from "@/lib/privacy/secrets/vault";
 
 interface SetPasswordSectionProps {
@@ -132,19 +128,6 @@ export function SetPasswordSection({
     setBreachCheckKey((k) => k + 1);
   };
 
-  const validateNewPassword = (value: string) => {
-    if (!value) {
-      return "Password is required";
-    }
-    if (value.length < PASSWORD_MIN_LENGTH) {
-      return `Password must be at least ${PASSWORD_MIN_LENGTH} characters`;
-    }
-    if (value.length > PASSWORD_MAX_LENGTH) {
-      return `Password must be at most ${PASSWORD_MAX_LENGTH} characters`;
-    }
-    return;
-  };
-
   const validateConfirmPassword = (value: string) => {
     if (!value) {
       return "Please confirm your password";
@@ -189,8 +172,8 @@ export function SetPasswordSection({
             <form.Field
               name="newPassword"
               validators={{
-                onBlur: ({ value }) => validateNewPassword(value),
-                onSubmit: ({ value }) => validateNewPassword(value),
+                onBlur: ({ value }) => getPasswordLengthError(value),
+                onSubmit: ({ value }) => getPasswordLengthError(value),
               }}
             >
               {(field) => {

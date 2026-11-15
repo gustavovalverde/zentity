@@ -11,6 +11,7 @@ import {
   unsubscribeFromPush,
 } from "@/lib/agents/push-client";
 import { asyncHandler, reportRejection } from "@/lib/async-handler";
+import { isIOSDevice } from "@/lib/browser-hooks";
 
 type PushState =
   | "unsupported"
@@ -19,24 +20,6 @@ type PushState =
   | "unsubscribed"
   | "denied"
   | "loading";
-
-const IOS_DEVICE_RE = /iPhone|iPod/;
-const MAC_UA_RE = /Macintosh/;
-
-function isIOSDevice(): boolean {
-  if (IOS_DEVICE_RE.test(navigator.userAgent)) {
-    return true;
-  }
-  // iPadOS 13+ spoofs a Mac user agent — detect via touch support.
-  const uaData = navigator as Navigator & {
-    userAgentData?: { platform?: string };
-  };
-  const isMac = uaData.userAgentData?.platform
-    ? uaData.userAgentData.platform === "macOS"
-    : MAC_UA_RE.test(navigator.userAgent);
-
-  return isMac && navigator.maxTouchPoints > 1;
-}
 
 function useIsIOSInstallable(): boolean {
   const [isIOSInstallable, setIsIOSInstallable] = useState(false);

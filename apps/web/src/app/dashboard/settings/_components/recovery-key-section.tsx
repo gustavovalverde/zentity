@@ -36,24 +36,12 @@ import {
 import { Spinner } from "@/components/ui/spinner";
 import { useVaultKeyPrompt } from "@/components/vault-unlock";
 import { asyncHandler, reportRejection } from "@/lib/async-handler";
+import { formatDate } from "@/lib/date-format";
 import { RECOVERY_KEY_CREDENTIAL_ID } from "@/lib/privacy/secrets/catalog";
 import {
   removeVaultCredential,
   type VaultKey,
 } from "@/lib/privacy/secrets/vault";
-
-function formatDate(value: string): string {
-  const date = new Date(
-    value.includes("T") ? value : `${value.replace(" ", "T")}Z`
-  );
-  return Number.isNaN(date.getTime())
-    ? "Unknown date"
-    : date.toLocaleDateString(undefined, {
-        year: "numeric",
-        month: "short",
-        day: "numeric",
-      });
-}
 
 export function RecoveryKeySection({
   access,
@@ -115,7 +103,7 @@ export function RecoveryKeySection({
           <>
             <p className="text-sm">
               {recoveryKey
-                ? `Created ${formatDate(recoveryKey.createdAt)}.`
+                ? `Created ${formatDate(recoveryKey.createdAt, "Unknown date")}.`
                 : "You haven't saved a recovery key."}
             </p>
             <div className="flex flex-wrap gap-2">

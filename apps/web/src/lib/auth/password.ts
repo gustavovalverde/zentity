@@ -4,7 +4,7 @@ import { bytesToHex } from "@/lib/privacy/primitives/symmetric";
 // ── Policy constants and validation ──────────────────────
 
 export const PASSWORD_MIN_LENGTH = 10;
-export const PASSWORD_MAX_LENGTH = 128;
+const PASSWORD_MAX_LENGTH = 128;
 
 const NON_ALPHANUMERIC_PATTERN = /[^a-z0-9]/g;
 const LOWERCASE_LETTER_PATTERN = /[a-z]/;

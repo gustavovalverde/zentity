@@ -1,7 +1,7 @@
 "use client";
 
 import { Check } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
 
 import { Progress } from "@/components/ui/progress";
 import { Spinner } from "@/components/ui/spinner";
@@ -110,11 +110,11 @@ export function PasswordRequirements({
   const abortRef = useRef<AbortController | null>(null);
   const checkedPasswordRef = useRef<string | null>(null);
   const lastBreachCheckKeyRef = useRef<number>(0);
-  const onBreachStatusChangeRef = useRef(onBreachStatusChange);
-
-  useEffect(() => {
-    onBreachStatusChangeRef.current = onBreachStatusChange;
-  }, [onBreachStatusChange]);
+  const notifyBreachStatus = useEffectEvent(
+    (state: PwnedStatus["state"], checkedPassword: string | null) => {
+      onBreachStatusChange?.(state, checkedPassword);
+    }
+  );
 
   const status = useMemo(
     () =>
@@ -174,7 +174,7 @@ export function PasswordRequirements({
     if (checkedPasswordRef.current && checkedPasswordRef.current !== password) {
       checkedPasswordRef.current = null;
       setPwned({ state: "idle" });
-      onBreachStatusChangeRef.current?.("idle", null);
+      notifyBreachStatus("idle", null);
     }
   }, [password]);
 
@@ -194,7 +194,7 @@ export function PasswordRequirements({
     abortRef.current?.abort();
     abortRef.current = controller;
     setPwned({ state: "checking" });
-    onBreachStatusChangeRef.current?.("checking", null);
+    notifyBreachStatus("checking", null);
 
     let isActive = true;
     const timeoutId = globalThis.window.setTimeout(
@@ -214,7 +214,7 @@ export function PasswordRequirements({
 
         if (data.skipped) {
           setPwned({ state: "error" });
-          onBreachStatusChangeRef.current?.("error", null);
+          notifyBreachStatus("error", null);
           return;
         }
 
@@ -223,13 +223,13 @@ export function PasswordRequirements({
           : "safe";
         checkedPasswordRef.current = password;
         setPwned({ state: nextState });
-        onBreachStatusChangeRef.current?.(nextState, password);
+        notifyBreachStatus(nextState, password);
       } catch {
         if (!isActive) {
           return;
         }
         setPwned({ state: "error" });
-        onBreachStatusChangeRef.current?.("error", null);
+        notifyBreachStatus("error", null);
       }
     })().catch(() => {
       // Error handled via state updates

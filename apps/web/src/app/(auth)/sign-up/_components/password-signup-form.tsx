@@ -16,11 +16,7 @@ import { InputGroup, InputGroupInput } from "@/components/ui/input-group";
 import { Spinner } from "@/components/ui/spinner";
 import { reportRejection } from "@/lib/async-handler";
 import { authClient } from "@/lib/auth/auth-client";
-import {
-  getPasswordLengthError,
-  PASSWORD_MAX_LENGTH,
-  PASSWORD_MIN_LENGTH,
-} from "@/lib/auth/password";
+import { getPasswordLengthError } from "@/lib/auth/password";
 import { ensureAuthSession } from "@/lib/auth/session-cleanup";
 
 interface PasswordSignUpFormProps {
@@ -112,19 +108,6 @@ export function PasswordSignUpForm({
     setBreachCheckKey((k) => k + 1);
   };
 
-  const validatePassword = (value: string) => {
-    if (!value) {
-      return "Password is required";
-    }
-    if (value.length < PASSWORD_MIN_LENGTH) {
-      return `Password must be at least ${PASSWORD_MIN_LENGTH} characters`;
-    }
-    if (value.length > PASSWORD_MAX_LENGTH) {
-      return `Password must be at most ${PASSWORD_MAX_LENGTH} characters`;
-    }
-    return;
-  };
-
   const validateConfirmPassword = (value: string) => {
     if (!value) {
       return "Please confirm your password";
@@ -165,8 +148,8 @@ export function PasswordSignUpForm({
           <form.Field
             name="password"
             validators={{
-              onBlur: ({ value }) => validatePassword(value),
-              onSubmit: ({ value }) => validatePassword(value),
+              onBlur: ({ value }) => getPasswordLengthError(value),
+              onSubmit: ({ value }) => getPasswordLengthError(value),
             }}
           >
             {(field) => {

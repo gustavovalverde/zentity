@@ -11,7 +11,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { getFlowId } from "@/lib/observability/flow-id";
+import { reportClientError } from "@/lib/observability/client-error";
 
 export default function ErrorPage({
   error,
@@ -21,25 +21,7 @@ export default function ErrorPage({
   reset: () => void;
 }>) {
   useEffect(() => {
-    const payload = {
-      name: error.name,
-      message: error.message,
-      digest: error.digest,
-      path: globalThis.window.location.pathname,
-      stack: error.stack,
-    };
-
-    const flowId = getFlowId();
-    fetch("/api/status/log-client-error", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        ...(flowId ? { "X-Zentity-Flow-Id": flowId } : {}),
-      },
-      body: JSON.stringify(payload),
-    }).catch(() => {
-      // Logging failure shouldn't cascade to user
-    });
+    reportClientError(error);
   }, [error]);
 
   return (

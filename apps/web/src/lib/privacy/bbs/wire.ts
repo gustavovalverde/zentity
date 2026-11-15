@@ -2,7 +2,7 @@
  * BBS+ credential wire format.
  *
  * Credential and presentation shapes plus their base64 serialization, shared
- * by the server-side tRPC router and client-side IndexedDB storage. Uses the
+ * by the server-side tRPC router. Uses the
  * BLS12-381 curve via @mattrglobal/pairing-crypto for wallet identity
  * credentials (RFC-0020).
  */
