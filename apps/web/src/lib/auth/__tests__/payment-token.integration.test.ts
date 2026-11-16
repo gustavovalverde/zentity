@@ -660,7 +660,18 @@ describe("payment_authorization token", () => {
 
   it.each([
     ["is not JSON", "not-json"],
-    ["has an unregistered type", JSON.stringify([{ type: "purchase" }])],
+    ["has an unregistered type", JSON.stringify([{ type: "subscription" }])],
+    [
+      "carries the pre-T2 purchase shape",
+      JSON.stringify([
+        {
+          type: "purchase",
+          url: "https://merchant.example",
+          minComplianceLevel: 2,
+          merchant: "Corner Books",
+        },
+      ]),
+    ],
   ])("rejects authorization_details that %s", async (_case, details) => {
     const authorize = await postBcAuthorize({
       client_id: CLIENT_ID,

@@ -11,8 +11,11 @@
  */
 
 import {
+  IDENTITY_STRENGTHS,
   PAYMENT_AUTHORIZATION_CAPABILITY,
   PAYMENT_AUTHORIZATION_TYPE,
+  PURCHASE_TYPE,
+  X402_PURCHASE_TYPE,
 } from "@zentity/sdk/protocol";
 import { notInArray } from "drizzle-orm";
 
@@ -68,23 +71,89 @@ interface CapabilityDefinition {
 const CAPABILITIES = [
   {
     name: "purchase",
-    description: "Authorize and execute purchases on behalf of the user",
+    description:
+      "Buy from a named merchant with the user's approval (purchase), or prove to an x402 merchant that the user's identity is verified (x402_purchase)",
     approvalStrength: "user_verification",
     grantable: false,
     inputSchema: {
-      type: "object",
-      properties: {
-        item: { type: "string" },
-        merchant: { type: "string" },
-        amount: {
+      oneOf: [
+        {
           type: "object",
+          additionalProperties: false,
           properties: {
-            value: { type: "string" },
-            currency: { type: "string" },
+            type: { const: PURCHASE_TYPE },
+            merchant: {
+              type: "object",
+              additionalProperties: false,
+              properties: {
+                name: { type: "string", minLength: 1, maxLength: 64 },
+              },
+              required: ["name"],
+            },
+            item: { type: "string", minLength: 1, maxLength: 120 },
+            amount: {
+              type: "object",
+              additionalProperties: false,
+              properties: {
+                value: { type: "string", pattern: "^\\d{1,12}(\\.\\d{1,4})?$" },
+                currency: { type: "string", pattern: "^[A-Z]{3}$" },
+              },
+              required: ["value", "currency"],
+            },
           },
+          required: ["type", "merchant", "item", "amount"],
         },
-      },
-      required: ["item", "merchant", "amount"],
+        {
+          type: "object",
+          additionalProperties: false,
+          properties: {
+            type: { const: X402_PURCHASE_TYPE },
+            resource_url: { type: "string", format: "uri" },
+            resource_description: {
+              type: "string",
+              minLength: 1,
+              maxLength: 256,
+            },
+            payment_requirements: {
+              type: "object",
+              description:
+                "The x402 v2 exact payment requirement the merchant advertised, copied verbatim",
+              additionalProperties: false,
+              properties: {
+                scheme: { const: "exact" },
+                network: { type: "string" },
+                amount: { type: "string", pattern: "^[1-9][0-9]{0,77}$" },
+                asset: { type: "string" },
+                payTo: { type: "string" },
+                maxTimeoutSeconds: {
+                  type: "integer",
+                  minimum: 1,
+                  maximum: 3600,
+                },
+                extra: { type: "object" },
+              },
+              required: [
+                "scheme",
+                "network",
+                "amount",
+                "asset",
+                "payTo",
+                "maxTimeoutSeconds",
+              ],
+            },
+            min_identity_strength: {
+              type: "string",
+              enum: [...IDENTITY_STRENGTHS],
+            },
+          },
+          required: [
+            "type",
+            "resource_url",
+            "payment_requirements",
+            "min_identity_strength",
+          ],
+        },
+      ],
     },
     outputSchema: {
       type: "object",
@@ -419,13 +488,19 @@ const APPROVAL_POLICY = {
     "agent:session.revoke": policyRow(null, false, "agent session removal"),
     "agent:introspect": policyRow(null, false, "agent status"),
     identity_verification: policyRow(null, false, "verification credential"),
-    poh: policyRow(null, false, "proof-of-human tokens"),
+    poh: policyRow("purchase", false, "proof of human for a merchant"),
   } satisfies Record<string, ApprovalPolicyRow>,
   authorizationDetails: {
     [PAYMENT_AUTHORIZATION_TYPE]: policyRow(
       PAYMENT_AUTHORIZATION_CAPABILITY,
       false,
       "payment"
+    ),
+    [PURCHASE_TYPE]: policyRow("purchase", false, "purchase"),
+    [X402_PURCHASE_TYPE]: policyRow(
+      "purchase",
+      false,
+      "proof of human for a merchant"
     ),
   } satisfies Record<string, ApprovalPolicyRow>,
 } as const;

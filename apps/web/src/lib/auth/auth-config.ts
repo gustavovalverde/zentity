@@ -30,9 +30,10 @@ import { passkey } from "@better-auth/passkey";
 import { setGlobalConfig as setOpenid4vcConfig } from "@openid4vc/utils";
 import { AGENT_BOOTSTRAP_SCOPES } from "@zentity/sdk/agent-contract";
 import {
+  AUTHORIZATION_DETAILS_TYPES,
   decodeJwtPayloadStrict,
   PAYMENT_AUTHORIZATION_TYPE,
-  PaymentAuthorizationSchema,
+  X402_PURCHASE_TYPE,
 } from "@zentity/sdk/protocol";
 import { APIError, type BetterAuthPlugin, betterAuth } from "better-auth";
 import {
@@ -158,6 +159,10 @@ import {
   pinPaymentRequest,
   registersPaymentAuthorization,
 } from "@/lib/auth/oidc/payment-mint";
+import {
+  acceptsX402Purchase,
+  pinPurchaseRequest,
+} from "@/lib/auth/oidc/purchase-request";
 import { resourceAccessTokenPlugin } from "@/lib/auth/oidc/resource-access-token";
 import {
   invalidAccessToken,
@@ -1739,6 +1744,39 @@ export const configuredSocialProviders = Object.keys(
   socialProviders
 ) as SocialProviderId[];
 
+/**
+ * The RAR types the CIBA plugin accepts, one per registered schema, so
+ * discovery and bc-authorize cannot disagree about which types exist.
+ */
+const cibaAuthorizationDetailsTypes = Object.fromEntries(
+  Object.entries(AUTHORIZATION_DETAILS_TYPES).map(([type, schema]) => [
+    type,
+    {
+      validate: (
+        detail: unknown,
+        { client }: { client: { metadata?: string | object | undefined } }
+      ) => {
+        const parsed = schema.safeParse(detail);
+        if (!parsed.success) {
+          return false;
+        }
+        if (type === PAYMENT_AUTHORIZATION_TYPE) {
+          // RFC 9396 §10: only a client that registered the type may request
+          // a payment. The plugin's own check lets a client that registered
+          // no types request any.
+          return registersPaymentAuthorization(client.metadata);
+        }
+        if (type === X402_PURCHASE_TYPE) {
+          return acceptsX402Purchase(
+            parsed.data as Parameters<typeof acceptsX402Purchase>[0]
+          );
+        }
+        return true;
+      },
+    },
+  ])
+);
+
 export const auth = betterAuth({
   database: drizzleAdapter(db, {
     provider: "sqlite",
@@ -1955,6 +1993,7 @@ export const auth = betterAuth({
         await readRepeatedFormResources(ctx);
         if (ctx.body) {
           pinPaymentRequest(ctx.body);
+          pinPurchaseRequest(ctx.body);
           normalizeUserTokenResources(ctx.body, { allowWalletAudience: true });
         }
         return;
@@ -2452,16 +2491,7 @@ export const auth = betterAuth({
           : null;
       },
       sendNotification: notifyCibaRequest,
-      authorizationDetailsTypes: {
-        [PAYMENT_AUTHORIZATION_TYPE]: {
-          // RFC 9396 §10: only a client that registered the type may request
-          // a payment. The plugin's own check lets a client that registered
-          // no types request any.
-          validate: (detail, { client }) =>
-            registersPaymentAuthorization(client.metadata) &&
-            PaymentAuthorizationSchema.safeParse(detail).success,
-        },
-      },
+      authorizationDetailsTypes: cibaAuthorizationDetailsTypes,
     }),
     cibaApprovalPlugin(cibaApproval),
     tokenExchangePlugin(),

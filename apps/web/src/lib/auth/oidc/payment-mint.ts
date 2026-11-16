@@ -45,7 +45,11 @@ export function registersPaymentAuthorization(
   return Array.isArray(types) && types.includes(PAYMENT_AUTHORIZATION_TYPE);
 }
 
-function parseAuthorizationDetails(raw: unknown): unknown[] | null {
+/**
+ * The form-encoded `authorization_details` as an array, or null when it is
+ * absent or not a JSON array (the plugin then refuses it).
+ */
+export function parseAuthorizationDetails(raw: unknown): unknown[] | null {
   if (Array.isArray(raw)) {
     return raw;
   }
