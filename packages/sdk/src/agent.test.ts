@@ -79,8 +79,13 @@ function cibaTokenResponse(
 const AGENT_AUTHORIZATION = {
   capabilities: [{ action: "purchase" }],
   delegation: { depth: 0, max_depth: 1 },
-  oversight: { method: "session", approved_at: 1_763_200_000 },
+  oversight: { method: "capability_grant", approved_at: 1_763_200_000 },
   aap_claims_version: 2,
+};
+
+const MANUAL_AGENT_AUTHORIZATION = {
+  ...AGENT_AUTHORIZATION,
+  oversight: { method: "user_verification", approved_at: 1_763_200_000 },
 };
 
 function createPaymentRequiredHeader(): string {
@@ -112,7 +117,7 @@ function createPaymentRequiredHeader(): string {
 describe("createAgent", () => {
   // R16: an opaque access token carries no capabilities to read, and a
   // client must not read a JWT one either (RFC 9068 §6).
-  it("caches an opaque capability token by the token response's capabilities", async () => {
+  it("caches an opaque grant-approved token by the token response's capabilities", async () => {
     vi.useFakeTimers(FAKE_TIMERS);
     const fetchFn = vi
       .fn<typeof fetch>()
@@ -155,6 +160,88 @@ describe("createAgent", () => {
     );
     expect(secondResult).toBe(firstResult);
     expect(fetchFn).toHaveBeenCalledTimes(3);
+    vi.useRealTimers();
+  });
+
+  // I4: a manual approval binds exactly the request the user saw.
+  it("never reuses a manually approved token", async () => {
+    vi.useFakeTimers(FAKE_TIMERS);
+    const fetchFn = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(createDiscoveryResponse())
+      .mockResolvedValueOnce(cibaAuthResponse("auth-1"))
+      .mockResolvedValueOnce(
+        cibaTokenResponse("manual-token-1", MANUAL_AGENT_AUTHORIZATION)
+      )
+      .mockResolvedValueOnce(cibaAuthResponse("auth-2"))
+      .mockResolvedValueOnce(
+        cibaTokenResponse("manual-token-2", MANUAL_AGENT_AUTHORIZATION)
+      );
+
+    const agent = createAgent({
+      issuerUrl: "https://issuer.example",
+      clientId: "client-1",
+      dpopClient: await createDpopClient(),
+      fetch: fetchFn,
+      loginHint: "user@example.com",
+    });
+    const options = {
+      action: "purchase",
+      audience: "https://merchant.example",
+      bindingMessage: "Authorize purchase",
+      scope: "openid poh",
+    };
+
+    const first = await settle(agent.requestCapability(options));
+    const second = await settle(agent.requestCapability(options));
+
+    expect(first.accessToken).toBe("manual-token-1");
+    expect(second.accessToken).toBe("manual-token-2");
+    expect(fetchFn).toHaveBeenCalledTimes(5);
+    vi.useRealTimers();
+  });
+
+  it("asks again when the authorization details differ from a cached grant approval", async () => {
+    vi.useFakeTimers(FAKE_TIMERS);
+    const fetchFn = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(createDiscoveryResponse())
+      .mockResolvedValueOnce(cibaAuthResponse("auth-1"))
+      .mockResolvedValueOnce(
+        cibaTokenResponse("grant-token-1", AGENT_AUTHORIZATION)
+      )
+      .mockResolvedValueOnce(cibaAuthResponse("auth-2"))
+      .mockResolvedValueOnce(
+        cibaTokenResponse("grant-token-2", AGENT_AUTHORIZATION)
+      );
+
+    const agent = createAgent({
+      issuerUrl: "https://issuer.example",
+      clientId: "client-1",
+      dpopClient: await createDpopClient(),
+      fetch: fetchFn,
+      loginHint: "user@example.com",
+    });
+    const request = (amount: string) => ({
+      action: "purchase",
+      audience: "https://merchant.example",
+      authorizationDetails: [{ type: "purchase", amount }],
+      bindingMessage: "Authorize purchase",
+      scope: "openid poh",
+    });
+
+    const first = await settle(agent.requestCapability(request("10")));
+    const second = await settle(agent.requestCapability(request("99")));
+    const repeated = await agent.requestCapability(request("10"));
+
+    expect(first.accessToken).toBe("grant-token-1");
+    expect(second.accessToken).toBe("grant-token-2");
+    expect(repeated).toBe(first);
+    expect(fetchFn).toHaveBeenCalledTimes(5);
+    const secondBody = fetchFn.mock.calls[3]?.[1]?.body as URLSearchParams;
+    expect(JSON.parse(secondBody.get("authorization_details") ?? "")).toEqual([
+      { type: "purchase", amount: "99" },
+    ]);
     vi.useRealTimers();
   });
 

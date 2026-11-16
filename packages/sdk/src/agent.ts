@@ -4,6 +4,7 @@ import {
   type CibaTokenSet,
   requestCibaApproval,
 } from "./ciba";
+import { stableStringify } from "./fpa/client";
 import { createDiscoveryResolver } from "./fpa/discovery";
 import { truncateBindingMessage } from "./protocol/binding-message";
 import type { DpopClient } from "./rp/dpop-client";
@@ -86,16 +87,36 @@ export class ComplianceInsufficientError extends Error {
 function buildCapabilityCacheKey(input: {
   action: string;
   audience: string;
+  authorizationDetails?: unknown[] | undefined;
   clientId: string;
+  resource: string;
+  scope: string;
 }): string {
-  return [input.clientId, input.audience, input.action].join("\u0000");
+  return [
+    input.clientId,
+    input.audience,
+    input.action,
+    input.scope,
+    input.resource,
+    stableStringify(input.authorizationDetails ?? []),
+  ].join("\u0000");
 }
 
-/** Whether the approval the token response describes covers `action`. */
-function approvesCapability(tokenSet: CibaTokenSet, action: string): boolean {
+/**
+ * Whether the token set can answer later requests for `action`. Only a
+ * capability grant approves more than the one request the user saw; a
+ * manual approval binds exactly that request and is never reused.
+ */
+function reusableForCapability(
+  tokenSet: CibaTokenSet,
+  action: string
+): boolean {
   return (
-    tokenSet.capabilities?.some((capability) => capability.action === action) ??
-    false
+    tokenSet.oversight?.method === "capability_grant" &&
+    (tokenSet.capabilities?.some(
+      (capability) => capability.action === action
+    ) ??
+      false)
   );
 }
 
@@ -163,21 +184,22 @@ export function createAgent(config: AgentConfig): Agent {
   async function requestCapability(
     options: RequestCapabilityOptions
   ): Promise<CibaTokenSet> {
+    const resource = options.resource ?? options.audience;
     const cacheKey = buildCapabilityCacheKey({
       action: options.action,
       audience: options.audience,
+      authorizationDetails: options.authorizationDetails,
       clientId: config.clientId,
+      resource,
+      scope: options.scope,
     });
     const cached = capabilityTokensByKey.get(cacheKey);
     if (cached && cached.expiresAt > Date.now()) {
       return cached;
     }
 
-    const capabilityTokenSet = await requestApproval({
-      ...options,
-      resource: options.resource ?? options.audience,
-    });
-    if (approvesCapability(capabilityTokenSet, options.action)) {
+    const capabilityTokenSet = await requestApproval({ ...options, resource });
+    if (reusableForCapability(capabilityTokenSet, options.action)) {
       capabilityTokensByKey.set(cacheKey, capabilityTokenSet);
     }
 
@@ -185,13 +207,12 @@ export function createAgent(config: AgentConfig): Agent {
   }
 
   function invalidateCapability(action: string, audience: string): void {
-    capabilityTokensByKey.delete(
-      buildCapabilityCacheKey({
-        action,
-        audience,
-        clientId: config.clientId,
-      })
-    );
+    const prefix = [config.clientId, audience, action, ""].join("\u0000");
+    for (const key of capabilityTokensByKey.keys()) {
+      if (key.startsWith(prefix)) {
+        capabilityTokensByKey.delete(key);
+      }
+    }
   }
 
   async function proveHuman(options: ProveHumanOptions): Promise<string> {

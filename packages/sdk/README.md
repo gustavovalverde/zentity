@@ -79,7 +79,7 @@ const bootstrap = await installedAuth.exchangeLoginToken({
 
 ## Agent Approvals
 
-`agent.requestApproval` and `requestCibaApproval` resolve to a `CibaTokenSet`. Treat its `accessToken` as opaque: Zentity's access tokens name the user and the agent by pairwise identifiers meant for their audience, and carry no approval details for the client. The token set states the approval instead. `oversight` says how and when the user approved, for every approval. When a verified agent made the request, `capabilities`, `delegation`, and `aapClaimsVersion` say what the approval authorizes. `agent.requestCapability` caches a token set by the action it names in `capabilities`.
+`agent.requestApproval` and `requestCibaApproval` resolve to a `CibaTokenSet`. Treat its `accessToken` as opaque: Zentity's access tokens name the user and the agent by pairwise identifiers meant for their audience, and carry no approval details for the client. The token set states the approval instead. `oversight` says how and when the user approved, for every approval. When a verified agent made the request, `capabilities`, `delegation`, and `aapClaimsVersion` say what the approval authorizes. `agent.requestCapability` reuses a token set only when a capability grant approved it (`oversight.method` is `capability_grant`), its `capabilities` name the action, and the later request asks for the same audience, scope, resource, and authorization details. A token set from a manual approval answers only the request the user saw, so the next call asks again.
 
 ## Confidential Clients
 

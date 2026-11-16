@@ -137,7 +137,7 @@ interface StepUpErrorBody {
   error_description?: string;
 }
 
-function stableStringify(value: unknown): string {
+export function stableStringify(value: unknown): string {
   if (Array.isArray(value)) {
     return `[${value.map((item) => stableStringify(item)).join(",")}]`;
   }
