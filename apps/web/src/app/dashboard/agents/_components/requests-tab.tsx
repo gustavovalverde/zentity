@@ -103,7 +103,7 @@ function formatPurchaseDetail(
   try {
     const details = JSON.parse(authorizationDetails) as unknown;
     return Array.isArray(details)
-      ? (describePurchase(details[0])?.title ?? null)
+      ? (describePurchase(details[0])?.pushText ?? null)
       : null;
   } catch {
     return null;
