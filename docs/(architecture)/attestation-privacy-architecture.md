@@ -200,6 +200,8 @@ This system intentionally splits data across server storage and client-only acce
 
 The vault is a server-stored encrypted blob (`encrypted_secrets` + `secret_wrappers`) that can only be decrypted client-side after WebAuthn + PRF, OPAQUE export-key derivation, wallet signature + HKDF derivation, or the user's recovery key.
 
+The recovery key's wrapper also stores `verifier_hash`: the SHA-256 of a 32-byte verifier the browser derives from the key under its own HKDF info (`zentity:verifier:recovery-key`), separate from the key's KEK (`zentity:kek:recovery-key`). It lets the server confirm that the user holds the key during account recovery. It reveals neither the key nor anything that unwraps the vault, and the browser never receives it back. The server clears it once the key confirms a recovery.
+
 ---
 
 ## Privacy Guarantees
