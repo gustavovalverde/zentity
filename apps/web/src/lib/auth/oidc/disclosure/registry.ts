@@ -413,6 +413,27 @@ export function describeScopes(scopes: readonly string[]): ScopeLine[] {
   return lines;
 }
 
+/**
+ * The requested scopes a consent screen offers as optional. The agent
+ * bootstrap scopes share one line, so they are optional only when the client
+ * marks every requested one optional; otherwise all of them are required.
+ */
+export function resolveOptionalScopes(
+  requestedScopes: readonly string[],
+  optionalScopes: readonly string[]
+): Set<string> {
+  const optional = new Set(optionalScopes);
+  const bootstrapScopes = requestedScopes.filter((scope) =>
+    AGENT_BOOTSTRAP_SCOPE_SET.has(scope)
+  );
+  if (bootstrapScopes.some((scope) => !optional.has(scope))) {
+    for (const scope of bootstrapScopes) {
+      optional.delete(scope);
+    }
+  }
+  return optional;
+}
+
 // ---------------------------------------------------------------------------
 // Scope-to-claim mappings (derived from entries)
 // ---------------------------------------------------------------------------

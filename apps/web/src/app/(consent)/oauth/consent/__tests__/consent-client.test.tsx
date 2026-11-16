@@ -383,6 +383,40 @@ describe("OAuthConsentClient identity hardening", () => {
     expect(scopeValue()).not.toContain("agent:session.register");
   });
 
+  it("requires every agent bootstrap scope when the client marks only some optional", () => {
+    const { container } = render(
+      <OAuthConsentClient
+        authMode="passkey"
+        clientHostname={null}
+        clientId="client-1"
+        clientMeta={{
+          name: "Local agent",
+          icon: null,
+          uri: null,
+          metadataUrl: null,
+          redirectUris: null,
+        }}
+        isLocalApp={false}
+        optionalScopes={["agent:session.register"]}
+        scopeParam="openid email agent:host.register agent:session.register"
+        securityBadgeInput={null}
+        wallet={null}
+      />
+    );
+
+    expect(
+      screen.getAllByText("Register and manage this agent on your behalf")
+    ).toHaveLength(1);
+    expect(screen.queryAllByRole("checkbox")).toHaveLength(0);
+    expect(
+      container
+        .querySelector<HTMLInputElement>('input[name="scope"]')
+        ?.value.split(" ")
+    ).toEqual(
+      expect.arrayContaining(["agent:host.register", "agent:session.register"])
+    );
+  });
+
   it("warns about missing profile fields but stages the available subset", async () => {
     authClientMocks.oauth2.consent.mockResolvedValue({
       data: { redirect: true, url: "#oauth-return" },

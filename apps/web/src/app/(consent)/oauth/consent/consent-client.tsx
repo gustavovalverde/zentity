@@ -31,6 +31,7 @@ import {
   findMissingIdentityFields,
   HIDDEN_SCOPES,
   isIdentityScope,
+  resolveOptionalScopes,
 } from "@/lib/auth/oidc/disclosure/registry";
 import { groupScopes } from "@/lib/auth/oidc/disclosure/scope-display";
 import { getSignedOAuthQuery } from "@/lib/auth/oidc/oauth-post-login";
@@ -129,7 +130,10 @@ export function OAuthConsentClient({
     [scopeParam]
   );
 
-  const optionalSet = useMemo(() => new Set(optionalScopes), [optionalScopes]);
+  const optionalSet = useMemo(
+    () => resolveOptionalScopes(allScopes, optionalScopes),
+    [allScopes, optionalScopes]
+  );
 
   const visible = useMemo(
     () => allScopes.filter((s) => !HIDDEN_SCOPES.has(s)),
