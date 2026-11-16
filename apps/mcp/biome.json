@@ -16,12 +16,15 @@
     "rules": {
       "style": {
         "useConsistentMethodSignatures": "off",
+        "noExcessiveClassesPerFile": "off",
         "noIncrementDecrement": "off",
         "useDestructuring": "off",
         "useUnicodeRegex": "off",
         "useImportsFirst": "off"
       },
       "performance": {
+        "noBarrelFile": "error",
+        "noNamespaceImport": "error",
         "noAwaitInLoops": "off"
       },
       "suspicious": {

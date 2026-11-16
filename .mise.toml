@@ -1,6 +1,6 @@
 [tools]
 node = "26.13.0"
-pnpm = "10.19.0"
+pnpm = "11.1.2"
 rust = "1.92.0"
 python = "3.12"
 

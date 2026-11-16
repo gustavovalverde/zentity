@@ -26,6 +26,12 @@ updates:
       - dependency-name: "@better-auth/oidc4ida"
       - dependency-name: "@better-auth/oidc4vci"
       - dependency-name: "@better-auth/oidc4vp"
+      # Noir, Barretenberg, and TFHE versions must match compiled circuit
+      # artifacts and the FHE service wire format, so they move by hand.
+      - dependency-name: "@noir-lang/*"
+      - dependency-name: "@aztec/bb.js"
+      - dependency-name: "tfhe"
+      - dependency-name: "node-tfhe"
     # A dependency joins the first group that matches it, so better-auth
     # comes first and moves as one unit.
     groups:
@@ -68,6 +74,9 @@ updates:
     # Only update lockfile, not Cargo.toml versions
     versioning-strategy: lockfile-only
     open-pull-requests-limit: 5
+    # tfhe must stay in step with the browser client's tfhe/node-tfhe.
+    ignore:
+      - dependency-name: "tfhe"
     cooldown:
       default-days: 7
     labels:

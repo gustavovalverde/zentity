@@ -14,6 +14,8 @@ describe("error logger", () => {
     warn: vi.fn(),
   };
 
+  const logger = log as unknown as Parameters<typeof logError>[2];
+
   beforeEach(() => {
     log.error.mockClear();
     log.warn.mockClear();
@@ -24,11 +26,7 @@ describe("error logger", () => {
     err.stack =
       "Error: Contact test@example.com id 1234567\n    at handler (src/app.ts:10:5)";
 
-    const fingerprint = logError(
-      err,
-      { path: "identity.finalize" },
-      log as any
-    );
+    const fingerprint = logError(err, { path: "identity.finalize" }, logger);
 
     expect(fingerprint).toMatch(FINGERPRINT_PATTERN);
     expect(log.error).toHaveBeenCalled();
@@ -48,14 +46,14 @@ describe("error logger", () => {
     const err2 = new Error("Boom");
     err2.stack = "Error: Boom\n    at handler (src/app.ts:10:5)";
 
-    const fp1 = logError(err1, { path: "x" }, log as any);
-    const fp2 = logError(err2, { path: "x" }, log as any);
+    const fp1 = logError(err1, { path: "x" }, logger);
+    const fp2 = logError(err2, { path: "x" }, logger);
 
     expect(fp1).toBe(fp2);
   });
 
   it("sanitizes warning messages", () => {
-    logWarn("Email test@example.com", {}, log as any);
+    logWarn("Email test@example.com", {}, logger);
     expect(log.warn).toHaveBeenCalled();
     const message = log.warn.mock.calls[0]?.[1] as string;
     expect(message).toContain("[redacted-email]");
