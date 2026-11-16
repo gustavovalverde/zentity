@@ -8,6 +8,8 @@
 
 import type { OAuthProviderExtension } from "@better-auth/oauth-provider";
 
+import { AUTHORIZATION_DETAILS_TYPES } from "@zentity/sdk/protocol";
+
 import { env } from "@/env";
 
 const TRAILING_SLASHES_REGEX = /\/+$/;
@@ -48,11 +50,11 @@ export const joinAuthIssuerPath = (issuer: string, path: string): string => {
  */
 export const discoveryMetadataExtension: OAuthProviderExtension = {
   metadata: ({ document }) => ({
-    // openid_credential (OID4VCI, via HAIP) and payment_authorization
-    // (RFC 9396 payment approvals).
+    // openid_credential (OID4VCI, via HAIP) and the CIBA types the plugin
+    // registers from the same map (RFC 9396).
     authorization_details_types_supported: [
       "openid_credential",
-      "payment_authorization",
+      ...Object.keys(AUTHORIZATION_DETAILS_TYPES),
     ],
     // MCP authorization (RFC 8707 resource indicators)
     resource_indicators_supported: true,

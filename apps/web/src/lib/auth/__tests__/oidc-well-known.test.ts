@@ -1,3 +1,4 @@
+import { AUTHORIZATION_DETAILS_TYPES } from "@zentity/sdk/protocol";
 import { describe, expect, it } from "vitest";
 
 import { GET as getAuthorizationServerMetadata } from "@/app/.well-known/oauth-authorization-server/[[...issuer]]/route";
@@ -165,12 +166,19 @@ describe.each(["openid-configuration", "oauth-authorization-server"] as const)(
       expect(metadata.resource_indicators_supported).toBe(true);
     });
 
+    // R3: the list comes from the map the CIBA plugin registers.
     it("lists every authorization_details type the server accepts", async () => {
       const metadata = await servedDocument(kind);
 
       expect(metadata.authorization_details_types_supported).toEqual([
         "openid_credential",
+        ...Object.keys(AUTHORIZATION_DETAILS_TYPES),
+      ]);
+      expect(metadata.authorization_details_types_supported).toEqual([
+        "openid_credential",
         "payment_authorization",
+        "purchase",
+        "x402_purchase",
       ]);
     });
 

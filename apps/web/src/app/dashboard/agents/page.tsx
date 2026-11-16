@@ -3,7 +3,10 @@ import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 
 import { env } from "@/env";
-import { describeApprovalRequirement } from "@/lib/agents/approval-resolve";
+import {
+  describeApprovalRequirement,
+  identityStrengthRequirement,
+} from "@/lib/agents/approval-resolve";
 import { approvalPolicy } from "@/lib/agents/capability";
 import { getAccountAssurance } from "@/lib/assurance/posture";
 import { hasPasskey } from "@/lib/auth/passkey/step-up";
@@ -137,20 +140,32 @@ export default async function AgentsPage({
       hasPasskey(userId),
     ]);
 
+  const pendingRequests = await Promise.all(
+    pending.map(async (row) => {
+      const identityStrength = await identityStrengthRequirement(
+        userId,
+        row.authorizationDetails
+      );
+      return {
+        ...row,
+        approvalChannel: null,
+        approvalMethod: null,
+        requirement: {
+          ...describeApprovalRequirement(
+            approvalPolicy({
+              scope: row.scope,
+              authorizationDetails: row.authorizationDetails,
+            }),
+            userHasPasskey
+          ),
+          ...(identityStrength ? { identity_strength: identityStrength } : {}),
+        },
+        status: "pending",
+      };
+    })
+  );
   const requests = [
-    ...pending.map((row) => ({
-      ...row,
-      approvalChannel: null,
-      approvalMethod: null,
-      requirement: describeApprovalRequirement(
-        approvalPolicy({
-          scope: row.scope,
-          authorizationDetails: row.authorizationDetails,
-        }),
-        userHasPasskey
-      ),
-      status: "pending",
-    })),
+    ...pendingRequests,
     ...decided.map(({ decision, ...row }) => ({
       ...row,
       requirement: null,

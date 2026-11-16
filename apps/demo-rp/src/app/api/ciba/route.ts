@@ -1,5 +1,5 @@
 import crypto from "node:crypto";
-
+import { AGENT_SESSION_INACTIVE_DESCRIPTION } from "@zentity/sdk/agent-contract";
 import {
   createDpopClient,
   type DpopClient,
@@ -61,6 +61,13 @@ interface DcrClient {
 // signs nothing but CIBA token polls and the userinfo read that follows.
 let cibaDpopClient: Promise<DpopClient> | undefined;
 
+function isInactiveSessionRefusal(body: Record<string, unknown>): boolean {
+  return (
+    body.error === "invalid_request" &&
+    body.error_description === AGENT_SESSION_INACTIVE_DESCRIPTION
+  );
+}
+
 async function handleAuthorize(
   userId: string,
   data: {
@@ -71,15 +78,13 @@ async function handleAuthorize(
     acrValues?: string | undefined;
   },
   client: DcrClient,
-  agentAssertion: string | null
+  assertion: {
+    agentAssertion: string | null;
+    /** Signs again under a new agent session. */
+    renew: () => Promise<string | null>;
+  }
 ) {
   const notificationToken = crypto.randomUUID();
-
-  const headers: Record<string, string> = {
-    // CIBA §7.1: the backchannel authentication request is form-encoded.
-    "Content-Type": "application/x-www-form-urlencoded",
-    ...(agentAssertion ? { "Agent-Assertion": agentAssertion } : {}),
-  };
 
   const form = new URLSearchParams({
     client_id: client.clientId,
@@ -102,13 +107,23 @@ async function handleAuthorize(
     form.set("acr_values", data.acrValues);
   }
 
-  const res = await fetch(`${env.ZENTITY_URL}/api/auth/oauth2/bc-authorize`, {
-    method: "POST",
-    headers,
-    body: form,
-  });
+  const send = async (agentAssertion: string | null) => {
+    const res = await fetch(`${env.ZENTITY_URL}/api/auth/oauth2/bc-authorize`, {
+      method: "POST",
+      headers: {
+        // CIBA §7.1: the backchannel authentication request is form-encoded.
+        "Content-Type": "application/x-www-form-urlencoded",
+        ...(agentAssertion ? { "Agent-Assertion": agentAssertion } : {}),
+      },
+      body: form,
+    });
+    return { res, body: (await res.json()) as Record<string, unknown> };
+  };
 
-  const body = (await res.json()) as Record<string, unknown>;
+  let { res, body } = await send(assertion.agentAssertion);
+  if (assertion.agentAssertion && !res.ok && isInactiveSessionRefusal(body)) {
+    ({ res, body } = await send(await assertion.renew()));
+  }
   if (!res.ok) {
     return NextResponse.json(body, { status: res.status });
   }
@@ -202,14 +217,21 @@ export async function POST(request: Request) {
       data.bindingMessage ??
       "Aether AI requests approval for a delegated action";
 
-    let agentAssertion: string | null = null;
-    try {
-      agentAssertion = await prepareAgentAssertionForScenario({
+    const signAgentAssertion = (renewSession: boolean) =>
+      prepareAgentAssertionForScenario({
         bindingMessage,
+        scope: data.scope,
+        acrValues: data.acrValues,
+        authorizationDetails: data.authorizationDetails,
+        renewSession,
         scenarioId: data.scenarioId,
         ...(data.trustTier ? { trustTier: data.trustTier } : {}),
         userId,
       });
+
+    let agentAssertion: string | null = null;
+    try {
+      agentAssertion = await signAgentAssertion(false);
     } catch (err) {
       const message =
         err instanceof Error ? err.message : "Agent assertion failed";
@@ -224,7 +246,7 @@ export async function POST(request: Request) {
       userId,
       { ...data, bindingMessage, loginHint },
       client,
-      agentAssertion
+      { agentAssertion, renew: () => signAgentAssertion(true) }
     );
   }
 

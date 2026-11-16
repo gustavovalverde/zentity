@@ -320,6 +320,8 @@ The MCP sends `Agent-Assertion` on CIBA requests. That assertion is a short-live
 - `task_id`
 - `task_hash`
 
+`task_hash` is the hex SHA-256 of the RFC 8785 canonical JSON of the request the MCP sends: its binding message, sorted scopes, `acr_values`, and `authorization_details`. The MCP signs the assertion after it builds the request, and bc-authorize refuses an assertion whose hash does not match that request with `invalid_request`.
+
 Before Zentity uses an unverified assertion payload to choose a session key, it parses the JWT with duplicate-key rejection. This keeps issuer/session selection deterministic even if a malicious assertion contains repeated JSON member names.
 
 When Zentity receives a valid assertion, it snapshots server-owned runtime metadata onto the CIBA request:
@@ -364,9 +366,39 @@ sequenceDiagram
 The difference between profile reads and purchases is structural rather than cosmetic:
 
 - `my_profile` always remains an explicit approval because identity scopes require vault unlock in a full browser context.
-- `purchase` is not grantable, and its manual ceremony is `user_verification`.
+- `purchase` is not grantable, and its manual ceremony is `user_verification`. Both purchase RAR types, `purchase` and `x402_purchase`, and the `poh` scope map to it in the approval policy table, so no capability grant ever approves a purchase and no notification approves one inline.
 
 That means both profile disclosure and purchase execution stay on the human approval boundary, with purchase additionally requiring a user-verified passkey assertion.
+
+The MCP `purchase` tool has two paths:
+
+- Without `url`, it requests a `purchase` entry (`merchant.name`, `item`, and an ISO 4217 `amount`) with the identity scopes a delivery needs, under the binding message `Buy from <merchant name>`. After approval it reads the staged shipping details once from UserInfo.
+- With `url`, it fetches an x402 resource. The approval is a Proof-of-Human for that merchant, under the binding message `Proof-of-Human for <merchant host>`; the agent's own wallet pays the merchant's price, up to `maxAmount` in USDC. The MCP server has no payment scheme client yet, so this path answers `payment_not_configured` before asking the user. With a scheme client, the tool answers `approved` only when the merchant accepts the payment after the user's approval; a merchant refusal after approval is `payment_failed` (or `approval_mismatch` when the merchant refuses the approved terms), and a merchant that answers without asking for a Proof-of-Human is `unsupported_resource`.
+
+### The x402 sequence
+
+```mermaid
+sequenceDiagram
+  participant Agent
+  participant Merchant
+  participant Zentity
+  participant User
+  Agent->>Merchant: GET resource
+  Merchant-->>Agent: 402 (auth-hints, zentity, WWW-Authenticate: DPoP)
+  Note over Agent: checks the 402, picks a requirement within maxAmount,<br/>generates key K for this purchase
+  Agent->>Zentity: bc-authorize x402_purchase, scope openid poh, Agent-Assertion
+  Zentity->>User: approval page: Proof-of-Human for the merchant
+  User->>Zentity: passkey approval (identity strength checked)
+  Agent->>Zentity: CIBA token poll, DPoP proof by K
+  Agent->>Zentity: PoH mint, DPoP proof by K (one mint per approval)
+  Zentity-->>Agent: poh+jwt, aud = merchant origin, cnf.jkt = K
+  Note over Agent: signs the payment for the approved requirement
+  Agent->>Merchant: GET resource, PAYMENT-SIGNATURE, Authorization: DPoP poh, DPoP proof by K
+  Note over Merchant: PoH and proof checks, requirement equality,<br/>facilitator verify, records the PoH jti, settle
+  Merchant-->>Agent: 200 with PAYMENT-RESPONSE
+```
+
+K signs the CIBA token poll, the mint, and the merchant request, and is then discarded, so the installation key never reaches a merchant. The interactive MCP flow keeps K with the pending approval, so a resumed tool call polls and mints with the same key. A merchant that changes its 402 between tool calls presents a different requirement, which starts a new approval.
 
 ---
 
@@ -399,7 +431,7 @@ stateDiagram-v2
   revoked --> [*]
 ```
 
-There is no reactivation path. If a session expires, the MCP creates a new session under the same host.
+There is no reactivation path. If a session expires, the MCP creates a new session under the same host. bc-authorize refuses an Agent-Assertion from a session that is unknown, expired, or revoked with `invalid_request` "Agent session is not active", which differs from the "Agent-Assertion does not match this request" refusal; the MCP stdio server and demo-rp register a new session when they receive it, sign the request again, and send it once more.
 
 ### How expiry is applied
 
@@ -851,7 +883,7 @@ Once consent is obtained, the question shifts from "does the human approve?" to 
 
 Two convergence points tie the five concerns together rather than letting them exist as parallel tracks.
 
-The `assertionVerified` flag on the CIBA request row is the first. It is set when the `Agent-Assertion` from the control plane passes verification inside the consent channel. If verification fails, three downstream effects cascade: the token's `act` names the client, the token response carries no agent authorization, and introspection returns `active: false` for agent consumers.
+The `assertionVerified` flag on the CIBA request row is the first. It is set when the `Agent-Assertion` from the control plane passes verification inside the consent channel. bc-authorize refuses an assertion that does not match the request before anything is stored. If binding still fails (a replayed `jti`, or a host of another user or client), three downstream effects cascade: the token's `act` names the client, the token response carries no agent authorization, and introspection returns `active: false` for agent consumers.
 
 The `authorization_details` payload is the second. It enters at the structured intent layer, drives capability matching in the consent channel, and survives into the CIBA access token and its token response, where the CIBA plugin issues the details it stored at bc-authorize. Token exchange refuses a subject that carries it. The same structured data flows across these specs without transformation, which is evidence that the specs compose cleanly rather than fighting over data representation.
 

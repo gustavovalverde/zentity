@@ -19,6 +19,10 @@ export const x402Scenario: RouteScenario = {
   dcr: {
     clientName: "x402 Demo",
     requestedScopes: buildRequestedScopes(signInScopes, stepUpScopes),
+    // An agent acting for the signed-in user asks for a Proof-of-Human for
+    // one merchant through CIBA.
+    authorizationDetailsTypes: ["x402_purchase"],
+    grantTypes: ["authorization_code", "urn:openid:params:grant-type:ciba"],
   },
   compliance: [
     {
@@ -36,7 +40,7 @@ export const x402Scenario: RouteScenario = {
     {
       label: "Proof-of-Human",
       detail:
-        "Compact JWTs asserting verification tier and sybil resistance. No personal data is disclosed, only a cryptographic yes or no.",
+        "Compact JWTs stating identity strength, for one audience, bound to a DPoP key. No personal data is disclosed, only a cryptographic yes or no.",
       variant: "mechanism",
     },
   ],

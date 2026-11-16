@@ -25,8 +25,12 @@ import { and, eq } from "drizzle-orm";
 import { z } from "zod";
 
 import { resolveAgentSub } from "@/lib/agents/actor-subject";
-import { resolveCibaApprovalData } from "@/lib/agents/approval-resolve";
+import {
+  identityStrengthRequirement,
+  resolveCibaApprovalData,
+} from "@/lib/agents/approval-resolve";
 import { approvalPolicy, requiredCeremony } from "@/lib/agents/capability";
+import { formatIdentityStrength } from "@/lib/agents/labels";
 import { computeAcr, loginMethodToAmr } from "@/lib/assurance/oidc-claims";
 import { getAccountAssurance } from "@/lib/assurance/posture";
 import {
@@ -291,6 +295,28 @@ async function assertAcrSatisfied(
   return assurance;
 }
 
+/**
+ * Refuses an approval below the identity strength an `x402_purchase` merchant
+ * requires. The browser learns why; the request stays pending, so the agent
+ * sees only approval, denial, or expiry.
+ */
+async function assertIdentityStrengthSatisfied(
+  userId: string,
+  storedAuthorizationDetails: string | null
+): Promise<void> {
+  const requirement = await identityStrengthRequirement(
+    userId,
+    storedAuthorizationDetails
+  );
+  if (requirement && !requirement.satisfied) {
+    throw cibaDecisionError(
+      "FORBIDDEN",
+      "insufficient_identity_strength",
+      `This merchant requires ${formatIdentityStrength(requirement.required)} identity verification, which you have not completed`
+    );
+  }
+}
+
 async function loadPendingRequest(requestId: string, userId: string) {
   const row = await db
     .select({
@@ -415,6 +441,10 @@ export function createCibaApproval(
 
       const { authentication, grant } = input;
       const assurance = await assertAcrSatisfied(input.userId, row.acrValues);
+      await assertIdentityStrengthSatisfied(
+        input.userId,
+        row.authorizationDetails
+      );
 
       const recordId = await insertDecisionRecord(row, {
         requestId: input.requestId,
@@ -697,6 +727,10 @@ export function cibaApprovalPlugin(approval: CibaApproval) {
             );
           }
           await assertAcrSatisfied(userId, row.acrValues);
+          await assertIdentityStrengthSatisfied(
+            userId,
+            row.authorizationDetails
+          );
           if (policy.hasIdentityScopes) {
             const release = await loadReleaseContext(
               releaseIdFor(row.authReqId, row.clientId)

@@ -138,6 +138,25 @@ describe("tokenSector", () => {
       );
     }
   });
+
+  // R10: a merchant Proof-of-Human sector never equals the sector of a client
+  // registered at the merchant's own host.
+  it("keeps a merchant sector apart from the merchant host's client sector", async () => {
+    const merchantClient = {
+      sectorIdentifier: "merchant.example",
+      redirectUris: ["https://merchant.example/cb"],
+    };
+    const merchantSector = tokenSector(
+      { sectorIdentifier: "client/agent-1", redirectUris: [] },
+      "https://merchant.example"
+    );
+
+    expect(merchantSector).toBe("client/agent-1 https://merchant.example");
+    expect(merchantSector).not.toBe(clientSector(merchantClient));
+    expect(await pairwiseValue(merchantSector, "user-1")).not.toBe(
+      await pairwiseValue(clientSector(merchantClient), "user-1")
+    );
+  });
 });
 
 describe("scopeSubjectToAudience", () => {

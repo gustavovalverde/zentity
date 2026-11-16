@@ -44,7 +44,10 @@ vi.mock("../../src/runtime/agent-registration.js", async () => {
 });
 
 import { AgentRegistrationError, buildHostKeyNamespace } from "@zentity/sdk";
-import { bootstrapRegisteredRuntime } from "../../src/transports/stdio.js";
+import {
+  bootstrapRegisteredRuntime,
+  registerRuntimeSession,
+} from "../../src/transports/stdio.js";
 
 const baseOauth = {
   accessToken: "access-token",
@@ -119,6 +122,30 @@ describe("bootstrapRegisteredRuntime", () => {
       hostKeyNamespace
     );
     expect(auth).toEqual({ oauth: baseOauth, runtime });
+  });
+
+  // A session that lapsed is replaced under the same host, with the display
+  // the client connected with.
+  it("registers a replacement session under the cached host", async () => {
+    const replacement = { ...runtime, sessionId: "session-456" };
+    mockRegisterAgentSession.mockResolvedValueOnce(replacement);
+
+    const renewed = await registerRuntimeSession(baseOauth, runtime.display);
+
+    expect(renewed).toBe(replacement);
+    expect(mockEnsureHostRegistered).toHaveBeenCalledWith(
+      "http://localhost:3000",
+      bootstrapOauth,
+      "@zentity/mcp-server",
+      hostKeyNamespace
+    );
+    expect(mockRegisterAgentSession).toHaveBeenCalledWith(
+      "http://localhost:3000",
+      bootstrapOauth,
+      "host-123",
+      runtime.display,
+      hostKeyNamespace
+    );
   });
 
   it("allows an explicit env override when clientInfo is absent", async () => {

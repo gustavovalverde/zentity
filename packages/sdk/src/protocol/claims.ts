@@ -4,7 +4,6 @@ export const AGENT_DID_METHODS_SUPPORTED = ["did:key"] as const;
 export const ACT_DID_EMISSION_POLICY = "never" as const;
 
 export type SdkErrorCode =
-	| "compliance_insufficient"
 	| "invalid_did_key_format"
 	| "token_refresh_failed"
 	| "use_dpop_nonce";

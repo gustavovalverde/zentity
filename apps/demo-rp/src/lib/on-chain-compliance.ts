@@ -37,12 +37,12 @@ export function getMirrorAddress(): string | null {
 
 export async function readOnChainCompliance(
   walletAddress: string,
-  minComplianceLevel: number
+  mirrorLevel: number
 ): Promise<{
   address: string;
   compliant: boolean;
   contract: string;
-  minComplianceLevel: number;
+  mirrorLevel: number;
   network: string;
 } | null> {
   const mirrorAddress = configuredMirrorAddress;
@@ -57,14 +57,14 @@ export async function readOnChainCompliance(
       address: mirrorAddress,
       abi: identityRegistryMirrorAbi,
       functionName: "isCompliant",
-      args: [walletAddress, minComplianceLevel],
+      args: [walletAddress, mirrorLevel],
     });
 
     return {
       address: walletAddress,
       compliant,
       contract: mirrorAddress,
-      minComplianceLevel,
+      mirrorLevel,
       network: BASE_SEPOLIA_NETWORK,
     };
   } catch {

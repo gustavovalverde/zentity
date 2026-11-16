@@ -109,6 +109,29 @@ export async function signInToScenario(page: Page, options: SignInOptions) {
   await completeConsent(page, options.path);
 }
 
+/**
+ * Signs in to a scenario through demo-rp's auth API, as its page would, for a
+ * scenario page the E2E dev server cannot build (the x402 page's wallet
+ * dependencies need `@x402/svm`, which webpack does not resolve).
+ */
+export async function signInToScenarioThroughApi(
+  page: Page,
+  providerId: string
+) {
+  await page.goto("/");
+  const response = await page.request.post("/api/auth/sign-in/social", {
+    data: { provider: providerId, callbackURL: `${demoRpBaseURL}/` },
+    headers: { Origin: demoRpBaseURL.replace(TRAILING_SLASH_RE, "") },
+  });
+  expect(response.ok(), await response.text()).toBeTruthy();
+  const { url } = (await response.json()) as { url?: string };
+  if (!url) {
+    throw new Error(`Sign-in for ${providerId} returned no authorization URL`);
+  }
+  await page.goto(url);
+  await completeConsent(page, "/");
+}
+
 export async function completeConsent(page: Page, path: string) {
   const allowButton = page.getByRole("button", { name: "Allow" });
   await allowButton.waitFor({ state: "visible", timeout: 60_000 });
@@ -147,31 +170,46 @@ export async function waitForAetherAuthorization(page: Page) {
   return body.auth_req_id;
 }
 
+let approver: { browser: Browser; page: Page } | undefined;
+
+/**
+ * The seeded user's browser on Zentity, with a virtual authenticator that
+ * holds their passkey. It is kept for the run: once the user has a passkey,
+ * adding another needs a passkey step-up a new authenticator cannot answer.
+ */
+async function approverPage(browser: Browser): Promise<Page> {
+  if (approver?.browser === browser && !approver.page.isClosed()) {
+    return approver.page;
+  }
+  const context = await browser.newContext({
+    baseURL: issuerBaseURL,
+    storageState: webAuthStatePath,
+  });
+  const page = await context.newPage();
+  await page.goto("/");
+  await addPrfAuthenticator(page);
+  await registerPasskeyForUser(page, readAuthSeed().password);
+  approver = { browser, page };
+  return page;
+}
+
 /**
  * Approves a request that needs user verification the way a user does: on
  * Zentity's approval page, with a passkey the seeded user registers first.
  */
 export async function approveCibaRequestWithPasskey(
   browser: Browser,
-  authReqId: string
+  authReqId: string,
+  approvedText?: string
 ) {
-  const context = await browser.newContext({
-    baseURL: issuerBaseURL,
-    storageState: webAuthStatePath,
+  const page = await approverPage(browser);
+  await page.goto(`/approve/${await findCibaRequestId(authReqId)}`);
+  await page.getByRole("button", { name: "Approve with passkey" }).click();
+  await expect(page.getByText("Request Approved")).toBeVisible({
+    timeout: 30_000,
   });
-  try {
-    const page = await context.newPage();
-    await page.goto("/");
-    await addPrfAuthenticator(page);
-    await registerPasskeyForUser(page, readAuthSeed().password);
-
-    await page.goto(`/approve/${await findCibaRequestId(authReqId)}`);
-    await page.getByRole("button", { name: "Approve with passkey" }).click();
-    await expect(page.getByText("Request Approved")).toBeVisible({
-      timeout: 30_000,
-    });
-  } finally {
-    await context.close();
+  if (approvedText) {
+    await expect(page.getByText(approvedText)).toBeVisible();
   }
 }
 

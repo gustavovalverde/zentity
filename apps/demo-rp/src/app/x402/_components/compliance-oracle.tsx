@@ -1,60 +1,41 @@
+import { meetsIdentityStrength } from "@zentity/sdk/protocol";
 import { Badge } from "@/components/ui/badge";
 import {
   type AccessOutcome,
   formatPohIdentityStrength,
-  getPohIdentityTier,
   type PohClaims,
   type X402Resource,
 } from "@/data/x402";
 import { SolidityPanel } from "./solidity-panel";
-
-function TierIndicator({ tier }: { tier: number }) {
-  return (
-    <div className="flex items-center gap-1.5">
-      {[1, 2, 3, 4].map((n) => (
-        <div
-          className={`size-2.5 rounded-full transition-colors ${
-            n <= tier ? "bg-primary" : "bg-border"
-          }`}
-          key={n}
-        />
-      ))}
-      <span className="ml-1 font-mono text-sm">Tier {tier}</span>
-    </div>
-  );
-}
 
 function TierCard({ pohClaims }: { pohClaims: PohClaims | null }) {
   if (!pohClaims) {
     return (
       <div className="rounded-lg border border-border/50 p-4">
         <h4 className="mb-2 font-medium text-muted-foreground text-xs uppercase tracking-wider">
-          Verification Tier
+          Identity Strength
         </h4>
         <p className="text-muted-foreground text-sm">
-          Run a request to see your verification tier
+          Run a request to see your identity strength
         </p>
       </div>
     );
   }
 
-  const identityTier = getPohIdentityTier(pohClaims);
-
   return (
     <div className="fade-in animate-in rounded-lg border border-border/50 p-4 duration-300">
       <h4 className="mb-3 font-medium text-muted-foreground text-xs uppercase tracking-wider">
-        Verification Tier
+        Identity Strength
       </h4>
-      <TierIndicator tier={identityTier} />
+      <p className="font-mono text-sm">
+        {formatPohIdentityStrength(pohClaims.identity.strength)}
+      </p>
       <div className="mt-3 flex flex-wrap gap-1.5">
         <Badge variant={pohClaims.identity.verified ? "default" : "secondary"}>
           {pohClaims.identity.verified ? "Verified" : "Not Verified"}
         </Badge>
         <Badge variant={pohClaims.humanity.proven ? "default" : "secondary"}>
           {pohClaims.humanity.proven ? "Unique Human" : "No Humanity Proof"}
-        </Badge>
-        <Badge variant="outline">
-          {formatPohIdentityStrength(pohClaims.identity.strength)}
         </Badge>
       </div>
     </div>
@@ -110,17 +91,17 @@ function RequirementCheck({
   pohClaims: PohClaims | null;
   resource: X402Resource | null;
 }) {
-  if (!resource || resource.requiredTier === 0) {
-    return null;
-  }
-  if (!pohClaims) {
+  const required = resource?.requiredIdentityStrength;
+  if (!(resource && required && pohClaims)) {
     return null;
   }
 
-  const identityTier = getPohIdentityTier(pohClaims);
-  const meetsTier = identityTier >= resource.requiredTier;
+  const meetsTier = meetsIdentityStrength(
+    pohClaims.identity.strength,
+    required
+  );
 
-  // For on-chain resources, the final verdict depends on both tier and Base mirror compliance.
+  // For on-chain resources, the final verdict depends on both identity strength and Base mirror compliance.
   let onChainStatus: "pass" | "fail" | "required" = "pass";
   if (resource.requireOnChain) {
     if (!accessOutcome) {
@@ -150,15 +131,15 @@ function RequirementCheck({
       </h4>
       <div className="space-y-1.5 font-mono text-xs">
         <div className="flex items-center justify-between">
-          <span className="text-muted-foreground">Required tier</span>
+          <span className="text-muted-foreground">Required</span>
           <span className="font-bold text-amber-700">
-            {resource.requiredTier}
+            {formatPohIdentityStrength(required)}
           </span>
         </div>
         <div className="flex items-center justify-between">
-          <span className="text-muted-foreground">Your tier</span>
+          <span className="text-muted-foreground">Yours</span>
           <span className={meetsTier ? "text-emerald-700" : "text-red-600"}>
-            {identityTier}
+            {formatPohIdentityStrength(pohClaims.identity.strength)}
           </span>
         </div>
         {resource.requireOnChain && (

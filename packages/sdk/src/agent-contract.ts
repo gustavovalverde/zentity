@@ -13,6 +13,14 @@ export const AGENT_HOST_REGISTER_SCOPE = "agent:host.register";
 export const AGENT_SESSION_REGISTER_SCOPE = "agent:session.register";
 export const AGENT_SESSION_REVOKE_SCOPE = "agent:session.revoke";
 
+/**
+ * The `error_description` of the `invalid_request` with which bc-authorize
+ * refuses an Agent-Assertion from a session that is unknown, revoked, idle
+ * past its TTL, or past its lifetime. The runtime registers a new session and
+ * signs again; any other refused assertion does not match its request.
+ */
+export const AGENT_SESSION_INACTIVE_DESCRIPTION = "Agent session is not active";
+
 export const AGENT_BOOTSTRAP_SCOPES = [
   AGENT_HOST_REGISTER_SCOPE,
   AGENT_SESSION_REGISTER_SCOPE,

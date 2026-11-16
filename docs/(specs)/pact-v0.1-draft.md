@@ -351,7 +351,7 @@ Capabilities are server-defined named actions. Each capability declares:
 [
   {
     "name": "purchase",
-    "description": "Authorize and execute purchases on behalf of the user",
+    "description": "Buy from a named merchant with the user's approval (purchase), or prove to an x402 merchant that the user's identity is verified (x402_purchase)",
     "input_schema": { "..." },
     "output_schema": { "..." },
     "approval_strength": "user_verification",
@@ -379,6 +379,8 @@ Capabilities are server-defined named actions. Each capability declares:
 ```
 
 A grantable capability with `user_verification` strength, such as `payment_authorization:sign`, may be approved by a bounded grant without the user, and needs a user-verified approval otherwise.
+
+An `authorization_details` type maps to a capability through the approval policy table (§6.5), not by sharing its name: the `purchase` and `x402_purchase` types, and the `poh` scope, all map to the `purchase` capability, and `payment_authorization` maps to `payment_authorization:sign`. Each registered type has a strict schema, and a request with an unknown member of a known type is refused with `invalid_authorization_details` (RFC 9396 §5).
 
 ### 5.2 Grants
 
@@ -413,12 +415,12 @@ Within one grant, all constraints are AND (all must pass). Across multiple grant
 
 ```json
 {
-  "capability": "purchase",
+  "capability": "payment_authorization:sign",
   "status": "active",
   "constraints": {
     "amount.value": { "max": 100 },
-    "amount.currency": { "in": ["USD", "EUR"] },
-    "merchant": { "not_in": ["blocked-merchant"] }
+    "amount.unit": { "eq": "base" },
+    "recipient": { "not_in": ["zcash:test:blocked"] }
   },
   "daily_limit_count": 10,
   "daily_limit_amount": 500,
@@ -426,7 +428,7 @@ Within one grant, all constraints are AND (all must pass). Across multiple grant
 }
 ```
 
-**Constraint extraction.** For capability evaluation, the server extracts constraint-matchable values from `authorization_details` (RFC 9396). The `type` field maps to a capability name. Nested fields use dot notation (`amount.value`, `amount.currency`).
+**Constraint extraction.** For capability evaluation, the server extracts constraint-matchable values from `authorization_details` (RFC 9396). The policy table (§6.5) maps the entry's `type` to a capability. Nested fields use dot notation (`amount.value`, `amount.currency`). Constraints apply only to a grantable capability; `purchase` is not grantable, so no grant, whatever its constraints, approves a purchase.
 
 **Bidirectional negotiation.** The agent proposes constraints at registration, and the server or user can narrow them. The server MUST NOT widen constraints beyond what the agent proposed without a new approval.
 
@@ -517,13 +519,21 @@ Before requesting consent, the client signs an `Agent-Assertion` JWT with the se
   "exp": 1711000060,
   "host_id": "<hostId>",
   "task_id": "<unique task identifier>",
-  "task_hash": "<SHA-256 hex of binding_message>"
+  "task_hash": "<hex SHA-256 of the canonical request>"
 }
 ```
 
 The assertion is placed in the `Agent-Assertion` HTTP header on the CIBA backchannel authorize request.
 
-`binding_message` is the OIDC CIBA Core 1.0 request parameter (Section 7.1 of that specification), defined there as a human-readable display value. PACT retains its human-visible role in the approval UI and additionally requires that a `binding_message` be present whenever an `Agent-Assertion` is present. The `task_hash` claim is defined as `SHA-256(binding_message)`, giving the agent cryptographic commitment to the same string the human will see. An assertion whose `task_hash` does not match the CIBA request's `binding_message` MUST NOT produce agent-bound token semantics.
+`binding_message` is the OIDC CIBA Core 1.0 request parameter (Section 7.1 of that specification), defined there as a human-readable display value. PACT retains its human-visible role in the approval UI and additionally requires that a `binding_message` be present whenever an `Agent-Assertion` is present.
+
+The `task_hash` claim commits the agent to the whole request, not only to the string the human reads:
+
+```text
+task_hash = hex(SHA-256(JCS({ binding_message, scope, acr_values?, authorization_details? })))
+```
+
+JCS is the JSON Canonicalization Scheme (RFC 8785). `scope` is the request's scopes, sorted and de-duplicated; `acr_values` is the space-separated list in its order; `authorization_details` is the parsed array. Members whose list is empty are omitted. Before the AS stores a request it may change only representation (for example re-serializing an `authorization_details` entry), which JCS removes, and it never rewrites the scope, so the hash the agent signed equals the hash of the stored request. The AS verifies a present assertion before it stores the request, without consuming its `jti`, and refuses a mismatch with `400 invalid_request` "Agent-Assertion does not match this request". An assertion from a session that is unknown, revoked, idle past its TTL, or past its lifetime is refused with `400 invalid_request` "Agent session is not active"; the agent registers a new session and signs the request again. A mismatched or stale assertion therefore never yields an unverified-agent request.
 
 **Verification sequence:**
 
@@ -534,7 +544,7 @@ The assertion is placed in the `Agent-Assertion` HTTP header on the CIBA backcha
 5. Verify JWT signature with `algorithms: ["EdDSA"]`.
 6. Verify `typ` header is `agent-assertion+jwt`.
 7. Compute session lifecycle state (Section 9). Reject if not `active`.
-8. Compute `SHA-256(binding_message)` and compare to `task_hash`. MUST match.
+8. Compute `task_hash` from the request as above and compare it to the assertion's `task_hash`. MUST match.
 9. Verify host ownership: the session's host MUST belong to the same user and OAuth client as the CIBA request.
 
 **Binding to CIBA request.** On successful verification, the server snapshots server-owned metadata onto the CIBA request record:
@@ -588,6 +598,8 @@ The consent router derives what a request needs from one policy table with a row
 | Identity scopes (`identity.*`) | `my_profile` | `user_verification` when the user has a passkey, else `session` | No | No |
 | `email`, `offline_access`, `proof:sybil`, `proof:humanity:rp_unique`, `agent:*`, and other operational scopes | none | `session` | No | No |
 | `payment_authorization` entry | `payment_authorization:sign` | `user_verification` | No | Bounded grants only |
+| `purchase` entry | `purchase` | `user_verification` | No | No |
+| `x402_purchase` entry, and the `poh` scope it requires | `purchase` | `user_verification` | No | No |
 
 The request as a whole:
 
@@ -596,6 +608,19 @@ The request as a whole:
 - may be approved by a grant only when every item other than `openid` maps to one and the same grantable capability. A mixed request, such as `compliance:read` with `email`, or a payment with proof scopes, goes to the user.
 
 An unknown scope is page only, not grantable, and needs a session. An unknown or unparseable `authorization_details` entry is page only, not grantable, and needs `user_verification`. The derivation takes no input from the `Agent-Assertion`, so an agent can lower what a request needs only by asking for less.
+
+### 6.6 Merchant-Bound Approvals (Informative)
+
+An agent that pays an x402 merchant on the user's behalf asks the user for a Proof-of-Human for that merchant. In this profile the agent's own wallet pays; the AS does not sign or limit the payment. The user's approval covers what the AS controls: a statement that the user's identity meets the merchant's minimum, given to that merchant once.
+
+1. The merchant's `402 Payment Required` carries `WWW-Authenticate: DPoP algs="ES256"`, the x402 `auth-hints` extension naming the AS as an `oauth2` authorization server with DPoP presentation, and a `zentity` extension `{ info: { minIdentityStrength }, schema }`. Identity strength is a name (`documentary`, `documentary_full`, `cryptographic_chip`), never a number.
+2. The agent checks the 402 before asking anyone: the resource is on the request's origin, the AS is the one it trusts, the resource needs no on-chain identity check, a registered requirement fits the agent's spending bound, and the identity minimum fits the agent's bound.
+3. The agent generates a DPoP key for this purchase and sends a CIBA request with scope `openid poh` and one `x402_purchase` entry that copies the merchant's `payment_requirements` verbatim. The AS presents it as a Proof-of-Human for the named merchant, shows the merchant's terms labeled as the merchant's, requires a user-verified passkey assertion, and refuses an approval below the merchant's minimum (`insufficient_identity_strength`), leaving the request pending.
+4. The agent polls the CIBA token with the purchase key, checks that the returned `authorization_details` equal what it sent, and mints a Proof-of-Human token with the same key. A merchant-mode token (`typ: poh+jwt`) has `aud` the merchant origin `M`, `sub` pairwise for the sector `T(c, M)` (§4.3), `act.sub` in the same sector for a verified agent, a 128-bit `jti`, a lifetime of at most 300 seconds, `cnf.jkt` the purchase key, the predicate `poh.identity.strength_at_least`, and the approved entry without its description. It carries no `client_id` or `azp`. The AS allows one mint per approval.
+5. The agent signs the payment and retries with `PAYMENT-SIGNATURE`, `Authorization: DPoP <poh>`, and a DPoP proof by the purchase key. The token never travels in the payment payload, so the facilitator never receives it.
+6. The merchant checks, in order: the token's signature, `iss`, `typ`, `aud`, `exp`, and that its `jti` is unused; the DPoP proof, recording its `jti`; the identity strength; that the approved requirement equals its own and the payment's, for this resource URL; the facilitator's verification; the token's `jti`, recorded atomically; settlement. A payment the facilitator refuses therefore leaves the approval usable.
+
+The purchase key signs only the token poll, the mint, and the merchant request, and is then discarded, so the agent's installation key never reaches a merchant. The payer address still links the user across merchants, because the agent's wallet pays every merchant; the target is x402 payments signed through the AS's agent wallet (`payment_authorization`).
 
 ---
 
@@ -899,7 +924,7 @@ Session registration binds a fresh Ed25519 public key to one host, one runtime p
 
 ### 11.5 Consent Binding
 
-CIBA binds human approval to one `auth_req_id`, one binding message, one scope set, and one optional `authorization_details` payload.
+CIBA binds human approval to one `auth_req_id`, one binding message, one scope set, and one optional `authorization_details` payload. The Agent-Assertion's `task_hash` covers all three, with any `acr_values`, as the canonical JSON of the normalized request (§6.3), so an assertion signed for one request cannot bind another.
 
 If the runtime proof is present and valid, the server snapshots runtime metadata into the CIBA request before the approval result is finalized.
 
@@ -941,9 +966,13 @@ Session private keys MUST exist only in process memory. They MUST NOT be written
 
 Task descriptions may contain user-specific context. Neither the description nor its hash appears in any token or introspection response: the AS keeps both, with the binding message, on its own records. The binding message the user saw is shown only on the approval surfaces.
 
+A binding message is a short correlation phrase the agent writes, such as `Buy from Corner Books` or `Proof-of-Human for merchant.example`. It is not the authority for what the user approves: approval surfaces label it as the agent's statement and describe `authorization_details` in AS text, and the `task_hash` binds the phrase to the request (§6.3).
+
 ### 12.7 DPoP Binding
 
 Delegated access tokens issued by this profile SHOULD be DPoP-bound (RFC 9449), and the audience MUST require a matching DPoP proof at presentation time. Every token exchange MUST carry a DPoP proof: a client exchanging its own token MUST prove that token's key, and the issued token stays bound to it. A leaked delegated or exchanged token is useless without the bound proof-of-possession key.
+
+For a merchant-bound approval (§6.6), the agent generates a DPoP key for the purchase, uses it for the CIBA token poll, the Proof-of-Human mint, and the merchant request, and MUST NOT reuse it for another purchase or present its installation key to a merchant. The CIBA grant does not pin the key, so the poll binds the token to whichever key the agent proves.
 
 ---
 
@@ -984,10 +1013,11 @@ This document requests the registrations listed below. Media types under `applic
 
 ### 14.1 Media Type Registrations
 
-This document requests two registrations in the "Media Types" registry under the `application/` tree:
+This document requests three registrations in the "Media Types" registry under the `application/` tree:
 
 - `application/agent-assertion+jwt`: JWT typ defined in §6.3; used in the `Agent-Assertion` HTTP header to prove runtime session identity on CIBA requests.
 - `application/host-attestation+jwt`: JWT typ defined in §4.2; host-signed assertion consumed by the session registration endpoint.
+- `application/poh+jwt`: JWT typ of a Proof-of-Human token (§6.6); presented to its audience as `Authorization: DPoP` with a DPoP proof.
 
 Each registration specifies this document as its reference and references RFC 7515 for the `+jwt` structured syntax suffix semantics.
 
@@ -1016,10 +1046,10 @@ This profile defines no new JWT claim: its access tokens use `act`, `authorizati
 
 It requests registrations in the "OAuth Parameters" registry (RFC 6749 §11.2), for use in token responses, and in the "OAuth Token Introspection Response" registry (RFC 7662 §3.1), for the members defined in §7.1:
 
-- `capabilities` — Array of approved named actions, with the constraint snapshot of a grant approval.
-- `oversight` — Object stating how the approval happened (`method`) and when (`approved_at`).
-- `delegation` — Object stating the token's delegation depth, as defined in §7.2.
-- `aap_claims_version` — The version of this profile's members.
+- `capabilities`: array of approved named actions, with the constraint snapshot of a grant approval.
+- `oversight`: object stating how the approval happened (`method`) and when (`approved_at`).
+- `delegation`: object stating the token's delegation depth, as defined in §7.2.
+- `aap_claims_version`: the version of this profile's members.
 
 ### 14.5 OAuth Extensions Error Registry
 

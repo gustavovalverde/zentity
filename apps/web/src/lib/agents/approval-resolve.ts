@@ -5,6 +5,13 @@ import type {
   ScopeLabel,
 } from "./capability";
 
+import {
+  IDENTITY_STRENGTHS,
+  type IdentityStrength,
+  meetsIdentityStrength,
+  X402_PURCHASE_TYPE,
+  X402PurchaseAuthorizationSchema,
+} from "@zentity/sdk/protocol";
 import { and, eq } from "drizzle-orm";
 
 import { hasPasskey } from "@/lib/auth/passkey/step-up";
@@ -13,8 +20,16 @@ import { db } from "@/lib/db/connection";
 import { agentHosts, agentSessions } from "@/lib/db/schema/agent";
 import { cibaRequests } from "@/lib/db/schema/ciba";
 import { oauthClients } from "@/lib/db/schema/oauth-provider";
+import {
+  currentIdentityStrength,
+  getVerificationReadModel,
+} from "@/lib/identity/verification/read-model";
 
-import { approvalPolicy, requiredCeremony } from "./capability";
+import {
+  approvalPolicy,
+  normalizeAuthorizationDetails,
+  requiredCeremony,
+} from "./capability";
 
 export type { AuthorizationDetail } from "./capability";
 
@@ -35,11 +50,60 @@ export interface RegisteredAgentInfo {
 export interface ApprovalRequirementDetails {
   /** The ceremony an approval needs from this user. */
   approval_requirement: ApprovalCeremony;
+  /** Present only for a request with an `x402_purchase` entry. */
+  identity_strength?: IdentityStrengthRequirement;
   /** Whether a notification may not approve it. */
   page_only: boolean;
   passkey_available: boolean;
   /** Server text for every requested scope other than `openid`. */
   scope_labels: ScopeLabel[];
+}
+
+/** Whether the user's identity strength meets an x402 merchant's minimum. */
+export interface IdentityStrengthRequirement {
+  required: IdentityStrength;
+  satisfied: boolean;
+}
+
+const STRONGEST_IDENTITY = IDENTITY_STRENGTHS.at(-1) as IdentityStrength;
+
+/**
+ * The identity strength an `x402_purchase` entry requires, or null for a
+ * request without one. An entry that no longer parses requires the strongest
+ * evidence, so it can never be approved.
+ */
+function requiredIdentityStrength(
+  authorizationDetails: unknown
+): IdentityStrength | null {
+  const entry = normalizeAuthorizationDetails(authorizationDetails).find(
+    (detail) => detail.type === X402_PURCHASE_TYPE
+  );
+  if (!entry) {
+    return null;
+  }
+  const parsed = X402PurchaseAuthorizationSchema.safeParse(entry);
+  return parsed.success
+    ? parsed.data.min_identity_strength
+    : STRONGEST_IDENTITY;
+}
+
+/**
+ * Compares the user's current identity strength with what the request's
+ * `x402_purchase` entry requires. Null when the request has no such entry.
+ */
+export async function identityStrengthRequirement(
+  userId: string,
+  authorizationDetails: unknown
+): Promise<IdentityStrengthRequirement | null> {
+  const required = requiredIdentityStrength(authorizationDetails);
+  if (!required) {
+    return null;
+  }
+  const model = await getVerificationReadModel(userId);
+  return {
+    required,
+    satisfied: meetsIdentityStrength(currentIdentityStrength(model), required),
+  };
 }
 
 export function describeApprovalRequirement(
@@ -162,8 +226,13 @@ export async function resolveCibaApprovalData(
     }),
     await hasPasskey(userId)
   );
+  const identityStrength = await identityStrengthRequirement(
+    userId,
+    row.authorizationDetails
+  );
   const request: CibaRequestDetails = {
     ...requirement,
+    ...(identityStrength ? { identity_strength: identityStrength } : {}),
     request_id: requestId,
     expires_at: row.expiresAt.toISOString(),
     scope: row.scope,

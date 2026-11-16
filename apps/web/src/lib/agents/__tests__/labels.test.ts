@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  describePurchase,
   formatCapabilityName,
   formatConstraints,
   formatGrantSource,
@@ -153,5 +154,99 @@ describe("formatPaymentAmount", () => {
     expect(
       formatPaymentAmount({ currency: "XYZ", unit: "base", value: "42" })
     ).toBe("42 XYZ (base unit)");
+  });
+});
+
+const PAY_CLAIM = /\bPay\b/;
+
+const EUR_PURCHASE = {
+  type: "purchase",
+  merchant: { name: "Corner Books" },
+  item: "A paperback",
+  amount: { value: "12.00", currency: "EUR" },
+};
+
+const X402_PURCHASE = {
+  type: "x402_purchase",
+  resource_url:
+    "https://merchant.example/api/x402/access?resourceId=verified-identity",
+  resource_description: "Financial analytics",
+  payment_requirements: {
+    scheme: "exact",
+    network: "eip155:84532",
+    amount: "1",
+    asset: "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
+    payTo: "0x000000000000000000000000000000000000dEaD",
+    maxTimeoutSeconds: 300,
+    extra: { name: "USDC", version: "2" },
+  },
+  min_identity_strength: "documentary_full",
+};
+
+describe("describePurchase", () => {
+  // R4 and R25: the x402 card is a Proof-of-Human for a named merchant, with
+  // the merchant's own price and no payment authorization claim.
+  it("describes an x402 purchase as a Proof-of-Human with the merchant's terms", () => {
+    expect(describePurchase(X402_PURCHASE)).toEqual({
+      title:
+        "Prove to merchant.example that your identity is verified (Document, full)",
+      lines: [
+        {
+          source: "merchant",
+          label: "Described by the merchant",
+          text: "Financial analytics",
+        },
+        {
+          source: "merchant",
+          text: "merchant.example charges 0.000001 USDC on Base Sepolia, paid by the agent's own wallet to 0x0000…dEaD",
+        },
+        {
+          source: "zentity",
+          text: "Zentity does not sign or limit this payment.",
+        },
+      ],
+      pushText: "Prove your identity to merchant.example (Document, full)",
+      approvedText:
+        "You proved to merchant.example that your identity is verified. The agent can now continue.",
+    });
+  });
+
+  it("never claims Zentity pays the merchant", () => {
+    const text = JSON.stringify(describePurchase(X402_PURCHASE));
+
+    expect(text).not.toMatch(PAY_CLAIM);
+    expect(text).not.toContain("$");
+  });
+
+  // R18: an ISO 4217 amount in its own notation, labeled as the agent's.
+  it("describes a direct purchase in the currency's notation, as the agent's statement", () => {
+    const description = describePurchase(EUR_PURCHASE);
+
+    expect(description).toEqual({
+      title: "Purchase",
+      lines: [
+        {
+          source: "agent",
+          label: "Stated by the agent",
+          text: "A paperback from Corner Books, €12.00",
+        },
+      ],
+      pushText:
+        "Purchase stated by the agent: A paperback from Corner Books, €12.00",
+      approvedText: "You approved the purchase. The agent can now continue.",
+    });
+    expect(JSON.stringify(description)).not.toContain("$");
+  });
+
+  it.each([
+    ["a payment", { type: "payment_authorization" }],
+    [
+      "the pre-T2 purchase shape",
+      { type: "purchase", merchant: "Corner Books" },
+    ],
+    ["an x402 entry with an agent amount", { ...X402_PURCHASE, amount: "1" }],
+    ["nothing", undefined],
+  ])("describes %s as nothing", (_case, detail) => {
+    expect(describePurchase(detail)).toBeNull();
   });
 });

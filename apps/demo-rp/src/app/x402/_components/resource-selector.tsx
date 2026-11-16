@@ -1,7 +1,11 @@
 import { HugeiconsIcon } from "@hugeicons/react";
 
 import { Badge } from "@/components/ui/badge";
-import type { X402FlowState, X402Resource } from "@/data/x402";
+import {
+  formatPohIdentityStrength,
+  type X402FlowState,
+  type X402Resource,
+} from "@/data/x402";
 import { WalletConnect } from "./wallet-connect";
 
 interface ResourceSelectorProps {
@@ -12,17 +16,12 @@ interface ResourceSelectorProps {
   state: X402FlowState;
 }
 
-function tierLabel(tier: number): string {
-  if (tier === 0) {
+function requirementLabel(resource: X402Resource): string {
+  if (!resource.requiredIdentityStrength) {
     return "Payment Only";
   }
-  if (tier === 2) {
-    return "Tier 2+";
-  }
-  if (tier === 3) {
-    return "Tier 3 + On-Chain";
-  }
-  return `Tier ${tier}+`;
+  const strength = formatPohIdentityStrength(resource.requiredIdentityStrength);
+  return resource.requireOnChain ? `${strength} + On-Chain` : strength;
 }
 
 export function ResourceSelector({
@@ -85,9 +84,9 @@ export function ResourceSelector({
               </p>
               <Badge
                 className="text-[9px]"
-                variant={r.requiredTier === 0 ? "secondary" : "default"}
+                variant={r.requiredIdentityStrength ? "default" : "secondary"}
               >
-                {tierLabel(r.requiredTier)}
+                {requirementLabel(r)}
               </Badge>
             </button>
           );
@@ -97,7 +96,7 @@ export function ResourceSelector({
       {!isActive && (
         <div className="space-y-1">
           <span className="font-medium text-[10px] text-muted-foreground uppercase tracking-wider">
-            Wallet (for regulated tier)
+            Wallet (for on-chain resources)
           </span>
           <WalletConnect />
         </div>

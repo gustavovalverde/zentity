@@ -7,6 +7,7 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock("server-only", () => ({}));
+vi.mock("@/lib/env", () => ({ env: {} }));
 vi.mock("@x402/core/server", () => ({
   HTTPFacilitatorClient: class {
     settle = mocks.settle;

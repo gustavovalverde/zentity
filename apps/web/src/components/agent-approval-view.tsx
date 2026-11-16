@@ -36,7 +36,12 @@ import {
   useVaultUnlock,
   VaultUnlockPanel,
 } from "@/components/vault-unlock";
-import { formatAcrValue } from "@/lib/agents/labels";
+import {
+  describePurchase,
+  formatAcrValue,
+  formatIdentityStrength,
+  type PurchaseDescription,
+} from "@/lib/agents/labels";
 import { asyncHandler } from "@/lib/async-handler";
 import {
   findMissingIdentityFields,
@@ -320,6 +325,32 @@ function cibaRequestPath(requestId: string): string {
   return `/api/auth/ciba/request?request_id=${encodeURIComponent(requestId)}`;
 }
 
+/** A purchase in server text, with the agent's and merchant's words labeled. */
+function PurchaseCard({ description }: { description: PurchaseDescription }) {
+  return (
+    <div className="space-y-2 rounded-lg border bg-muted/50 p-4">
+      <p className="font-medium">{description.title}</p>
+      {description.lines.map((line) => (
+        <p
+          className={
+            line.source === "zentity"
+              ? "font-medium text-sm"
+              : "text-muted-foreground text-sm"
+          }
+          key={line.text}
+        >
+          {line.label && (
+            <span className="block text-xs uppercase tracking-wider">
+              {line.label}
+            </span>
+          )}
+          {line.text}
+        </p>
+      ))}
+    </div>
+  );
+}
+
 export function AgentApprovalView({
   agentIdentity,
   authMode,
@@ -542,6 +573,10 @@ export function AgentApprovalView({
   // ── Verification check (proof scopes need completed verification) ──
 
   const verificationMissing = hasProofScopes && assuranceTier < 2;
+  const identityShortfall =
+    details?.identity_strength?.satisfied === false
+      ? details.identity_strength.required
+      : null;
 
   // ── Actions ──────────────────────────────────────────────
 
@@ -791,6 +826,9 @@ export function AgentApprovalView({
   }
 
   if (state === "approved" || state === "rejected") {
+    const purchaseApproved = details?.authorization_details
+      ?.map((detail) => describePurchase(detail)?.approvedText)
+      .find(Boolean);
     const rejectedDescription = error
       ? error
       : (interactionCopy?.deniedDescription ??
@@ -806,6 +844,7 @@ export function AgentApprovalView({
             <CardDescription>
               {state === "approved"
                 ? (interactionCopy?.successDescription ??
+                  purchaseApproved ??
                   `You have granted ${details?.client_name ?? "the application"} access to your account.`)
                 : rejectedDescription}
             </CardDescription>
@@ -910,6 +949,16 @@ export function AgentApprovalView({
                     );
                   }
 
+                  const purchase = describePurchase(detail);
+                  if (purchase) {
+                    return (
+                      <PurchaseCard
+                        description={purchase}
+                        key={`detail-purchase-${detail.type ?? i}`}
+                      />
+                    );
+                  }
+
                   return (
                     <div
                       className="rounded-lg border bg-muted/50 p-4"
@@ -918,41 +967,18 @@ export function AgentApprovalView({
                       <p className="mb-2 font-semibold text-muted-foreground text-xs uppercase tracking-wider">
                         {detail.type ?? "Details"}
                       </p>
-                      {detail.type === "purchase" ? (
-                        <div className="space-y-1">
-                          {detail.item && (
-                            <p className="font-medium">{detail.item}</p>
-                          )}
-                          {detail.amount?.value && (
-                            <p className="font-bold text-lg">
-                              ${detail.amount.value}{" "}
-                              <span className="font-normal text-muted-foreground text-sm">
-                                {detail.amount.currency ?? "USD"}
-                              </span>
-                            </p>
-                          )}
-                          {detail.merchant && (
-                            <p className="text-muted-foreground text-sm">
-                              Merchant: {detail.merchant}
-                            </p>
-                          )}
-                        </div>
-                      ) : (
-                        <dl className="space-y-1 text-sm">
-                          {Object.entries(detail)
-                            .filter(([k]) => k !== "type")
-                            .map(([k, v]) => (
-                              <div className="flex gap-2" key={k}>
-                                <dt className="font-medium">{k}:</dt>
-                                <dd className="text-muted-foreground">
-                                  {typeof v === "string"
-                                    ? v
-                                    : JSON.stringify(v)}
-                                </dd>
-                              </div>
-                            ))}
-                        </dl>
-                      )}
+                      <dl className="space-y-1 text-sm">
+                        {Object.entries(detail)
+                          .filter(([k]) => k !== "type")
+                          .map(([k, v]) => (
+                            <div className="flex gap-2" key={k}>
+                              <dt className="font-medium">{k}:</dt>
+                              <dd className="text-muted-foreground">
+                                {typeof v === "string" ? v : JSON.stringify(v)}
+                              </dd>
+                            </div>
+                          ))}
+                      </dl>
                     </div>
                   );
                 })}
@@ -989,6 +1015,22 @@ export function AgentApprovalView({
                 <p>Add a passkey to approve this request.</p>
                 <Button asChild size="sm" variant="outline">
                   <Link href="/dashboard/settings">Add a passkey</Link>
+                </Button>
+              </AlertDescription>
+            </Alert>
+          )}
+
+          {identityShortfall && (
+            <Alert>
+              <AlertTriangle className="size-4" />
+              <AlertDescription className="space-y-2">
+                <p>
+                  This merchant requires{" "}
+                  {formatIdentityStrength(identityShortfall)} identity
+                  verification, which you have not completed.
+                </p>
+                <Button asChild size="sm" variant="outline">
+                  <Link href="/dashboard/verify">Verify your identity</Link>
                 </Button>
               </AlertDescription>
             </Alert>
@@ -1041,6 +1083,7 @@ export function AgentApprovalView({
               disabled={
                 isActing ||
                 verificationMissing ||
+                identityShortfall !== null ||
                 passkeyMissing ||
                 (hasIdentityScopes &&
                   !unlockAtApprove &&

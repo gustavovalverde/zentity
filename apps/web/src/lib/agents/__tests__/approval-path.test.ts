@@ -84,6 +84,55 @@ describe("approvalPolicy", () => {
     expect(policy.pageOnly).toBe(true);
   });
 
+  // R24: purchases need a user-verified passkey, never a grant or a tap.
+  it.each([
+    [
+      "purchase",
+      "openid identity.name identity.address",
+      {
+        type: "purchase",
+        merchant: { name: "Corner Books" },
+        item: "A paperback",
+        amount: { value: "12.00", currency: "EUR" },
+      },
+    ],
+    [
+      "x402_purchase",
+      "openid poh",
+      {
+        type: "x402_purchase",
+        resource_url: "https://merchant.example/x",
+        payment_requirements: {},
+        min_identity_strength: "documentary",
+      },
+    ],
+  ])("needs user verification on the page for a %s", (_type, scope, entry) => {
+    const policy = approvalPolicy({
+      scope,
+      authorizationDetails: JSON.stringify([entry]),
+    });
+
+    expect(policy.ceremony).toBe("user_verification");
+    expect(policy.pageOnly).toBe(true);
+    expect(policy.inlineApprove).toBe(false);
+    expect(policy.grantCapability).toBeNull();
+  });
+
+  it("maps the poh scope to the purchase capability without a grant", () => {
+    const policy = approvalPolicy({ scope: "openid poh" });
+
+    expect(policy).toEqual(
+      expect.objectContaining({
+        ceremony: "user_verification",
+        grantCapability: null,
+        pageOnly: true,
+      })
+    );
+    expect(policy.labels).toEqual([
+      { scope: "poh", label: "proof of human for a merchant", inline: false },
+    ]);
+  });
+
   // The capability id is not a scope: as one, it is an unknown item.
   it("treats the payment capability id as an unknown scope", () => {
     expect(
@@ -109,7 +158,7 @@ describe("approvalPolicy", () => {
   });
 
   it.each([
-    ["an unknown type", [{ type: "purchase" }]],
+    ["an unknown type", [{ type: "subscription" }]],
     ["an entry without a type", [{ amount: 1 }]],
     ["details that are not JSON", "not-json"],
     ["details that are not an array", JSON.stringify({ type: "x" })],

@@ -1,3 +1,6 @@
+import { DEFAULT_ASSETS } from "@x402/evm";
+import { REGISTERED_ASSETS } from "@zentity/sdk/protocol";
+import { readOAuthAuthHints, readZentityExtension } from "@zentity/sdk/rp";
 import { describe, expect, it, vi } from "vitest";
 import type { X402Resource } from "@/data/x402";
 
@@ -9,7 +12,7 @@ vi.mock("@/lib/on-chain-compliance", () => ({
 
 vi.mock("@/lib/env", () => ({
   env: {
-    NEXT_PUBLIC_ZENTITY_URL: "https://app.zentity.xyz",
+    NEXT_PUBLIC_ZENTITY_URL: "https://app.zentity.xyz/",
   },
 }));
 
@@ -19,7 +22,7 @@ function makeResource(overrides: Partial<X402Resource> = {}): X402Resource {
   return {
     id: "resource-1",
     name: "Regulated API",
-    description: "Tier-gated resource",
+    description: "Identity-gated resource",
     endpoint: "/api/x402/access",
     icon: {} as X402Resource["icon"],
     price: "$0.01",
@@ -29,22 +32,84 @@ function makeResource(overrides: Partial<X402Resource> = {}): X402Resource {
     eip712Version: "2",
     network: "eip155:84532",
     payTo: "0x000000000000000000000000000000000000dEaD",
-    requiredTier: 3,
+    requiredIdentityStrength: "cryptographic_chip",
     requireOnChain: true,
     responseData: { ok: true },
     ...overrides,
   };
 }
 
-describe("buildRouteConfig", () => {
-  it("advertises the PoH issuer origin instead of the discovery URL", () => {
-    const routeConfig = buildRouteConfig(makeResource());
+function readBack(resource: X402Resource) {
+  const { accepts, extensions } = buildRouteConfig(resource);
+  const paymentRequired = {
+    accepts: [{ ...accepts, network: accepts.network }],
+    ...(extensions ? { extensions } : {}),
+  };
+  return {
+    extensions,
+    hints: readOAuthAuthHints(paymentRequired),
+    zentity: readZentityExtension(paymentRequired),
+  };
+}
 
-    expect(routeConfig.extensions).toMatchObject({
-      zentity: {
-        identityRegistryMirror: "0xa90723A47A14437500645Ece6049d0128A2f256D",
-        pohIssuer: "https://app.zentity.xyz",
+describe("buildRouteConfig", () => {
+  // R7 and R15: the extensions are { info, schema } values agents read
+  // back, and name the identity strength rather than a numeric level.
+  it("advertises Zentity's issuer and the identity strength by name", () => {
+    const { extensions, hints, zentity } = readBack(
+      makeResource({ requireOnChain: false })
+    );
+
+    expect(hints).toEqual([
+      {
+        type: "oauth2",
+        tokenType: "DPoP",
+        authorizationServer: "https://app.zentity.xyz/api/auth",
+        tokenEndpoint: "https://app.zentity.xyz/api/auth/oauth2/token",
+        acceptIndexes: [0],
       },
+    ]);
+    expect(zentity).toEqual({ minIdentityStrength: "cryptographic_chip" });
+    const serialized = JSON.stringify(extensions);
+    expect(serialized).not.toContain("minComplianceLevel");
+    expect(serialized).not.toContain("pohIssuer");
+  });
+
+  it("names the identity registry mirror for an on-chain resource", () => {
+    expect(readBack(makeResource()).zentity).toEqual({
+      minIdentityStrength: "cryptographic_chip",
+      identityRegistryMirror: "0xa90723A47A14437500645Ece6049d0128A2f256D",
+    });
+  });
+
+  it("advertises no extension for a payment-only resource", () => {
+    expect(
+      buildRouteConfig(makeResource({ requiredIdentityStrength: null }))
+        .extensions
+    ).toBeUndefined();
+  });
+});
+
+// R32: the SDK's one registered asset is the one @x402/evm signs with.
+describe("asset registry", () => {
+  it("matches @x402/evm's Base Sepolia default asset", () => {
+    const [registered] = REGISTERED_ASSETS;
+    const [evmDefault] = DEFAULT_ASSETS["eip155:84532"] ?? [];
+
+    expect(registered?.network).toBe("eip155:84532");
+    expect(evmDefault).toBeDefined();
+    expect({
+      asset: registered?.asset,
+      decimals: registered?.decimals,
+      name: registered?.name,
+      symbol: registered?.symbol,
+      version: registered?.version,
+    }).toEqual({
+      asset: evmDefault?.asset,
+      decimals: evmDefault?.decimals,
+      name: evmDefault?.name,
+      symbol: evmDefault?.symbol,
+      version: evmDefault?.version,
     });
   });
 });

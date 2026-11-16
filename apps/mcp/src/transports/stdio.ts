@@ -1,6 +1,11 @@
 import type { Implementation } from "@modelcontextprotocol/server";
 import { serveStdio } from "@modelcontextprotocol/server/stdio";
-import { AgentRegistrationError, buildHostKeyNamespace } from "@zentity/sdk";
+import {
+  type AgentDisplay,
+  AgentRegistrationError,
+  type RegisteredAgentSession as AgentRuntimeState,
+  buildHostKeyNamespace,
+} from "@zentity/sdk";
 import { AGENT_BOOTSTRAP_SCOPES } from "@zentity/sdk/agent-contract";
 import { detectAgent } from "../agent.js";
 import { config } from "../config.js";
@@ -25,11 +30,11 @@ import { createServer } from "../server.js";
 
 const REFRESH_INTERVAL_MS = 4 * 60 * 1000;
 
-async function registerRuntime(
+/** Registers a fresh agent session under this installation's host. */
+export async function registerRuntimeSession(
   oauth: OAuthSessionContext,
-  clientInfo: Implementation | undefined
-): Promise<AuthContext> {
-  const display = detectAgent(clientInfo);
+  display: AgentDisplay
+): Promise<AgentRuntimeState> {
   const keyNamespace = buildHostKeyNamespace(oauth);
   const bootstrapAuth = await prepareBootstrapRegistrationAuth(oauth);
   const hostId = await ensureHostRegistered(
@@ -38,13 +43,20 @@ async function registerRuntime(
     "@zentity/mcp-server",
     keyNamespace
   );
-  const runtime = await registerAgentSession(
+  return registerAgentSession(
     config.zentityUrl,
     bootstrapAuth,
     hostId,
     display,
     keyNamespace
   );
+}
+
+async function registerRuntime(
+  oauth: OAuthSessionContext,
+  clientInfo: Implementation | undefined
+): Promise<AuthContext> {
+  const runtime = await registerRuntimeSession(oauth, detectAgent(clientInfo));
   return { oauth, runtime };
 }
 
@@ -129,7 +141,32 @@ export async function bootstrapRegisteredRuntime(
 export function startStdio(): void {
   let current: AuthContext | undefined;
   let pending: Promise<AuthContext> | undefined;
+  let renewing: Promise<AgentRuntimeState> | undefined;
   let refreshTimer: ReturnType<typeof setInterval> | undefined;
+
+  // Concurrent tool calls that find the session inactive share one
+  // registration, and every later call signs with the new session.
+  const renewRuntime = (): Promise<AgentRuntimeState> => {
+    const auth = current;
+    if (!auth?.runtime) {
+      return Promise.reject(new Error("No agent session to renew"));
+    }
+    const display = auth.runtime.display;
+    renewing ??= registerRuntimeSession(auth.oauth, display)
+      .then((runtime) => {
+        console.error(
+          `[agent] Session ${auth.runtime?.sessionId} is no longer active, registered ${runtime.sessionId}`
+        );
+        if (current) {
+          current = { ...current, runtime };
+        }
+        return runtime;
+      })
+      .finally(() => {
+        renewing = undefined;
+      });
+    return renewing;
+  };
 
   const refresh = async () => {
     try {
@@ -150,7 +187,7 @@ export function startStdio(): void {
     }
     pending ??= bootstrapRegisteredRuntime(clientInfo).then(
       (auth) => {
-        current = auth;
+        current = { ...auth, renewRuntime };
         refreshTimer ??= setInterval(refresh, REFRESH_INTERVAL_MS);
         refreshTimer.unref();
         return auth;

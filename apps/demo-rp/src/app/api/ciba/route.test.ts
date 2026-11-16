@@ -1,3 +1,4 @@
+import { AGENT_SESSION_INACTIVE_DESCRIPTION } from "@zentity/sdk/agent-contract";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
@@ -10,6 +11,7 @@ const mocks = vi.hoisted(() => ({
     userId: string;
   }>,
   fetch: vi.fn(),
+  prepareAgentAssertionForScenario: vi.fn(),
   requestTokenEndpoint: vi.fn(),
 }));
 
@@ -30,7 +32,7 @@ vi.mock("@/lib/dcr", () => ({
 }));
 
 vi.mock("@/lib/agent-runtime", () => ({
-  prepareAgentAssertionForScenario: vi.fn(async () => null),
+  prepareAgentAssertionForScenario: mocks.prepareAgentAssertionForScenario,
 }));
 
 vi.mock("@/lib/env", () => ({
@@ -109,6 +111,8 @@ describe("POST /api/ciba", () => {
     mocks.pingRows.length = 0;
     mocks.getSession.mockResolvedValue({ user: { id: "demo-user" } });
     mocks.readZentitySubject.mockResolvedValue("pairwise-sub");
+    mocks.prepareAgentAssertionForScenario.mockReset();
+    mocks.prepareAgentAssertionForScenario.mockResolvedValue(null);
     mocks.fetch.mockResolvedValue(
       Response.json({ auth_req_id: "req-1", expires_in: 300, interval: 5 })
     );
@@ -135,6 +139,64 @@ describe("POST /api/ciba", () => {
       "aether",
       "demo-user"
     );
+  });
+
+  // The stored agent session idled out: the route registers a new one,
+  // signs again, and sends the request once more.
+  it("signs with a new agent session when bc-authorize reports the stored one inactive", async () => {
+    mocks.prepareAgentAssertionForScenario.mockImplementation(
+      async ({ renewSession }: { renewSession: boolean }) =>
+        renewSession ? "assertion-renewed" : "assertion-stale"
+    );
+    mocks.fetch.mockResolvedValueOnce(
+      Response.json(
+        {
+          error: "invalid_request",
+          error_description: AGENT_SESSION_INACTIVE_DESCRIPTION,
+        },
+        { status: 400 }
+      )
+    );
+
+    const response = await post({
+      action: "authorize",
+      scenarioId: "aether",
+      scope: "openid",
+    });
+
+    expect(response.status).toBe(200);
+    expect(
+      mocks.fetch.mock.calls.map(
+        ([, init]) =>
+          ((init as RequestInit).headers as Record<string, string>)[
+            "Agent-Assertion"
+          ]
+      )
+    ).toEqual(["assertion-stale", "assertion-renewed"]);
+    expect(mocks.pingRows).toHaveLength(1);
+  });
+
+  it("returns any other bc-authorize refusal without registering a session", async () => {
+    mocks.prepareAgentAssertionForScenario.mockResolvedValue("assertion");
+    mocks.fetch.mockResolvedValueOnce(
+      Response.json(
+        {
+          error: "invalid_request",
+          error_description: "Agent-Assertion does not match this request",
+        },
+        { status: 400 }
+      )
+    );
+
+    const response = await post({
+      action: "authorize",
+      scenarioId: "aether",
+      scope: "openid",
+    });
+
+    expect(response.status).toBe(400);
+    expect(mocks.fetch).toHaveBeenCalledTimes(1);
+    expect(mocks.prepareAgentAssertionForScenario).toHaveBeenCalledTimes(1);
   });
 
   it("refuses to authorize when the user never signed in with the scenario", async () => {

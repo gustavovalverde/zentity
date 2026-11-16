@@ -1,16 +1,26 @@
 import { expect, test } from "@playwright/test";
+import { PAYMENT_REQUIRED_HEADER } from "@zentity/sdk/rp";
 
 import {
   approveCibaRequestWithPasskey,
   completeStepUp,
   registerScenario,
   signInToScenario,
+  signInToScenarioThroughApi,
   waitForAetherAuthorization,
 } from "./scenario-flow.mts";
+import {
+  runX402Agent,
+  signTestPayment,
+  startMockFacilitator,
+} from "./x402-agent.mts";
 
 const TRADE_BUTTON_NAME_RE = /trade/i;
 const WIRELESS_HEADPHONES_BUTTON_NAME_RE = /Wireless headphones/i;
 const ZCASH_URI_RE = /^zcash:/;
+const COMPACT_JWT_RE = /eyJ[A-Za-z0-9_-]+\./;
+const demoRpBaseURL =
+  process.env.PLAYWRIGHT_DEMO_RP_BASE_URL ?? "http://localhost:3102";
 
 test.describe("demo-rp consumer scenarios", () => {
   test("bank completes sign-in and step-up account opening", async ({
@@ -124,5 +134,72 @@ test.describe("demo-rp consumer scenarios", () => {
     // that the bridge wired up to the upstream events stream.
     const proxyRequest = await eventsRequestPromise;
     expect(proxyRequest.method()).toBe("GET");
+  });
+
+  test("x402 agent pays with a merchant-bound Proof-of-Human, and the browser journey settles", async ({
+    browser,
+    page,
+    request,
+  }) => {
+    const facilitator = await startMockFacilitator();
+    try {
+      await registerScenario(request, "x402");
+      await signInToScenarioThroughApi(page, "zentity-x402");
+
+      // An agent for the signed-in user: the user approves a Proof-of-Human
+      // for demo-rp on Zentity's page, and the agent's test wallet pays.
+      const resourceUrl = `${demoRpBaseURL}/api/x402/access?resourceId=verified-identity`;
+      const paid = await runX402Agent({
+        url: resourceUrl,
+        onPendingApproval: (authReqId) =>
+          approveCibaRequestWithPasskey(
+            browser,
+            authReqId,
+            `You proved to ${new URL(demoRpBaseURL).host} that your identity is verified. The agent can now continue.`
+          ),
+      });
+      expect(paid.status, await paid.clone().text()).toBe(200);
+      expect(await paid.json()).toMatchObject({
+        access: "granted",
+        poh: { identity: { strength_at_least: "documentary_full" } },
+      });
+      expect(facilitator.requests.map((entry) => entry.path)).toEqual([
+        "/verify",
+        "/settle",
+      ]);
+      // The facilitator never receives a Zentity token.
+      expect(JSON.stringify(facilitator.requests)).not.toMatch(COMPACT_JWT_RE);
+
+      // A resource that checks identity on-chain has no agent path, and the
+      // agent stops before asking the user.
+      await expect(
+        runX402Agent({
+          url: `${demoRpBaseURL}/api/x402/access?resourceId=regulated-finance`,
+          onPendingApproval: () => {
+            throw new Error("The agent asked for an approval it cannot use");
+          },
+        })
+      ).rejects.toMatchObject({ code: "unsupported_resource" });
+
+      // The browser journey: the merchant obtains the user's client-mode
+      // token server side and settles the payment the wallet signed.
+      const unpaid = await page.request.post("/api/x402/access", {
+        data: { resourceId: "verified-identity" },
+      });
+      expect(unpaid.status()).toBe(402);
+      const settled = await page.request.post("/api/x402/access", {
+        data: { resourceId: "verified-identity" },
+        headers: await signTestPayment(
+          unpaid.headers()[PAYMENT_REQUIRED_HEADER.toLowerCase()] as string
+        ),
+      });
+      expect(settled.status(), await settled.text()).toBe(200);
+      expect(await settled.json()).toMatchObject({
+        access: "granted",
+        poh: { identity: { verified: true, strength: "documentary_full" } },
+      });
+    } finally {
+      await facilitator.close();
+    }
   });
 });

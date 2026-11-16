@@ -246,9 +246,16 @@ sequenceDiagram
 
 **Registration**: a CIBA client must register `backchannel_token_delivery_mode` as `poll` or `ping`. Registration without a supported delivery mode fails with `invalid_client_metadata`.
 
-**Request encoding**: `POST /oauth2/bc-authorize` accepts only `application/x-www-form-urlencoded` bodies (CIBA Core §7.1). Send `authorization_details` as a JSON-encoded array in a string parameter. Zentity accepts only the `payment_authorization` type. A value that is not a valid JSON array, a detail of another type, more than one `payment_authorization` entry, or an entry with an unknown, missing, or invalid field gets `invalid_authorization_details` (RFC 9396 §5). `binding_message` must be plain text of at most 64 characters, or the request gets `invalid_binding_message`. `truncateBindingMessage` from `@zentity/sdk/protocol` shortens a longer message; shorten it before you show it to the user or hash it into an `Agent-Assertion`.
+**Request encoding**: `POST /oauth2/bc-authorize` accepts only `application/x-www-form-urlencoded` bodies (CIBA Core §7.1). Send `authorization_details` as a JSON-encoded array in a string parameter. Zentity accepts three types, the ones discovery lists in `authorization_details_types_supported`: `payment_authorization`, `purchase`, and `x402_purchase`. Each has a strict schema in `@zentity/sdk/protocol` (`AUTHORIZATION_DETAILS_TYPES`). A value that is not a valid JSON array, a detail of another type, more than one payment or purchase entry, or an entry with an unknown, missing, or invalid field gets `invalid_authorization_details` (RFC 9396 §5). `binding_message` must be plain text of at most 64 characters, or the request gets `invalid_binding_message`. `truncateBindingMessage` from `@zentity/sdk/protocol` shortens a longer message; shorten it before you show it to the user or hash it into an `Agent-Assertion`.
 
 **Payments**: a client that sends `payment_authorization` entries registers `authorization_details_types: ["payment_authorization"]` (RFC 9396 §10); a client that did not gets `invalid_authorization_details`. No scope marks a payment: the entry does, with `scope=openid` or alongside proof and identity scopes. Zentity sets the request's `resource` to the agent wallet's audience (`WALLET_AUDIENCE`), whatever the client sent, and the wallet resource sets the token's lifetime to 120 seconds. The token is a DPoP-bound JWT whose `aud` is the wallet and, because the request has `openid`, UserInfo. The wallet audience is accepted only on a payment request and its token poll: a `resource` or `audience` naming it anywhere else (`/oauth2/authorize`, PAR, the Authorization Challenge Endpoint, a CIBA request without a payment entry, or any other token grant) gets `invalid_target`.
+
+**Purchases**: a purchase request carries exactly one entry, and Zentity sets its `resource` to the app origin, so the access token is opaque and never audienced to a merchant.
+
+- `purchase` asks the user to approve buying `item` from `merchant.name` for `amount` (`value` a decimal string, `currency` an ISO 4217 code), with the identity scopes the merchant needs for delivery. It must not carry `poh`.
+- `x402_purchase` asks the user to prove to one x402 merchant that their identity is verified. It carries the merchant's `resource_url` (`https`, or `http` on a loopback host outside production), an optional `resource_description`, the merchant's x402 `payment_requirements` copied verbatim (scheme `exact`, an asset Zentity registers, and only the `authorization` payment flow), and `min_identity_strength` (`documentary`, `documentary_full`, or `cryptographic_chip`). Its scope is exactly `openid poh`.
+
+A `poh` scope without an `x402_purchase` entry, or a purchase with the wrong scopes, gets `invalid_scope`. Zentity refuses scopes rather than rewriting them, so the stored scope is the scope the client sent.
 
 **`login_hint`**: the subject identifier the client received for the user from Zentity (its pairwise `sub` for a pairwise client, the user id for a public client). Zentity does not accept email addresses. A hint that is not a subject issued to the requesting client gets `unknown_user_id`, whether or not an account exists, so a client cannot probe for accounts or prompt users who never authorized it.
 
@@ -263,11 +270,11 @@ The user is notified through three channels: web push notifications, email with 
 **Approval ceremony**: the server derives what an approval needs from the whole stored request through one policy table (`approvalPolicy`, see [Agent Architecture](<../(architecture)/agent-architecture.md#the-approval-policy>)):
 
 - A request is approved inline from a notification only when every scope is one the notification names with server text (`compliance:read` and the `proof:*` predicates other than `proof:sybil` and `proof:humanity:rp_unique`). Any other scope, any `authorization_details` entry, or a user-verification ceremony sends the user to the approval page.
-- A `payment_authorization` approval needs a user-verified passkey assertion. An identity-scoped approval needs one when the user has a passkey; a user without a passkey approves it with the session after unlocking the vault on the page.
+- A `payment_authorization`, `purchase`, or `x402_purchase` approval needs a user-verified passkey assertion, and no capability grant approves a purchase. An identity-scoped approval needs one when the user has a passkey; a user without a passkey approves it with the session after unlocking the vault on the page.
 - For a user-verified approval, the page calls `POST /api/auth/ciba/decision/options`, runs one assertion with `userVerification: "required"` over the challenge, and posts the result as `webauthn` with the decision. When the request has identity scopes and the vault is passkey-wrapped and locked, the same assertion carries the PRF extension and opens the vault, so the user confirms once; the posted assertion keeps no extension results. When the opened profile lacks a requested field, the page names the missing fields and stages the available data only after a second Approve click, which posts the same assertion. The challenge is single use, lives 120 seconds, and is bound to the request and the session; a new options call replaces it. A `webauthn` member on a request that needs only a session is verified too, and records `user_verification`.
 - `channel` says where the user decided. A missing `channel` counts as `push`, the value service workers installed before the field existed imply.
 
-The decision runs its checks in this order: the request is the user's, pending, and unexpired; a notification approval of a page-only request is refused; `acr_values`; a staged identity release for identity scopes; the passkey assertion. A refusal leaves the request pending. The two endpoints each allow 20 requests per minute per IP. Errors:
+The decision runs its checks in this order: the request is the user's, pending, and unexpired; a notification approval of a page-only request is refused; `acr_values`; for an `x402_purchase`, the merchant's `min_identity_strength` against the user's current identity strength; a staged identity release for identity scopes; the passkey assertion. A refusal leaves the request pending, so an agent learns only that the request was approved, denied, or expired. `GET /api/auth/ciba/request` returns `identity_strength: { required, satisfied }` for an `x402_purchase`, and the approval page shows a shortfall before the user acts, disables Approve, keeps Deny, and links to identity verification. The two endpoints each allow 20 requests per minute per IP. Errors:
 
 | Condition | Status, `error`, description |
 | --- | --- |
@@ -276,6 +283,7 @@ The decision runs its checks in this order: the request is the user's, pending, 
 | Expired | 400 `expired_token` "This request has expired" |
 | Notification approval of a page-only request | 403 `review_required` "Open the approval page to review this request" |
 | Unmet `acr_values` | 403 `insufficient_user_authentication` |
+| Identity strength below an `x402_purchase` minimum | 403 `insufficient_identity_strength` |
 | Identity scopes without a staged release | 403 `vault_unlock_required` |
 | User verification needed, no `webauthn` | 403 `insufficient_user_authentication` "Confirm with your passkey to approve this request", with `approval_requirement: "user_verification"` |
 | User verification needed, no passkey | 409 `passkey_required` |
@@ -515,8 +523,8 @@ Proof claims are projected from the account identity snapshot. The issuer reads 
 | `proof:compliance` | `policy_version`, `verification_time`, `attestation_expires_at` |
 | `proof:chip` | `chip_verified`, `chip_verification_method` |
 | `proof:humanity` | `humanity_proven` — boolean (id_token + userinfo); provenance is intentionally not exposed |
-| `proof:sybil` | `sybil_nullifier` — per-RP pseudonymous nullifier from document/chip credentials (opaque access tokens only) |
-| `proof:humanity:rp_unique` | `rp_unique_humanity_id` — per-RP pseudonym derived from the union of the user's humanity credentials (opaque access tokens only) |
+| `proof:sybil` | `sybil_nullifier`: per-RP pseudonymous nullifier from document/chip credentials (opaque access tokens only) |
+| `proof:humanity:rp_unique` | `rp_unique_humanity_id`: per-RP pseudonym derived from the union of the user's humanity credentials (opaque access tokens only) |
 | `poh` | (no id_token/userinfo claims) — gates the [Proof of Human resource endpoint](#proof-of-human) |
 
 `proof:sybil` derives from the bundle-owned `nullifierSeed`. At credential write time the system derives the seed as `HMAC-SHA256(DEDUP_HMAC_SECRET, rawKey || source)` (where `rawKey` is the OCR `dedupKey` or the raw NFC chip nullifier, and `source` domain-separates the two inputs). Verification finalization seeds `nullifierSeed` from the authoritative verified credential, and token issuance derives `sybil_nullifier = HMAC-SHA256(DEDUP_HMAC_SECRET, nullifierSeed + "|rp|" + clientId)`. This keeps the nullifier stable across credential additions, prevents any raw ZKPassport chip identifier from reaching the bundle, and resets only after full identity revocation.
@@ -609,10 +617,10 @@ Identity scopes are never persisted in consent records. The consent page reappea
 ## Proof of Human
 
 > **Endpoint:** `POST /api/auth/oauth2/proof-of-human`
-> **Required scope:** `poh` (granted at consent like any other scope)
-> **Code authority:** `apps/web/src/app/api/auth/oauth2/proof-of-human/route.ts`
+> **Required scope:** `poh`
+> **Code authority:** `apps/web/src/lib/auth/oidc/proof-of-human.ts`
 
-Some relying parties only need to know "is this a real, unique human?" — not anything about who that person is. The PoH endpoint exists for that case. It returns a compact, DPoP-bound JWT that asserts the user's status across three orthogonal axes (`identity`, `humanity`, `policy`) without disclosing PII, and uses the access token's pairwise `sub` so two RPs cannot cross-link the same user.
+Some relying parties only need to know whether a real, verified human is on the other side, not who that person is. The Proof-of-Human (PoH) endpoint mints a compact, DPoP-bound JWT (`typ: poh+jwt`, EdDSA) that states that without disclosing PII. The access token the caller presents decides which of two tokens it gets; there is no audience parameter.
 
 ### When to use it
 
@@ -622,26 +630,55 @@ Some relying parties only need to know "is this a real, unique human?" — not a
 | RP needs a boolean "this user has a humanity credential" | `proof:humanity` |
 | RP needs a per-RP nullifier from document/chip uniqueness | `proof:sybil` |
 | RP needs a per-RP pseudonym from humanity providers | `proof:humanity:rp_unique` |
-| RP needs a forward-portable signed assertion to ship downstream / on-chain | `poh` |
+| RP needs a signed, short-lived statement about the user it can check on its own server | `poh` (client mode) |
+| An agent must prove to an x402 merchant that the user is verified, for one purchase | `poh` with an `x402_purchase` approval (merchant mode) |
 | RP needs verified PII (name, DOB, document) | `identity.*` scopes |
 
-The PoH JWT is a *forward-portable* credential. `proof:*` claims are scoped to the issued tokens. The PoH JWT can be passed to a third party (or onto a smart contract) without granting them access to the original OAuth tokens.
+### Merchant mode
 
-### Token shape
+An agent gets a merchant-mode token from the CIBA access token of an `x402_purchase` approval, presented with the per-purchase DPoP key it polled that token with. The token is for one merchant and one purchase:
+
+```jsonc
+// header { "alg": "EdDSA", "typ": "poh+jwt", "kid": "..." }
+{
+  "iss": "https://app.zentity.xyz",
+  "sub": "<pairwise for the agent client and the merchant>",
+  "aud": "https://merchant.example",
+  "iat": 1763200000,
+  "exp": 1763200300,
+  "jti": "<128-bit random, base64url>",
+  "scope": "poh",
+  "cnf": { "jkt": "<thumbprint of the per-purchase key>" },
+  "act": { "sub": "<pairwise for the agent client and the merchant>", "sub_profile": "service" },
+  "poh": { "identity": { "strength_at_least": "documentary_full" }, "policy": { "version": "v1.0" } },
+  "authorization_details": [ { "type": "x402_purchase", "resource_url": "...", "payment_requirements": { }, "min_identity_strength": "documentary_full" } ]
+}
+```
+
+- `aud` is the origin of the approved `resource_url`.
+- `sub` is the pairwise value of the user for the sector `T(c, M)`: the agent client's sector, a space, and the merchant origin. It is stable for one client and merchant, differs across merchants and across clients, and never equals a subject any client receives, including a client registered at the merchant's host. It is pairwise even for a client with a public subject type, because the merchant is not that client. `act` appears only when a verified Agent-Assertion bound the request, with the agent session's pairwise value in the same sector.
+- `poh` states only that the user's identity meets the merchant's minimum. The token carries no `client_id`, `azp`, `ba_sub`, item, `resource_description`, identity flags, humanity axis, or PII.
+- `exp` is the earliest of 300 seconds, the requirement's `maxTimeoutSeconds`, and the CIBA token's expiry.
+- One approval mints one token. The mint sets `ciba_approval.poh_minted_at` only while it is null, so a second or concurrent mint gets `401 invalid_token`. The mint checks the user's identity strength again first; a user below the minimum also gets `401 invalid_token`, and the approval stays unspent.
+
+The agent presents the token to the merchant as `Authorization: DPoP <poh>` with a DPoP proof by the same key, never inside the x402 payment payload. The merchant's checks are in [Web3 Architecture](<../(architecture)/web3-architecture.md>).
+
+### Client mode
+
+Any other `poh` access token, such as one from an authorization-code sign-in, gets a token for its own client:
 
 ```jsonc
 {
   "iss": "https://app.zentity.xyz",
-  "sub": "<pairwise sub from access token>",
+  "sub": "<the client's subject for the user>",
+  "aud": "<client_id>",
   "iat": 1778164474,
-  "exp": 1778168074,
+  "exp": 1778164774,
+  "jti": "<128-bit random, base64url>",
   "scope": "poh",
-  "cnf": { "jkt": "<DPoP key thumbprint>" },
+  "cnf": { "jkt": "<DPoP key thumbprint of the presenting token>" },
   "poh": {
-    "identity": {
-      "verified": false,
-      "strength": "none"
-    },
+    "identity": { "verified": false, "strength": "none" },
     "humanity": { "proven": true },
     "policy":   { "version": "v1.0" }
   }
@@ -651,21 +688,22 @@ The PoH JWT is a *forward-portable* credential. `proof:*` claims are scoped to t
 | Path | Type | Meaning |
 | --- | --- | --- |
 | `poh.identity.verified` | bool | All required identity-evidence checks pass |
-| `poh.identity.strength` | `"none" \| "documentary" \| "documentary_full" \| "cryptographic_chip"` | Discrete evidence-strength tier |
+| `poh.identity.strength` | `"none" \| "documentary" \| "documentary_full" \| "cryptographic_chip"` | Identity-evidence strength |
 | `poh.humanity.proven` | bool | At least one active humanity credential |
 | `poh.policy.version` | string | Policy version under which checks were materialized |
 
 `identity.method` (`"ocr" | "nfc_chip"`) is intentionally absent: forwarding the verification path lets RPs discriminate against OCR users versus chip users, which is a privacy regression for users on the document track. RPs that genuinely need the method request `proof:verification` separately and read it from id_token claims.
 
-RPs compose their own predicates: `verified human` is `identity.verified && humanity.proven`; `unique human` is `humanity.proven`; `verified identity (no humanity required)` is `identity.verified`. The contract is deliberately structural rather than a single number; collapsing three axes into one scalar is what produced the `tier 1.5` rough edge in earlier drafts.
+RPs compose their own predicates: `verified human` is `identity.verified && humanity.proven`; `unique human` is `humanity.proven`; `verified identity (no humanity required)` is `identity.verified`.
+
+A client-mode token is for the client that holds it. A client checks `aud` against its own `client_id` and `cnf.jkt` against its own key; it does not hand the token to another party.
 
 ### Issuance contract
 
-- Caller presents an OAuth access token granted with `poh` scope.
-- Token must be DPoP-bound. The issued PoH JWT carries the same DPoP `jkt` in its `cnf` claim, so it cannot be replayed by a different client.
-- Issuer reads the user's verification read-model and projects the three axes above. No PII is read or returned.
-- Returns `403 not_verified` only when **both** axes are empty (`identity.verified=false && humanity.proven=false`).
-- Lifetime: 1 hour.
+- The caller presents a DPoP-bound access token with the `poh` scope and a DPoP proof with a server nonce. The PoH token carries the same key in `cnf.jkt`.
+- The response is `{ "token", "token_type": "DPoP", "expires_in" }` with `Cache-Control: no-store` and the next `DPoP-Nonce`.
+- A token without `poh` gets `403 insufficient_scope`. A bad, inactive, or used token, or an approval that is no longer usable, gets `401 invalid_token`.
+- Client mode returns `403 not_verified` only when **both** axes are empty (`identity.verified=false && humanity.proven=false`). Client-mode tokens live 300 seconds and are not single use at Zentity.
 
 ## Humanity credentials
 
@@ -789,9 +827,32 @@ See [SSI Architecture](<../(architecture)/ssi-architecture.md>) for the complete
   "acr_values_supported": ["urn:zentity:assurance:tier-0", "urn:zentity:assurance:tier-1", "urn:zentity:assurance:tier-2", "urn:zentity:assurance:tier-3"],
   "backchannel_token_delivery_modes_supported": ["poll", "ping"],
   "client_id_metadata_document_supported": true,
-  "resource_indicators_supported": true
+  "resource_indicators_supported": true,
+  "authorization_details_types_supported": ["openid_credential", "payment_authorization", "purchase", "x402_purchase"]
 }
 ```
+
+`authorization_details_types_supported` comes from the same map the CIBA plugin registers its types from, so discovery cannot list a type bc-authorize refuses.
+
+### Proof-of-Human issuer
+
+`GET /.well-known/proof-of-human` returns:
+
+```json
+{
+  "issuer": "https://app.zentity.xyz",
+  "poh_endpoint": "https://app.zentity.xyz/api/auth/oauth2/proof-of-human",
+  "jwks_uri": "https://app.zentity.xyz/api/auth/oauth2/jwks",
+  "identity_strengths_supported": ["documentary", "documentary_full", "cryptographic_chip"],
+  "token_types_supported": ["poh+jwt"],
+  "presentation_methods_supported": ["dpop"],
+  "max_token_lifetime": 300,
+  "token_signing_alg": "EdDSA",
+  "dpop_signing_alg_values_supported": ["ES256"]
+}
+```
+
+`identity_strengths_supported` is the vocabulary an x402 merchant's `minIdentityStrength` and an `x402_purchase` entry's `min_identity_strength` use, weakest first. No numeric tier appears in discovery.
 
 ### Protected resource (RFC 9728)
 

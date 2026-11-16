@@ -1,10 +1,13 @@
 import { decodeJwt } from "jose";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { AGENT_SESSION_INACTIVE_DESCRIPTION } from "./agent-contract";
 import {
   beginCibaApproval,
+  CibaAuthorizationError,
   CibaDeniedError,
   CibaTimeoutError,
   pollCibaToken,
+  isAgentSessionInactiveError,
   pollCibaTokenOnce,
   requestCibaApproval,
 } from "./ciba";
@@ -98,6 +101,50 @@ describe("CIBA", () => {
         intervalSeconds: 5,
       })
     ).rejects.toThrow("CIBA poll error: HTTP 502");
+  });
+
+  it.each([
+    [AGENT_SESSION_INACTIVE_DESCRIPTION, true],
+    ["Agent-Assertion does not match this request", false],
+  ])(
+    "reports a refusal described as %j as an inactive session: %s",
+    async (description, inactive) => {
+      vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+        Response.json(
+          { error: "invalid_request", error_description: description },
+          { status: 400 }
+        )
+      );
+
+      const error = await beginCibaApproval(BASE_PARAMS).catch(
+        (caught: unknown) => caught
+      );
+
+      expect(error).toBeInstanceOf(CibaAuthorizationError);
+      expect(error).toMatchObject({
+        status: 400,
+        error: "invalid_request",
+        errorDescription: description,
+      });
+      expect(isAgentSessionInactiveError(error)).toBe(inactive);
+    }
+  );
+
+  it("keeps a refusal without an OAuth error body", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      new Response("Bad Gateway", { status: 502 })
+    );
+
+    const error = await beginCibaApproval(BASE_PARAMS).catch(
+      (caught: unknown) => caught
+    );
+
+    expect(error).toMatchObject({
+      message: "CIBA authorization failed: 502 Bad Gateway",
+      status: 502,
+      error: undefined,
+    });
+    expect(isAgentSessionInactiveError(error)).toBe(false);
   });
 
   it("rejects an approved token response without access_token", async () => {

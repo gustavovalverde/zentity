@@ -2,37 +2,27 @@ import "server-only";
 
 import { NextResponse } from "next/server";
 
-import { env } from "@/env";
-import { signJwt } from "@/lib/auth/oidc/jwt-signer";
-import { insufficientScope } from "@/lib/auth/oidc/resource-challenge";
 import {
-  type ProtectedResourcePrincipal,
+  mintProofOfHuman,
+  type ProofOfHumanMintResult,
+} from "@/lib/auth/oidc/proof-of-human";
+import {
+  insufficientScope,
+  invalidAccessToken,
+} from "@/lib/auth/oidc/resource-challenge";
+import {
   resolveProtectedResourcePrincipal,
   resourceErrorResponse,
   withNextDpopNonce,
 } from "@/lib/auth/oidc/resource-principal";
-import { getVerificationReadModel } from "@/lib/identity/verification/read-model";
-
-const TRAILING_SLASHES = /\/+$/;
 
 /**
  * POST /api/auth/oauth2/proof-of-human
  *
- * Issues a compact, DPoP-bound Proof-of-Human JWT.
- * Requires an access token with the `poh` scope.
- *
- * The PoH token asserts orthogonal axes about the user, without PII:
- *   - `poh.identity`  — was the user's real-world identity proven? how strong?
- *   - `poh.humanity`  — has any external provider attested they are unique?
- *   - `poh.policy`    — version + canonical 7-check booleans
- *
- * `identity.method` (OCR vs NFC) is intentionally omitted: forwarding it
- * lets RPs discriminate by verification path, which is a privacy regression
- * for users on the OCR track. Clients that genuinely need the method can
- * request `proof:verification` separately.
- *
- * The token is forward-portable: an RP can hand it to a downstream service
- * and the downstream verifies the issuer signature plus the DPoP `cnf`.
+ * Mints a DPoP-bound Proof-of-Human token (`typ: poh+jwt`) for an access
+ * token with the `poh` scope. A token from an `x402_purchase` approval yields
+ * one merchant-audienced token per approval; any other token yields a token
+ * for its own client. `mintProofOfHuman` describes both modes.
  */
 export async function POST(request: Request) {
   const resolved = await resolveProtectedResourcePrincipal(request);
@@ -40,55 +30,33 @@ export async function POST(request: Request) {
     return resourceErrorResponse(resolved.error);
   }
   return withNextDpopNonce(
-    await issueProofOfHuman(resolved.principal),
+    respond(request, await mintProofOfHuman(resolved.principal)),
     resolved.dpopNonce
   );
 }
 
-async function issueProofOfHuman(
-  principal: ProtectedResourcePrincipal
-): Promise<Response> {
-  if (!principal.scopes.includes("poh")) {
-    return resourceErrorResponse(insufficientScope(["poh"]));
+function respond(
+  request: Request,
+  result: ProofOfHumanMintResult
+): NextResponse {
+  if (result.ok) {
+    return NextResponse.json(
+      {
+        token: result.token,
+        token_type: "DPoP",
+        expires_in: result.expiresIn,
+      },
+      { headers: { "Cache-Control": "no-store" } }
+    );
   }
-
-  const model = await getVerificationReadModel(principal.userId);
-  const compliance = model.compliance;
-
-  // Reject only when the user has no signal at all. A user with humanity
-  // alone (`identity.verified=false, humanity.proven=true`) still gets a
-  // token — RPs that require verified identity gate on `identity.verified`.
-  if (!(compliance.identity.verified || compliance.humanity.proven)) {
-    return NextResponse.json({ error: "not_verified" }, { status: 403 });
+  switch (result.error) {
+    case "insufficient_scope":
+      return resourceErrorResponse(insufficientScope(["poh"]));
+    case "not_verified":
+      return NextResponse.json({ error: "not_verified" }, { status: 403 });
+    default:
+      return resourceErrorResponse(
+        invalidAccessToken(request, "This approval is no longer usable")
+      );
   }
-
-  const sub = principal.sub;
-  const now = Math.floor(Date.now() / 1000);
-  const issuer = env.NEXT_PUBLIC_APP_URL.replace(TRAILING_SLASHES, "");
-
-  const token = await signJwt({
-    iss: issuer,
-    sub,
-    iat: now,
-    exp: now + 3600,
-    scope: "poh",
-    cnf: { jkt: principal.dpopJkt },
-    poh: {
-      identity: {
-        verified: compliance.identity.verified,
-        strength: compliance.identity.strength,
-      },
-      humanity: {
-        proven: compliance.humanity.proven,
-      },
-      policy: {
-        version: compliance.policy.version,
-      },
-    },
-  });
-
-  return NextResponse.json(
-    { token },
-    { headers: { "Cache-Control": "no-store" } }
-  );
 }

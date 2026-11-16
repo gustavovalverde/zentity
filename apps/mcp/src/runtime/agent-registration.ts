@@ -1,4 +1,8 @@
-import type { RegisteredAgentSession as AgentRuntimeState } from "@zentity/sdk";
+import type {
+  AgentDisplay,
+  RegisteredAgentSession as AgentRuntimeState,
+  TaskHashInput,
+} from "@zentity/sdk";
 import {
   buildHostKeyNamespace,
   registerHost,
@@ -6,7 +10,6 @@ import {
   signAgentAssertion as signSdkAgentAssertion,
 } from "@zentity/sdk";
 import { AGENT_BOOTSTRAP_SCOPES } from "@zentity/sdk/agent-contract";
-import type { AgentInfo } from "../agent.js";
 import { config } from "../config.js";
 import { exchangeMcpLoginToken } from "../oauth-client.js";
 import { discoverAgentConfiguration } from "./agent-configuration.js";
@@ -99,7 +102,7 @@ export async function registerAgentSession(
   zentityUrl: string,
   auth: OAuthSessionContext,
   hostId: string,
-  display: AgentInfo,
+  display: AgentDisplay,
   keyNamespace = buildHostKeyNamespace(auth)
 ): Promise<AgentRuntimeState> {
   const agentConfiguration = await discoverAgentConfiguration(zentityUrl);
@@ -139,15 +142,16 @@ export async function registerAgentSession(
 }
 
 /**
- * Sign an agent assertion JWT for a CIBA request.
- * Proves the caller possesses the session's Ed25519 private key.
+ * Sign an agent assertion JWT for a CIBA request, over the request exactly as
+ * it will be sent. Proves the caller possesses the session's Ed25519 private
+ * key.
  */
 export function signAgentAssertion(
   agent: AgentRuntimeState,
-  bindingMessage: string
+  request: TaskHashInput
 ): Promise<string> {
   return signSdkAgentAssertion({
-    bindingMessage,
+    ...request,
     hostId: agent.hostId,
     sessionId: agent.sessionId,
     sessionPrivateKey: agent.sessionPrivateKey,

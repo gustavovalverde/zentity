@@ -317,9 +317,20 @@ async function registerAgentSession(
   return updated;
 }
 
+/**
+ * Signs an Agent-Assertion over the CIBA request the scenario will send. The
+ * request members must be the ones sent to bc-authorize, which recomputes the
+ * assertion's `task_hash` from them. `renewSession` registers a new session
+ * first, for a request bc-authorize refused because the stored session is no
+ * longer active.
+ */
 export async function prepareAgentAssertionForScenario(params: {
+  acrValues?: string | undefined;
+  authorizationDetails?: string | readonly unknown[] | undefined;
   bindingMessage: string;
+  renewSession?: boolean | undefined;
   scenarioId: RouteScenarioId;
+  scope: string;
   trustTier?: TrustTier;
   userId: string;
 }): Promise<string | null> {
@@ -361,10 +372,12 @@ export async function prepareAgentAssertionForScenario(params: {
     // attested runtimes so a session created before attestation succeeded
     // cannot stay pinned to the weaker default policy set.
     runtime = await registerAgentSession(runtime, bootstrap, {
-      force: hadRegisteredSession,
+      force: hadRegisteredSession || Boolean(params.renewSession),
     });
   } else if (runtime.hostId) {
-    runtime = await registerAgentSession(runtime, bootstrap);
+    runtime = await registerAgentSession(runtime, bootstrap, {
+      force: Boolean(params.renewSession),
+    });
   } else {
     runtime = await ensureHostRegistered(runtime, bootstrap);
     runtime = await registerAgentSession(runtime, bootstrap);
@@ -376,6 +389,9 @@ export async function prepareAgentAssertionForScenario(params: {
 
   return signAgentAssertion({
     bindingMessage: params.bindingMessage,
+    scope: params.scope,
+    acrValues: params.acrValues,
+    authorizationDetails: params.authorizationDetails,
     hostId: runtime.hostId,
     sessionId: runtime.sessionId,
     sessionPrivateKey: JSON.parse(runtime.sessionPrivateJwk),

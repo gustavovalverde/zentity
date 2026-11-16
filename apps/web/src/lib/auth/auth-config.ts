@@ -28,11 +28,15 @@ import { type Oidc4vciOptions, oidc4vci } from "@better-auth/oidc4vci";
 import { oidc4vp } from "@better-auth/oidc4vp";
 import { passkey } from "@better-auth/passkey";
 import { setGlobalConfig as setOpenid4vcConfig } from "@openid4vc/utils";
-import { AGENT_BOOTSTRAP_SCOPES } from "@zentity/sdk/agent-contract";
 import {
+  AGENT_BOOTSTRAP_SCOPES,
+  AGENT_SESSION_INACTIVE_DESCRIPTION,
+} from "@zentity/sdk/agent-contract";
+import {
+  AUTHORIZATION_DETAILS_TYPES,
   decodeJwtPayloadStrict,
   PAYMENT_AUTHORIZATION_TYPE,
-  PaymentAuthorizationSchema,
+  X402_PURCHASE_TYPE,
 } from "@zentity/sdk/protocol";
 import { APIError, type BetterAuthPlugin, betterAuth } from "better-auth";
 import {
@@ -65,7 +69,10 @@ import {
   normalizeAuthorizationDetails,
 } from "@/lib/agents/capability";
 import { buildCibaPushPayload, sendWebPush } from "@/lib/agents/push-sender";
-import { bindAgentAssertionToCibaRequest } from "@/lib/agents/session";
+import {
+  bindAgentAssertionToCibaRequest,
+  verifyAgentAssertionForRequest,
+} from "@/lib/agents/session";
 import {
   ACR_VALUES_SUPPORTED,
   buildNamespacedAssuranceClaim,
@@ -158,6 +165,10 @@ import {
   pinPaymentRequest,
   registersPaymentAuthorization,
 } from "@/lib/auth/oidc/payment-mint";
+import {
+  acceptsX402Purchase,
+  pinPurchaseRequest,
+} from "@/lib/auth/oidc/purchase-request";
 import { resourceAccessTokenPlugin } from "@/lib/auth/oidc/resource-access-token";
 import {
   invalidAccessToken,
@@ -1567,6 +1578,42 @@ async function approveFromCapabilityGrant(input: {
   }
 }
 
+function agentAssertionHeader(
+  ctx: GenericEndpointContext | HookCtx
+): string | null | undefined {
+  return (
+    ctx.headers?.get("Agent-Assertion") ??
+    ctx.request?.headers.get("Agent-Assertion")
+  );
+}
+
+/**
+ * A bc-authorize request that presents an Agent-Assertion must be the request
+ * the assertion signed, by a session that is still active. Either failure is
+ * refused before the plugin stores or notifies anything, rather than
+ * proceeding as an unverified agent; an inactive session gets its own
+ * description so the runtime can register a new one.
+ */
+async function refuseUnverifiedAgentAssertion(
+  ctx: HookCtx,
+  body: Record<string, unknown>
+): Promise<void> {
+  const assertion = agentAssertionHeader(ctx);
+  if (!assertion) {
+    return;
+  }
+  const outcome = await verifyAgentAssertionForRequest(body, assertion);
+  if (outcome !== "verified") {
+    throw new APIError("BAD_REQUEST", {
+      error: "invalid_request",
+      error_description:
+        outcome === "inactive_session"
+          ? AGENT_SESSION_INACTIVE_DESCRIPTION
+          : "Agent-Assertion does not match this request",
+    });
+  }
+}
+
 /**
  * CIBA `sendNotification`: binds a verified Agent-Assertion, auto-approves
  * from capability grants when they allow it, and otherwise notifies the user
@@ -1600,9 +1647,7 @@ async function notifyCibaRequest(
   let verifiedAgent:
     | { authContextId: string | null; sessionId: string }
     | undefined;
-  const assertionHeader =
-    ctx.headers?.get("Agent-Assertion") ??
-    ctx.request?.headers.get("Agent-Assertion");
+  const assertionHeader = agentAssertionHeader(ctx);
   if (assertionHeader) {
     const boundAssertion = await bindAgentAssertionToCibaRequest({
       assertionJwt: assertionHeader,
@@ -1738,6 +1783,39 @@ export type SocialProviderId = keyof typeof socialProviders;
 export const configuredSocialProviders = Object.keys(
   socialProviders
 ) as SocialProviderId[];
+
+/**
+ * The RAR types the CIBA plugin accepts, one per registered schema, so
+ * discovery and bc-authorize cannot disagree about which types exist.
+ */
+const cibaAuthorizationDetailsTypes = Object.fromEntries(
+  Object.entries(AUTHORIZATION_DETAILS_TYPES).map(([type, schema]) => [
+    type,
+    {
+      validate: (
+        detail: unknown,
+        { client }: { client: { metadata?: string | object | undefined } }
+      ) => {
+        const parsed = schema.safeParse(detail);
+        if (!parsed.success) {
+          return false;
+        }
+        if (type === PAYMENT_AUTHORIZATION_TYPE) {
+          // RFC 9396 §10: only a client that registered the type may request
+          // a payment. The plugin's own check lets a client that registered
+          // no types request any.
+          return registersPaymentAuthorization(client.metadata);
+        }
+        if (type === X402_PURCHASE_TYPE) {
+          return acceptsX402Purchase(
+            parsed.data as Parameters<typeof acceptsX402Purchase>[0]
+          );
+        }
+        return true;
+      },
+    },
+  ])
+);
 
 export const auth = betterAuth({
   database: drizzleAdapter(db, {
@@ -1955,7 +2033,9 @@ export const auth = betterAuth({
         await readRepeatedFormResources(ctx);
         if (ctx.body) {
           pinPaymentRequest(ctx.body);
+          pinPurchaseRequest(ctx.body);
           normalizeUserTokenResources(ctx.body, { allowWalletAudience: true });
+          await refuseUnverifiedAgentAssertion(ctx, ctx.body);
         }
         return;
       }
@@ -2452,16 +2532,7 @@ export const auth = betterAuth({
           : null;
       },
       sendNotification: notifyCibaRequest,
-      authorizationDetailsTypes: {
-        [PAYMENT_AUTHORIZATION_TYPE]: {
-          // RFC 9396 §10: only a client that registered the type may request
-          // a payment. The plugin's own check lets a client that registered
-          // no types request any.
-          validate: (detail, { client }) =>
-            registersPaymentAuthorization(client.metadata) &&
-            PaymentAuthorizationSchema.safeParse(detail).success,
-        },
-      },
+      authorizationDetailsTypes: cibaAuthorizationDetailsTypes,
     }),
     cibaApprovalPlugin(cibaApproval),
     tokenExchangePlugin(),

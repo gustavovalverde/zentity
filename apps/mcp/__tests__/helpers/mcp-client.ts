@@ -7,7 +7,7 @@ import {
   type AuthContext,
   setProcessAuthResolver,
 } from "../../src/runtime/auth-context.js";
-import { createServer } from "../../src/server.js";
+import { type CreateServerOptions, createServer } from "../../src/server.js";
 
 const STUB_AUTH = {
   oauth: {
@@ -25,12 +25,13 @@ export async function connectClient(
     auth?: unknown;
     capabilities?: ClientCapabilities;
     clientName?: string;
+    server?: CreateServerOptions;
   } = {}
 ): Promise<Client> {
   const auth = (options.auth ?? STUB_AUTH) as AuthContext;
   setProcessAuthResolver(() => Promise.resolve(auth));
 
-  const server = createServer();
+  const server = createServer(options.server);
   const [clientTransport, serverTransport] =
     InMemoryTransport.createLinkedPair();
   const client = new Client(

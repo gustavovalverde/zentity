@@ -150,16 +150,15 @@ This checks the token, not the request. A DPoP-bound access token (`cnf.jkt` set
 - The `jti` has not been seen before, so a captured proof cannot be replayed.
 - When the server requires nonces (RFC 9449 §8 and §9), the proof carries a current server-provided nonce.
 
-The SDK signs DPoP proofs but does not verify them. Any RFC 9449 verifier works. With Better Auth, `verifyAccessTokenRequest` and `verifyDpopProof` from `@better-auth/core/oauth2` cover the first four checks, including replay protection, from the stable 1.7 line onward. Server-provided nonces need `@better-auth/core` 1.8.0-beta.8 or later, because stable 1.7 has no nonce support. A verifier must stay strict about `htu`: it rejects a proof whose `htu` carries a fragment, even though this client never produces one.
+The SDK signs DPoP proofs but does not verify them. Any RFC 9449 verifier works. With Better Auth, `verifyAccessTokenRequest` and `verifyDpopProof` from `@better-auth/core/oauth2` cover the first four checks, including replay protection, from the stable 1.7 line onward. Server-provided nonces need `@better-auth/core` 1.8.0-beta.8 or later, because stable 1.7 has no nonce support. A verifier must stay strict about `htu`: it rejects a proof whose `htu` carries a fragment, even though this client never produces one. The SDK's Proof-of-Human merchant checks below use the same Better Auth code for the proof.
 
 ## Proof of Human
 
-`requestProofOfHumanToken` asks the issuer for a proof-of-human token with a DPoP-bound access token. `createProofOfHumanTokenVerifier` checks the issuer signature and returns the claims. `identityStrengthTier` maps the identity strength to a number for threshold checks.
+`requestProofOfHumanToken` asks the issuer for a client-mode proof-of-human token with a DPoP-bound access token. A relying party that holds one for its own user verifies it with `createProofOfHumanTokenVerifier`, which checks the issuer signature and that the token's audience is the relying party's own `client_id`, and returns the claims.
 
 ```ts
 import {
   createProofOfHumanTokenVerifier,
-  identityStrengthTier,
   requestProofOfHumanToken,
 } from "@zentity/sdk/rp";
 
@@ -173,24 +172,31 @@ const result = await requestProofOfHumanToken({
 
 if (result.ok) {
   const verifier = createProofOfHumanTokenVerifier({
+    audience: clientId,
     issuer: issuerUrl,
     jwksUrl,
   });
   const { poh } = await verifier.verify(result.token);
-  const humanWithDocument = poh.humanity.proven && identityStrengthTier(poh) >= 1;
+  const humanWithDocument =
+    poh.humanity.proven && poh.identity.strength !== "none";
 }
 ```
 
 Read `result.unverifiedClaims` only to decide what to show. Rely on the verified `poh` claims for access decisions.
 
-The proof-of-human token is bound to the presenter's DPoP key through `cnf.jkt`. A service that receives the token from someone else must check that `cnf.jkt` equals the thumbprint of the key that signed the DPoP proof sent with it. Without that check, anyone who captures the token can replay it.
+The proof-of-human token is bound to the requester's DPoP key through `cnf.jkt`, so the relying party compares `cnf.jkt` with the thumbprint of its own key. Without that check, anyone who captures the token can replay it.
 
-## x402 Payment Required
+## Accepting Proof-of-Human at an x402 Merchant
 
-`createPaymentRequired` builds the x402 v2 `402` response with the `PAYMENT-REQUIRED` header. Declare Zentity's compliance requirement in `extensions.zentity`.
+A merchant answers an unpaid request with `createPaymentRequired({ ..., wwwAuthenticate: PROOF_OF_HUMAN_CHALLENGE })`, the `auth-hints` extension from `buildAuthHintsExtension`, and the identity requirement from `buildZentityExtension({ minIdentityStrength })`, with `resource.url` the absolute request URL.
 
 ```ts
-import { createPaymentRequired } from "@zentity/sdk/rp";
+import {
+  buildAuthHintsExtension,
+  buildZentityExtension,
+  createPaymentRequired,
+  PROOF_OF_HUMAN_CHALLENGE,
+} from "@zentity/sdk/rp";
 
 return createPaymentRequired({
   accepts: {
@@ -202,24 +208,72 @@ return createPaymentRequired({
     maxTimeoutSeconds: 300,
     extra: { name: "USDC", version: "2" },
   },
-  resource: { url: "/api/premium" },
-  extensions: { zentity: { minComplianceLevel: 2, pohIssuer: issuerUrl } },
+  resource: { url: request.url },
+  extensions: {
+    "auth-hints": buildAuthHintsExtension({
+      acceptIndexes: [0],
+      authorizationServer: issuerUrl,
+      tokenEndpoint: `${issuerUrl}/oauth2/token`,
+    }),
+    zentity: buildZentityExtension({ minIdentityStrength: "documentary_full" }),
+  },
+  wwwAuthenticate: PROOF_OF_HUMAN_CHALLENGE,
 });
 ```
 
-## x402 Selection
+On the paid retry the merchant runs, in order:
 
-`createX402Fetch()` selects the first advertised `PAYMENT-REQUIRED.accepts`
-entry for the retry and exposes it as `context.selectedPaymentRequirement`.
-Callers that enforce amount or network bounds should validate that selected
-requirement.
+1. `verifyProofOfHumanPresentation({ request, issuer, audience, jwks, replayStore })`: the token's signature, `iss`, `typ: poh+jwt`, `aud` (the merchant's origin), `exp`, and an unused `jti`, then the DPoP proof by the token's key, whose `jti` it records. The token itself is not spent yet.
+2. `assertIdentityStrength(claims, minimum)`.
+3. `assertApprovedRequirement(claims, routeRequirement, paymentPayload, resourceUrl)`: the approved requirement equals the route's and the payment's `accepted`, for this URL.
+4. The facilitator's `/verify`.
+5. `recordProofOfHumanUse(claims, replayStore)`, which spends the token.
+6. The facilitator's `/settle`.
+
+A failure throws `ProofOfHumanPresentationError` with `code`, `status`, and, for a 401, `wwwAuthenticate`. `createInMemoryProofOfHumanReplayStore()` serves one instance; share a store across instances.
+
+## x402 Purchases
+
+An agent pays an x402 merchant that requires a Zentity Proof-of-Human with `createX402Fetch()`, or with `agent.fetch(url, { x402: { maxAmount, maxIdentityStrength } })` from `createAgent()`.
+
+```ts
+import { ExactEvmScheme } from "@x402/evm/exact/client";
+import { createAgent } from "@zentity/sdk";
+
+const agent = createAgent({
+  clientId,
+  dpopClient,
+  issuerUrl: "https://app.zentity.xyz/api/auth",
+  loginHint,
+  signAgentAssertion,
+  x402SchemeClient: new ExactEvmScheme(signer),
+});
+
+const response = await agent.fetch(resourceUrl, {
+  x402: { maxAmount: "1.00", maxIdentityStrength: "documentary_full" },
+});
+```
+
+When the merchant answers `402 Payment Required`, the client checks the 402 before it asks the user, in this order:
+
+1. A scheme client is configured. The SDK depends only on `@x402/core`; pass a `SchemeNetworkClient` such as `new ExactEvmScheme(signer)` from `@x402/evm/exact/client`.
+2. `resource.url` is on the request's origin.
+3. The `auth-hints` extension names the Zentity issuer as its `oauth2` authorization server.
+4. The `zentity` extension (`{ info: { minIdentityStrength }, schema }`) names no `identityRegistryMirror`. Resources that check identity on-chain are not available to agents.
+5. A requirement in a registered asset (Base Sepolia USDC) costs at most `maxAmount`, in display units. That bound replaces `@x402/core`'s default `$1` per-payment cap.
+6. The merchant's `minIdentityStrength` is at most `maxIdentityStrength`.
+
+The agent then asks the user to approve an `x402_purchase` with the merchant's requirement copied verbatim, under a DPoP key it generates for this purchase. It polls the CIBA token and mints a merchant-mode Proof-of-Human token with that key, checks that the token response returned exactly the details it sent, and only then signs the payment. The retry carries `PAYMENT-SIGNATURE`, `Authorization: DPoP <poh>`, and a DPoP proof by the purchase key; the payment payload carries no Zentity token.
+
+A refusal throws `X402PurchaseError` with one of these codes: `payment_not_configured`, `merchant_mismatch`, `untrusted_issuer`, `unsupported_resource`, `payment_bounds_exceeded`, `identity_strength_bound_exceeded`, or `approval_mismatch`. Only `approval_mismatch` comes after Zentity is contacted.
+
+`buildX402PurchaseAuthorization()` and `assertApprovedDetails()` are the two steps a caller with its own approval flow, such as the MCP server, runs around the CIBA request.
 
 ## Error Codes
 
 `@zentity/sdk/protocol` exports the stable `SdkErrorCode` union. Runtime
 errors that carry one of these codes expose it on their `code` property.
 
-- `compliance_insufficient`
 - `invalid_did_key_format`
 - `token_refresh_failed`
 - `use_dpop_nonce`

@@ -26,7 +26,7 @@ export const meta: MetaFunction = () => [
   {
     name: "description",
     content:
-      "Zentity adds a compliance layer to x402 payment settlement through the Proof-of-Human token: a compact JWT that proves what the payer can do, not who they are.",
+      "Zentity adds a compliance layer to x402 payment settlement through the Proof-of-Human token: a compact JWT, for one merchant and one purchase, that proves the user is verified without revealing who they are.",
   },
 ];
 
@@ -172,28 +172,32 @@ function ComparisonVisual() {
               <span className={prop}>{'"zentity"'}</span>
               {": {\n"}
               {"      "}
-              <span className={prop}>{'"minComplianceLevel"'}</span>
+              <span className={prop}>{'"info"'}</span>
+              {": { "}
+              <span className={prop}>{'"minIdentityStrength"'}</span>
               {": "}
-              <span className={num}>{"2"}</span>
-              {",\n"}
+              <span className={str}>{'"documentary_full"'}</span>
+              {" },\n"}
               {"      "}
-              <span className={prop}>{'"pohIssuer"'}</span>
-              {": "}
-              <span className={str}>{'"/.well-known/proof-of-human"'}</span>
-              {",\n"}
-              {"      "}
-              <span className={prop}>{'"identityRegistryMirror"'}</span>
-              {": "}
-              <span className={str}>{'"0x7a3F..."'}</span>
-              {"\n"}
-              {"    }\n"}
+              <span className={prop}>{'"schema"'}</span>
+              {": { "}
+              <span className={cm}>{"/* JSON Schema */"}</span>
+              {" }\n"}
+              {"    },\n"}
+              {"    "}
+              <span className={prop}>{'"auth-hints"'}</span>
+              {": { "}
+              <span className={cm}>
+                {"/* oauth2 via Zentity, presented with DPoP */"}
+              </span>
+              {" }\n"}
               {"  }\n"}
               {"}"}
             </pre>
           </div>
           <p className="landing-caption mt-3">
-            The same payment terms, plus a compliance extension declaring the
-            required verification tier.
+            The same payment terms, plus the identity strength the merchant
+            requires and where to get a Proof-of-Human for it.
           </p>
         </CardContent>
       </Card>
@@ -203,24 +207,24 @@ function ComparisonVisual() {
 
 const FLOW_STEPS = [
   {
-    title: "Client requests a resource",
-    body: "POST to a protected endpoint, no credentials attached.",
+    title: "Agent requests a resource",
+    body: "GET the protected endpoint, no credentials attached.",
   },
   {
     title: "Server responds 402",
-    body: "Payment terms with a compliance extension declaring the required verification tier.",
+    body: "Payment terms, the identity strength it requires, and Zentity as the authorization server.",
   },
   {
-    title: "Client acquires PoH token",
-    body: "A DPoP-bound JWT from Zentity carrying tier, sybil status, and verification method.",
+    title: "User approves a Proof-of-Human",
+    body: "Zentity asks the user, with a passkey, to prove to this merchant that their identity is verified. The agent's own wallet pays.",
   },
   {
-    title: "Client retries with proof",
-    body: "Payment signature in the header, PoH token in the body.",
+    title: "Agent retries with proof",
+    body: "PAYMENT-SIGNATURE carries the payment. The Proof-of-Human token travels as Authorization: DPoP, never inside the payment.",
   },
   {
     title: "Server verifies and serves",
-    body: "JWKS signature check, tier comparison, and optional on-chain lookup.",
+    body: "Token and DPoP proof, identity strength, approved terms, payment verification, single use, then settlement.",
   },
 ];
 
@@ -253,52 +257,44 @@ function FlowSection() {
       </div>
       <CodeWindow filename="proof-of-human.jwt">
         <span className={cm}>
-          {"// Proof-of-Human token: compact, no PII\n"}
+          {"// Proof-of-Human token for one merchant: no PII\n"}
         </span>
         {"{\n"}
         {"  "}
         <span className={prop}>{'"iss"'}</span>
         {": "}
-        <span className={str}>{'"https://zentity.xyz"'}</span>
+        <span className={str}>{'"https://app.zentity.xyz"'}</span>
+        {",\n"}
+        {"  "}
+        <span className={prop}>{'"aud"'}</span>
+        {": "}
+        <span className={str}>{'"https://merchant.example"'}</span>
         {",\n"}
         {"  "}
         <span className={prop}>{'"sub"'}</span>
         {": "}
-        <span className={str}>{'"pairwise:8f3a...c7e1"'}</span>
+        <span className={str}>{'"8f3a...c7e1"'}</span>
+        {",\n"}
+        {"  "}
+        <span className={prop}>{'"jti"'}</span>
+        {": "}
+        <span className={str}>{'"single-use id"'}</span>
         {",\n"}
         {"  "}
         <span className={prop}>{'"exp"'}</span>
         {": "}
-        <span className={num}>{"1711003600"}</span>
-        {",\n"}
-        {"  "}
-        <span className={prop}>{'"scope"'}</span>
-        {": "}
-        <span className={str}>{'"poh"'}</span>
+        <span className={num}>{"1763200300"}</span>
         {",\n"}
         {"  "}
         <span className={prop}>{'"poh"'}</span>
         {": {\n"}
         {"    "}
-        <span className={prop}>{'"tier"'}</span>
+        <span className={prop}>{'"identity"'}</span>
+        {": { "}
+        <span className={prop}>{'"strength_at_least"'}</span>
         {": "}
-        <span className={num}>{"3"}</span>
-        {",\n"}
-        {"    "}
-        <span className={prop}>{'"verified"'}</span>
-        {": "}
-        <span className={num}>{"true"}</span>
-        {",\n"}
-        {"    "}
-        <span className={prop}>{'"sybil_resistant"'}</span>
-        {": "}
-        <span className={num}>{"true"}</span>
-        {",\n"}
-        {"    "}
-        <span className={prop}>{'"method"'}</span>
-        {": "}
-        <span className={str}>{'"nfc_chip"'}</span>
-        {"\n"}
+        <span className={str}>{'"documentary_full"'}</span>
+        {" }\n"}
         {"  },\n"}
         {"  "}
         <span className={prop}>{'"cnf"'}</span>
@@ -306,7 +302,7 @@ function FlowSection() {
         {"    "}
         <span className={prop}>{'"jkt"'}</span>
         {": "}
-        <span className={str}>{'"dpop-key-thumbprint"'}</span>
+        <span className={str}>{'"per-purchase key thumbprint"'}</span>
         {"\n"}
         {"  }\n"}
         {"}"}
@@ -327,16 +323,16 @@ const TIERS = [
   },
   {
     title: "Verified Identity",
-    tier: "Tier 2+",
+    tier: "Document, full",
     tierColor: "pink" as SemanticColor,
     icon: IconUserCheck,
     example: "Licensed content, KYC-gated APIs, professional services",
-    check: "JWKS verification of PoH JWT + tier ≥ 2",
+    check: "PoH JWT + DPoP proof + strength_at_least",
     payerProves: "Payment + Proof-of-Human token",
   },
   {
     title: "Regulated Finance",
-    tier: "Tier 3 + on-chain",
+    tier: "Passport chip + on-chain",
     tierColor: "emerald" as SemanticColor,
     icon: IconShieldLock,
     example: "Cross-border settlement, DeFi, sanctions-sensitive APIs",
@@ -618,9 +614,11 @@ export default function PaymentsPage() {
       description={
         <>
           Zentity adds a compliance layer to <strong>x402</strong> payment
-          settlement. The <strong>Proof-of-Human</strong> token carries
-          verification tier, sybil resistance, and method, bound to the payer's
-          DPoP key, proving what they can do without revealing who they are.
+          settlement. With the user's approval, Zentity issues a{" "}
+          <strong>Proof-of-Human</strong> token for one merchant and one
+          purchase. It states that the user's identity meets the merchant's
+          minimum, without revealing who they are. The agent's own wallet pays;
+          Zentity does not sign or limit the payment.
         </>
       }
     >
@@ -648,9 +646,10 @@ export default function PaymentsPage() {
           </h2>
           <p className="landing-body mt-2 max-w-2xl">
             The <strong>Proof-of-Human</strong> endpoint issues a compact JWT
-            carrying verification tier, sybil resistance, and method, bound to
-            the requester's DPoP key. It contains no personal data; resource
-            servers verify the signature locally via standard JWKS discovery.
+            for the merchant the user approved, bound to a DPoP key the agent
+            makes for that purchase. It lives at most five minutes, is accepted
+            once, and contains no personal data; the merchant verifies it
+            locally via standard JWKS discovery.
           </p>
           <div className="mt-6">
             <FlowSection />
@@ -659,14 +658,14 @@ export default function PaymentsPage() {
 
         <section>
           <h2 className="font-display text-2xl font-semibold">
-            3 tiers, 1 protocol
+            3 requirements, 1 protocol
           </h2>
           <p className="landing-body mt-2 max-w-2xl">
-            All 3 tiers share the same HTTP extension mechanism. What varies is
-            the <strong>required evidence</strong>: payment-only resources need
-            no identity proof, identity-gated resources verify a Proof-of-Human
-            tier, and regulated resources add on-chain attribute checks via
-            FHEVM.
+            All 3 share the same HTTP extension mechanism. What varies is the{" "}
+            <strong>required evidence</strong>: payment-only resources need no
+            identity proof, identity-gated resources verify a Proof-of-Human
+            identity strength, and regulated resources add on-chain attribute
+            checks via FHEVM.
           </p>
           <div className="mt-6">
             <TierCards />

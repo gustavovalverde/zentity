@@ -53,6 +53,8 @@ describe("agentApprovalFor", () => {
     tokenJti: null,
     tokenAudience: null,
     tokenIssuedAt: null,
+    pohMintedAt: null,
+    pohJti: null,
   };
 
   it("reads the agent and its authorization from the record", () => {

@@ -3,6 +3,15 @@
  * Pure data — no React, no server-only — importable from both server and client components.
  */
 
+import {
+  findRegisteredAsset,
+  formatAtomic,
+  PURCHASE_TYPE,
+  PurchaseAuthorizationSchema,
+  X402_PURCHASE_TYPE,
+  X402PurchaseAuthorizationSchema,
+} from "@zentity/sdk/protocol";
+
 const CAPABILITY_LABELS: Record<string, string> = {
   check_compliance: "Check verification status",
   my_profile: "Read personal information",
@@ -31,6 +40,17 @@ const ACR_LABELS: Record<string, string> = {
   "tier-2": "Requires verified identity",
   "tier-3": "Requires chip-verified identity",
 };
+
+const IDENTITY_STRENGTH_LABELS: Record<string, string> = {
+  documentary: "Document",
+  documentary_full: "Document, full",
+  cryptographic_chip: "Passport chip",
+};
+
+/** A merchant's identity-strength requirement in words, e.g. "Document, full". */
+export function formatIdentityStrength(strength: string): string {
+  return IDENTITY_STRENGTH_LABELS[strength] ?? strength;
+}
 
 export function formatCapabilityName(name: string): string {
   return CAPABILITY_LABELS[name] ?? name;
@@ -148,4 +168,119 @@ export function formatPaymentAmount(amount: {
     .padStart(decimals, "0")
     .replace(TRAILING_ZEROS_RE, "");
   return `${fraction ? `${whole}.${fraction}` : whole} ${amount.currency}`;
+}
+
+// ─── Purchases ──────────────────────────────────────────────────────
+
+/** Who stated a line: the agent, the merchant, or Zentity itself. */
+type PurchaseLineSource = "agent" | "merchant" | "zentity";
+
+interface PurchaseLine {
+  /** "Stated by the agent" or "Described by the merchant", when not Zentity's. */
+  label?: string;
+  source: PurchaseLineSource;
+  text: string;
+}
+
+export interface PurchaseDescription {
+  /** What the user did, shown once the approval is recorded. */
+  approvedText: string;
+  lines: PurchaseLine[];
+  /** One line for a push notification body, after the client name. */
+  pushText: string;
+  title: string;
+}
+
+const STATED_BY_AGENT = "Stated by the agent";
+const DESCRIBED_BY_MERCHANT = "Described by the merchant";
+
+/** An ISO 4217 amount in the currency's own notation, e.g. "€12.00". */
+function formatCurrencyAmount(value: string, currency: string): string {
+  try {
+    return new Intl.NumberFormat("en-US", {
+      style: "currency",
+      currency,
+      maximumFractionDigits: 4,
+    }).format(value as `${number}`);
+  } catch {
+    return `${value} ${currency}`;
+  }
+}
+
+function shortenAddress(address: string): string {
+  return address.length > 12
+    ? `${address.slice(0, 6)}…${address.slice(-4)}`
+    : address;
+}
+
+/**
+ * What the user approves for a `purchase` or `x402_purchase` entry, in
+ * server text, for the approval page, push, email, and Requests tab. Null for
+ * any other entry, or one that no longer parses.
+ *
+ * An x402 approval is a Proof-of-Human for a named merchant: the merchant's
+ * price is shown as its own statement, paid by the agent's wallet, because
+ * Zentity does not sign or limit that payment.
+ */
+export function describePurchase(detail: unknown): PurchaseDescription | null {
+  const type =
+    detail && typeof detail === "object"
+      ? (detail as { type?: unknown }).type
+      : undefined;
+
+  if (type === PURCHASE_TYPE) {
+    const parsed = PurchaseAuthorizationSchema.safeParse(detail);
+    if (!parsed.success) {
+      return null;
+    }
+    const { item, merchant, amount } = parsed.data;
+    const statement = `${item} from ${merchant.name}, ${formatCurrencyAmount(amount.value, amount.currency)}`;
+    return {
+      title: "Purchase",
+      lines: [{ source: "agent", label: STATED_BY_AGENT, text: statement }],
+      pushText: `Purchase stated by the agent: ${statement}`,
+      approvedText: "You approved the purchase. The agent can now continue.",
+    };
+  }
+
+  if (type === X402_PURCHASE_TYPE) {
+    const parsed = X402PurchaseAuthorizationSchema.safeParse(detail);
+    if (!parsed.success) {
+      return null;
+    }
+    const entry = parsed.data;
+    const merchant = new URL(entry.resource_url).host;
+    const strength = formatIdentityStrength(entry.min_identity_strength);
+    const requirement = entry.payment_requirements;
+    const asset = findRegisteredAsset(requirement.network, requirement.asset);
+    const price = asset
+      ? `${formatAtomic(requirement.amount, asset)} ${asset.symbol} on ${asset.networkName}`
+      : `${requirement.amount} base units of ${requirement.asset} on ${requirement.network}`;
+    return {
+      title: `Prove to ${merchant} that your identity is verified (${strength})`,
+      lines: [
+        ...(entry.resource_description
+          ? [
+              {
+                source: "merchant" as const,
+                label: DESCRIBED_BY_MERCHANT,
+                text: entry.resource_description,
+              },
+            ]
+          : []),
+        {
+          source: "merchant",
+          text: `${merchant} charges ${price}, paid by the agent's own wallet to ${shortenAddress(requirement.payTo)}`,
+        },
+        {
+          source: "zentity",
+          text: "Zentity does not sign or limit this payment.",
+        },
+      ],
+      pushText: `Prove your identity to ${merchant} (${strength})`,
+      approvedText: `You proved to ${merchant} that your identity is verified. The agent can now continue.`,
+    };
+  }
+
+  return null;
 }

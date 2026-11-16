@@ -4,7 +4,10 @@ import type {
   McpServer,
   ServerContext,
 } from "@modelcontextprotocol/server";
-import type { RegisteredAgentSession as AgentRuntimeState } from "@zentity/sdk";
+import {
+  type RegisteredAgentSession as AgentRuntimeState,
+  isAgentSessionInactiveError,
+} from "@zentity/sdk";
 import type { InstalledOAuthSession } from "@zentity/sdk/node";
 import { createDpopClientFromKeyPair, type DpopClient } from "@zentity/sdk/rp";
 import { clientInfoOf } from "../agent.js";
@@ -26,6 +29,11 @@ export async function withDpopClient(
 
 export interface AuthContext {
   oauth: OAuthSessionContext;
+  /**
+   * Registers a new agent session in place of `runtime` and returns it. Set
+   * by the stdio transport, whose process holds one session.
+   */
+  renewRuntime?: () => Promise<AgentRuntimeState>;
   runtime?: AgentRuntimeState;
 }
 
@@ -95,6 +103,28 @@ export function tryGetRuntimeState(
   ctx?: AuthContext
 ): AgentRuntimeState | undefined {
   return (ctx ?? getAuthContext()).runtime;
+}
+
+/**
+ * Runs `send` with the agent session and, when Zentity refuses the session's
+ * Agent-Assertion because the session is no longer active (idle, past its
+ * lifetime, or revoked), registers a new session and runs `send` once more
+ * with it. `send` signs its assertion from the session it receives.
+ */
+export async function withAgentSession<T>(
+  auth: AuthContext,
+  send: (runtime: AgentRuntimeState | undefined) => Promise<T>
+): Promise<T> {
+  try {
+    return await send(auth.runtime);
+  } catch (error) {
+    if (
+      !(auth.runtime && auth.renewRuntime && isAgentSessionInactiveError(error))
+    ) {
+      throw error;
+    }
+    return send(await auth.renewRuntime());
+  }
 }
 
 /**

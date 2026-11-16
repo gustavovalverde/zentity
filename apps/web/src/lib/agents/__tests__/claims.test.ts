@@ -39,6 +39,8 @@ function approval(overrides: Partial<CibaApproval> = {}): CibaApproval {
     tokenJti: null,
     tokenAudience: null,
     tokenIssuedAt: null,
+    pohMintedAt: null,
+    pohJti: null,
     ...overrides,
   };
 }

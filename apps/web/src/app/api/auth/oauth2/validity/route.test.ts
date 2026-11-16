@@ -14,7 +14,15 @@ vi.mock("@/lib/auth/auth-config", () => ({
 }));
 
 vi.mock("@/lib/auth/oidc/pairwise", () => ({
-  resolveSubForClientId: mocks.resolveSubForClientId,
+  findPairwiseClient: (clientId: string) =>
+    Promise.resolve({
+      clientId,
+      redirectUris: [],
+      sectorIdentifier: `client/${clientId}`,
+      subjectType: "pairwise",
+    }),
+  resolveSubForClient: (userId: string, client: { clientId: string }) =>
+    mocks.resolveSubForClientId(userId, client.clientId),
 }));
 
 vi.mock("@/lib/identity/validity/rp-notice", () => ({
@@ -40,6 +48,7 @@ function verifiedToken(scopes: string[]) {
     payload: {
       active: true,
       sub: "user-1",
+      exp: Math.floor(Date.now() / 1000) + 3600,
       client_id: "client-1",
       scope: scopes.join(" "),
       cnf: { jkt: "thumbprint-1" },

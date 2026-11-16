@@ -3,59 +3,83 @@ import { createProofOfHumanTokenVerifier } from "../rp/proof-of-human";
 import { createOpenIdTokenVerifier } from "../rp/token-verifier";
 import { fixtureKeys } from "./fixture-keys";
 import { createMockIssuer } from "./mock-issuer";
-import { mockPohToken } from "./mock-poh-token";
+import { mockMerchantPohToken, mockPohToken } from "./mock-poh-token";
 
 describe("@zentity/sdk/testing", () => {
-	it("mockPohToken produces tokens accepted by the PoH verifier", async () => {
+	async function verifyWithMockIssuer(token: string, audience: string) {
+		const verifier = createProofOfHumanTokenVerifier({
+			audience,
+			issuer: "https://mock-issuer.zentity.test",
+			jwksUrl: "https://mock-issuer.zentity.test/jwks.json",
+		});
+		const originalFetch = globalThis.fetch;
+		globalThis.fetch = createMockIssuer().fetch;
+		try {
+			return await verifier.verify(token);
+		} finally {
+			globalThis.fetch = originalFetch;
+		}
+	}
+
+	it("mockPohToken produces client-mode tokens accepted by the PoH verifier", async () => {
 		const token = await mockPohToken({
+			audience: "client-1",
 			confirmationJkt: "test-jkt",
 			issuer: "https://mock-issuer.zentity.test",
 			subject: "user-123",
 		});
-		const verifier = createProofOfHumanTokenVerifier({
-			issuer: "https://mock-issuer.zentity.test",
-			jwksUrl: "https://mock-issuer.zentity.test/jwks.json",
+
+		const verified = await verifyWithMockIssuer(token, "client-1");
+		expect(verified).toMatchObject({
+			sub: "user-123",
+			aud: "client-1",
+			cnf: { jkt: "test-jkt" },
+			jti: expect.any(String),
+			poh: {
+				identity: { verified: true, strength: "documentary_full" },
+				humanity: { proven: false },
+			},
 		});
-
-		const originalFetch = globalThis.fetch;
-		globalThis.fetch = createMockIssuer().fetch;
-
-		try {
-			const verified = await verifier.verify(token);
-			expect(verified.sub).toBe("user-123");
-			expect(verified.cnf?.jkt).toBe("test-jkt");
-			expect(verified.poh.identity.verified).toBe(true);
-			expect(verified.poh.identity.strength).toBe("documentary_full");
-			expect(verified.poh.humanity.proven).toBe(false);
-		} finally {
-			globalThis.fetch = originalFetch;
-		}
+		await expect(verifyWithMockIssuer(token, "client-2")).rejects.toThrow();
 	});
 
 	it("mockPohToken builds humanity-only tokens (identity unverified)", async () => {
 		const token = await mockPohToken({
+			audience: "client-1",
+			confirmationJkt: "test-jkt",
 			issuer: "https://mock-issuer.zentity.test",
 			subject: "user-123",
 			identityStrength: "none",
 			identityVerified: false,
 			humanityProven: true,
 		});
-		const verifier = createProofOfHumanTokenVerifier({
+
+		expect((await verifyWithMockIssuer(token, "client-1")).poh).toEqual({
+			identity: { verified: false, strength: "none" },
+			humanity: { proven: true },
+			policy: { version: "v1.0" },
+		});
+	});
+
+	it("mockMerchantPohToken produces merchant-mode tokens", async () => {
+		const token = await mockMerchantPohToken({
+			actorSubject: "agent-pairwise",
+			authorizationDetails: [{ type: "x402_purchase" }],
+			confirmationJkt: "purchase-jkt",
 			issuer: "https://mock-issuer.zentity.test",
-			jwksUrl: "https://mock-issuer.zentity.test/jwks.json",
+			merchant: "https://merchant.example",
+			strengthAtLeast: "documentary",
+			subject: "user-pairwise",
 		});
 
-		const originalFetch = globalThis.fetch;
-		globalThis.fetch = createMockIssuer().fetch;
-
-		try {
-			const verified = await verifier.verify(token);
-			expect(verified.poh.identity.verified).toBe(false);
-			expect(verified.poh.identity.strength).toBe("none");
-			expect(verified.poh.humanity.proven).toBe(true);
-		} finally {
-			globalThis.fetch = originalFetch;
-		}
+		expect(
+			await verifyWithMockIssuer(token, "https://merchant.example"),
+		).toMatchObject({
+			aud: "https://merchant.example",
+			act: { sub: "agent-pairwise" },
+			authorizationDetails: [{ type: "x402_purchase" }],
+			poh: { identity: { strength_at_least: "documentary" } },
+		});
 	});
 
 	it("createMockIssuer serves discovery and JWKS for OpenID verification", async () => {

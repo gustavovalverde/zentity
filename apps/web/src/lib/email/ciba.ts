@@ -10,7 +10,7 @@ import {
   type AuthorizationDetail,
   normalizeAuthorizationDetails,
 } from "@/lib/agents/capability";
-import { formatPaymentAmount } from "@/lib/agents/labels";
+import { describePurchase, formatPaymentAmount } from "@/lib/agents/labels";
 import { db } from "@/lib/db/connection";
 import { users } from "@/lib/db/schema/auth";
 
@@ -65,9 +65,14 @@ function formatAuthorizationDetailsText(
       if (payment) {
         return `Payment: ${formatPaymentAmount(payment.amount)} to ${payment.recipient}`;
       }
-      if (d.type === "purchase" && d.amount?.value) {
-        const currency = d.amount.currency ?? "USD";
-        return `${d.item ?? "Item"} — $${d.amount.value} ${currency}${d.merchant ? ` (${d.merchant})` : ""}`;
+      const purchase = describePurchase(d);
+      if (purchase) {
+        return [
+          purchase.title,
+          ...purchase.lines.map((line) =>
+            line.label ? `${line.label}: ${line.text}` : line.text
+          ),
+        ].join("\n");
       }
       return `${d.type ?? "unknown"}: ${JSON.stringify(d)}`;
     })
@@ -87,15 +92,17 @@ function formatAuthorizationDetailsHtml(
 <p style="margin:0;color:#6b7280;font-size:13px;word-break:break-all;">To: ${escapeHtml(payment.recipient)}</p>
 </div>`;
       }
-      if (d.type === "purchase") {
-        const amount = d.amount?.value
-          ? `$${escapeHtml(d.amount.value)} ${escapeHtml(d.amount.currency ?? "USD")}`
-          : "";
+      const purchase = describePurchase(d);
+      if (purchase) {
+        const lines = purchase.lines
+          .map(
+            (line) =>
+              `<p style="margin:4px 0 0;">${line.label ? `<span style="color:#6b7280;font-size:13px;">${escapeHtml(line.label)}:</span> ` : ""}${escapeHtml(line.text)}</p>`
+          )
+          .join("\n");
         return `<div style="background:#f3f4f6;padding:12px 16px;border-radius:8px;margin:12px 0;">
-<p style="margin:0 0 4px;font-weight:600;text-transform:capitalize;">${escapeHtml(d.type)}</p>
-${d.item ? `<p style="margin:0 0 4px;">${escapeHtml(d.item)}</p>` : ""}
-${amount ? `<p style="margin:0 0 4px;font-size:18px;font-weight:700;">${amount}</p>` : ""}
-${d.merchant ? `<p style="margin:0;color:#6b7280;font-size:13px;">Merchant: ${escapeHtml(d.merchant)}</p>` : ""}
+<p style="margin:0 0 4px;font-weight:600;">${escapeHtml(purchase.title)}</p>
+${lines}
 </div>`;
       }
       return `<div style="background:#f3f4f6;padding:12px 16px;border-radius:8px;margin:12px 0;">

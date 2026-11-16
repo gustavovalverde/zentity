@@ -385,6 +385,19 @@ export const getVerificationReadModel = cache(
 );
 
 /**
+ * The identity strength the user holds now. A bundle whose validity is not
+ * `verified` (stale, revoked, pending, or failed) holds none, even though the
+ * effective verification and its derived strength remain on record.
+ */
+export function currentIdentityStrength(
+  model: VerificationReadModel
+): ComplianceResult["identity"]["strength"] {
+  return model.bundle.validityStatus === "verified"
+    ? model.compliance.identity.strength
+    : "none";
+}
+
+/**
  * Convenience accessor for callers that only need the compliance projection.
  * Replaces the legacy `getComplianceStatus` and ensures a single source of
  * truth: there is no separate raw-query path.

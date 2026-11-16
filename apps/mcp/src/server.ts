@@ -2,12 +2,19 @@ import { McpServer } from "@modelcontextprotocol/server";
 import { registerCheckComplianceTool } from "./tools/check-compliance.js";
 import { registerMyProfileTool } from "./tools/my-profile.js";
 import { registerMyProofsTool } from "./tools/my-proofs.js";
-import { registerPurchaseTool } from "./tools/purchase.js";
+import {
+  type PurchaseToolOptions,
+  registerPurchaseTool,
+} from "./tools/purchase.js";
 import { registerWhoamiTool } from "./tools/whoami.js";
 
 const VERSION = "0.1.0";
 
-export function createServer(): McpServer {
+export interface CreateServerOptions {
+  purchase?: PurchaseToolOptions;
+}
+
+export function createServer(options: CreateServerOptions = {}): McpServer {
   const server = new McpServer(
     { name: "@zentity/mcp-server", version: VERSION },
     {
@@ -27,7 +34,7 @@ export function createServer(): McpServer {
   registerCheckComplianceTool(server);
   registerMyProfileTool(server);
   registerMyProofsTool(server);
-  registerPurchaseTool(server);
+  registerPurchaseTool(server, options.purchase);
   registerWhoamiTool(server);
 
   return server;

@@ -4,6 +4,7 @@ import { APIError } from "better-auth/api";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
+  findPairwiseClient: vi.fn(),
   signJwt: vi.fn(),
   getVerificationReadModel: vi.fn(),
   resolveSubForClientId: vi.fn(),
@@ -19,7 +20,9 @@ vi.mock("@/lib/identity/verification/read-model", () => ({
 }));
 
 vi.mock("@/lib/auth/oidc/pairwise", () => ({
-  resolveSubForClientId: mocks.resolveSubForClientId,
+  findPairwiseClient: mocks.findPairwiseClient,
+  resolveSubForClient: (userId: string, client: { clientId: string }) =>
+    mocks.resolveSubForClientId(userId, client.clientId),
 }));
 
 // Token validation runs in the provider behind this server-only endpoint; its
@@ -31,6 +34,7 @@ vi.mock("@/lib/auth/auth-config", () => ({
 import { POST } from "./route";
 
 const TEST_DPOP_JKT = "sha256-dpop-key-thumbprint";
+const BASE64URL_JTI = /^[A-Za-z0-9_-]{22}$/;
 
 function makeRequest(headers: Record<string, string> = {}): Request {
   return new Request("http://localhost/api/auth/oauth2/proof-of-human", {
@@ -62,6 +66,7 @@ function verifiedToken(
     payload: {
       active: true,
       sub: "user-123",
+      exp: Math.floor(Date.now() / 1000) + 3600,
       client_id: overrides.clientId ?? "client-a",
       scope: (overrides.scopes ?? ["openid", "poh"]).join(" "),
       ...(dpopJkt ? { cnf: { jkt: dpopJkt } } : {}),
@@ -154,6 +159,14 @@ function setupVerifiedUser() {
 describe("POST /api/auth/oauth2/proof-of-human", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.findPairwiseClient.mockImplementation((clientId: string) =>
+      Promise.resolve({
+        clientId,
+        redirectUris: [],
+        sectorIdentifier: `client/${clientId}`,
+        subjectType: "pairwise",
+      })
+    );
   });
 
   it("returns a PoH JWT with orthogonal axes for a verified user", async () => {
@@ -162,13 +175,23 @@ describe("POST /api/auth/oauth2/proof-of-human", () => {
     const response = await POST(makeDpopRequest());
 
     expect(response.status).toBe(200);
-    const body = (await response.json()) as { token: string };
-    expect(body.token).toBe("signed-poh-jwt");
+    expect(await response.json()).toEqual({
+      token: "signed-poh-jwt",
+      token_type: "DPoP",
+      expires_in: 300,
+    });
 
     expect(mocks.signJwt).toHaveBeenCalledOnce();
     const payload = mocks.signJwt.mock.calls[0]?.[0] as Record<string, unknown>;
+    expect(mocks.signJwt.mock.calls[0]?.[1]).toEqual({ typ: "poh+jwt" });
     expect(payload.iss).toBe("http://localhost:3000");
     expect(payload.sub).toBe("pairwise-sub-for-client-a");
+    // Client mode: the token is for the client that presented the token.
+    expect(payload.aud).toBe("client-a");
+    expect(payload.jti).toEqual(expect.stringMatching(BASE64URL_JTI));
+    expect((payload.exp as number) - (payload.iat as number)).toBe(300);
+    expect(payload).not.toHaveProperty("authorization_details");
+    expect(payload).not.toHaveProperty("act");
     expect(payload.scope).toBe("poh");
     expect(payload.cnf).toEqual({ jkt: TEST_DPOP_JKT });
     expect(payload.poh).toEqual({
@@ -412,7 +435,7 @@ describe("POST /api/auth/oauth2/proof-of-human", () => {
 
   it("returns 401 when the token's client is unknown", async () => {
     mocks.verifyResourceRequest.mockResolvedValue(verifiedToken());
-    mocks.resolveSubForClientId.mockResolvedValue(null);
+    mocks.findPairwiseClient.mockResolvedValue(null);
 
     const response = await POST(makeDpopRequest());
 

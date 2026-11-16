@@ -3,8 +3,8 @@
 /**
  * One-time transition for the move to the OAuth provider's JWT revocation,
  * per-token `accessTokenClaims`, the first-party-apps plugin, the CIBA
- * approval record, and its token columns. Every step is idempotent, and the script applies them in
- * one transaction.
+ * approval record, and its token and Proof-of-Human columns. Every step is
+ * idempotent, and the script applies them in one transaction.
  *
  * 1. Moves the timestamp defaults that #298 and #338 changed from
  *    `datetime('now')` to an ISO 8601 timestamp, and recreates the two partial
@@ -52,27 +52,50 @@
  *    host when every redirect URI is https, else `client/<client_id>`.
  *    Subjects of loopback, custom-scheme, and metadata-document clients
  *    change, so their users sign in again.
- * 10. Adds the `token_jti`, `token_audience`, and `token_issued_at` columns
- *    of `ciba_approval`, and the unique index on `token_jti`, with the DDL
- *    `pnpm db:push` would emit. The new release records every CIBA token on
- *    its approval and finds agent tokens there at introspection.
+ * 10. Adds the `token_jti`, `token_audience`, `token_issued_at`,
+ *    `poh_minted_at`, and `poh_jti` columns of `ciba_approval`, and the
+ *    unique index on `token_jti`, with the DDL `pnpm db:push` would emit. The
+ *    new release records every CIBA token on its approval, finds agent tokens
+ *    there at introspection, and marks an x402 approval's one Proof-of-Human
+ *    mint there.
  * 11. Deletes the `pairwise_subject` rows of type `agent_session`. Agent
  *    actor subjects are no longer indexed, and the schema no longer allows
  *    the type.
  *
- * Rollout order:
+ * Rollout order. Production moves to this release in one deploy of the web
+ * service, the MCP server, and demo-rp. Merging a pull request deploys
+ * nothing, and no earlier commit of this release may be deployed on its own:
+ * earlier commits refuse MCP purchases at bc-authorize, and some read the
+ * authentication context of a sessionless opaque token from a claim instead
+ * of `oauth_access_token.auth_context_id`. Each such switch costs the tokens
+ * issued in the hour before it their authentication context.
  *
  *   a. Run this script.
- *   b. Deploy the web service.
- *   c. Once the new release serves all traffic, run this script again. It
+ *   b. Prepare the other services:
+ *      - Set `skip_consent` on every first-party client that keeps using the
+ *        Authorization Challenge Endpoint.
+ *      - Set `OAUTH_DPOP_KEY_SEED` (min 32 characters, different from
+ *        `ZPAY_DPOP_KEY_SEED`) in the demo-rp Vercel project.
+ *      - Run `pnpm mcp:provision` with the web service's environment
+ *        (`railway run --service web`), and set the `MCP_CLIENT_ID` and
+ *        `MCP_CLIENT_SECRET` it prints on the MCP HTTP host. The HTTP
+ *        transport refuses to start without them.
+ *      - Run `pnpm db:push` against the demo-rp database, which adds
+ *        `presentation_replay` and drops `oauth_dpop_key`. The previous
+ *        demo-rp reads `oauth_dpop_key`, so its sign-in fails until the new
+ *        demo-rp serves, and signed-in demo-rp users sign in again.
+ *   c. Deploy the web service, the MCP server, and demo-rp together. The web
+ *      service, the SDK, and the MCP server compute the Agent-Assertion task
+ *      hash the same way only within one release.
+ *   d. Once the new release serves all traffic, run this script again. It
  *      covers revocations and exchanged tokens the previous release wrote
  *      after step a.
- *   d. Run `pnpm db:push` once. It drops `auth_challenge_session`,
+ *   e. Run `pnpm db:push` once. It drops `auth_challenge_session`,
  *      `oauth_access_token.exchange_claims`, the `reason`, `actor_sub`, and
  *      `audience` columns of `revoked_token`, the approval columns and
  *      `pairwise_act_sub` of `ciba_request`, and `agent_token_snapshot`,
  *      which the previous release reads or writes, so it must not run before
- *      step c. When they hold rows, it asks to confirm the data loss;
+ *      step d. When they hold rows, it asks to confirm the data loss;
  *      `--force` confirms it without a terminal. drizzle-kit exits 0 even
  *      when SQLite rejects a statement and rolls the push back, so check its
  *      output for an error.
@@ -82,7 +105,7 @@
  * release already writes ISO timestamps to these columns next to
  * `datetime('now')` ones, so step a changes only the format of the rows it
  * leaves to a default. In-flight `auth_challenge_session` handles (10-minute
- * lifetime) stop working at step b.
+ * lifetime) stop working at step c.
  *
  *   TURSO_DATABASE_URL=... TURSO_AUTH_TOKEN=... pnpm exec tsx scripts/backfill-oauth-token-transition.ts
  */
@@ -206,6 +229,8 @@ const CIBA_APPROVAL_DDL = [
 	\`token_jti\` text,
 	\`token_audience\` text,
 	\`token_issued_at\` integer,
+	\`poh_minted_at\` integer,
+	\`poh_jti\` text,
 	FOREIGN KEY (\`user_id\`) REFERENCES \`user\`(\`id\`) ON UPDATE no action ON DELETE cascade,
 	FOREIGN KEY (\`agent_session_id\`) REFERENCES \`agent_session\`(\`id\`) ON UPDATE no action ON DELETE set null,
 	FOREIGN KEY (\`host_id\`) REFERENCES \`agent_host\`(\`id\`) ON UPDATE no action ON DELETE set null,
@@ -221,13 +246,15 @@ const CIBA_APPROVAL_DDL = [
 const AGENT_CAPABILITY_GRANTABLE_DDL =
   "ALTER TABLE `agent_capability` ADD `grantable` integer DEFAULT false NOT NULL";
 
-// The columns T4 added to `ciba_approval`, for a table an earlier run of this
-// script created without them. The index statement in CIBA_APPROVAL_DDL runs
-// after these.
-const CIBA_APPROVAL_TOKEN_COLUMNS = [
+// The columns added to `ciba_approval` after this script first created it,
+// for a table an earlier run created without them. The index statement in
+// CIBA_APPROVAL_DDL runs after these.
+const CIBA_APPROVAL_ADDED_COLUMNS = [
   ["token_jti", "text"],
   ["token_audience", "text"],
   ["token_issued_at", "integer"],
+  ["poh_minted_at", "integer"],
+  ["poh_jti", "text"],
 ] as const;
 
 // `drizzle-kit push` output for this column in oauth-provider.ts.
@@ -343,11 +370,11 @@ async function main(): Promise<void> {
     (await hasTable("agent_capability")) &&
     !(await hasColumn("agent_capability", "grantable"));
   const createCibaApproval = !(await hasTable("ciba_approval"));
-  const tokenColumns: string[] = [];
+  const addedColumns: string[] = [];
   if (!createCibaApproval) {
-    for (const [column, type] of CIBA_APPROVAL_TOKEN_COLUMNS) {
+    for (const [column, type] of CIBA_APPROVAL_ADDED_COLUMNS) {
       if (!(await hasColumn("ciba_approval", column))) {
-        tokenColumns.push(
+        addedColumns.push(
           `ALTER TABLE \`ciba_approval\` ADD \`${column}\` ${type}`
         );
       }
@@ -361,7 +388,7 @@ async function main(): Promise<void> {
     ...FIRST_PARTY_APPS_DDL,
     ...(addGrantable ? [AGENT_CAPABILITY_GRANTABLE_DDL] : []),
     ...(createCibaApprovalTable ? [createCibaApprovalTable] : []),
-    ...tokenColumns,
+    ...addedColumns,
     ...cibaApprovalIndexes,
   ];
 
@@ -428,7 +455,7 @@ async function main(): Promise<void> {
   console.log(
     `ciba_approval: ${createCibaApproval ? "created" : "already present"}`
   );
-  console.log(`ciba_approval token columns added: ${tokenColumns.length}`);
+  console.log(`ciba_approval columns added: ${addedColumns.length}`);
   console.log(
     `agent_session pairwise subjects deleted: ${agentSubjects?.rowsAffected ?? 0}`
   );

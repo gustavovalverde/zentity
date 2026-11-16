@@ -4,6 +4,7 @@ import {
   getOAuthContext,
   requireAuth,
   tryGetRuntimeState,
+  withAgentSession,
 } from "../runtime/auth-context.js";
 import { type IdentityClaims, redeemRelease } from "./identity-release.js";
 import { beginOrResumeInteractiveFlow } from "./interactive-approval.js";
@@ -169,45 +170,46 @@ export async function readProfile(input: {
     runtime?.display.name ?? "Zentity MCP",
     `Share ${protectedFields.join(", ")} from my profile`
   );
-  const agentAssertion = runtime
-    ? await signAgentAssertion(runtime, bindingMessage)
-    : undefined;
+  const flow = await withAgentSession(auth, async (session) => {
+    const agentAssertion = session
+      ? await signAgentAssertion(session, { bindingMessage, scope })
+      : undefined;
+    return beginOrResumeInteractiveFlow({
+      toolName: "my_profile",
+      fingerprint: [
+        userId,
+        oauth.clientId,
+        session?.sessionId ?? "no-runtime",
+        "my_profile",
+        buildProfileFieldKey(fields),
+      ].join(":"),
+      oauth,
+      approval: {
+        scope,
+        bindingMessage,
+        ...(agentAssertion ? { agentAssertion } : {}),
+      },
+      browserSearchParams: {
+        fields: buildProfileFieldKey(fields),
+      },
+      onApproved: async (approval) => {
+        const claims = await redeemRelease(
+          approval.accessToken,
+          oauth.dpopClient
+        );
+        const result = mapProfileFromClaims({ claims, fields });
 
-  const flow = await beginOrResumeInteractiveFlow({
-    toolName: "my_profile",
-    fingerprint: [
-      userId,
-      oauth.clientId,
-      runtime?.sessionId ?? "no-runtime",
-      "my_profile",
-      buildProfileFieldKey(fields),
-    ].join(":"),
-    oauth,
-    approval: {
-      scope,
-      bindingMessage,
-      ...(agentAssertion ? { agentAssertion } : {}),
-    },
-    browserSearchParams: {
-      fields: buildProfileFieldKey(fields),
-    },
-    onApproved: async (approval) => {
-      const claims = await redeemRelease(
-        approval.accessToken,
-        oauth.dpopClient
-      );
-      const result = mapProfileFromClaims({ claims, fields });
+        if (claims) {
+          profileCache.set(cacheKey, {
+            profile: result.profile,
+            returnedFields: result.returnedFields,
+            expiresAt: Date.now() + PROFILE_CACHE_TTL_MS,
+          });
+        }
 
-      if (claims) {
-        profileCache.set(cacheKey, {
-          profile: result.profile,
-          returnedFields: result.returnedFields,
-          expiresAt: Date.now() + PROFILE_CACHE_TTL_MS,
-        });
-      }
-
-      return result;
-    },
+        return result;
+      },
+    });
   });
 
   if (flow.status === "complete") {

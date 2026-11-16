@@ -89,6 +89,7 @@ const OPTIONS_URL = "/api/auth/ciba/decision/options";
 const PROFILE_URL_PREFIX = "/api/trpc/assurance.profile";
 
 const VERIFICATION_WARNING = /Complete identity verification first/;
+const ACCOUNT_ACCESS = /access to your account/;
 
 let profileTier = 1;
 
@@ -370,6 +371,80 @@ describe("AgentApprovalView", () => {
         .disabled
     ).toBe(false);
   });
+
+  // The MCP interaction page and /approve render purchases with the view's
+  // own copy: the agent's binding message, labeled as the agent's, the
+  // request described by the server, and a closing line that says what the
+  // user approved.
+  it.each([
+    [
+      "an x402 Proof-of-Human",
+      "openid poh",
+      "Proof-of-Human for merchant.example",
+      {
+        type: "x402_purchase",
+        resource_url:
+          "https://merchant.example/api/x402/access?resourceId=verified-identity",
+        payment_requirements: {
+          scheme: "exact",
+          network: "eip155:84532",
+          amount: "1",
+          asset: "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
+          payTo: "0x000000000000000000000000000000000000dEaD",
+          maxTimeoutSeconds: 300,
+          extra: { name: "USDC", version: "2" },
+        },
+        min_identity_strength: "documentary",
+      },
+      "Prove to merchant.example that your identity is verified (Document)",
+      "You proved to merchant.example that your identity is verified. The agent can now continue.",
+    ],
+    [
+      "a direct purchase",
+      "openid",
+      "Buy from Corner Books",
+      {
+        type: "purchase",
+        merchant: { name: "Corner Books" },
+        item: "A paperback",
+        amount: { value: "12.00", currency: "EUR" },
+      },
+      "Purchase",
+      "You approved the purchase. The agent can now continue.",
+    ],
+  ])(
+    "presents %s and what the user approved",
+    async (_case, scope, bindingMessage, detail, cardTitle, approvedText) => {
+      passkeyMocks.assertPasskeyForApproval.mockResolvedValue(
+        passkeyMocks.assertion
+      );
+      renderView({
+        scope,
+        requirement: {
+          ...userVerification,
+          binding_message: bindingMessage,
+          authorization_details: [detail],
+        },
+      });
+
+      expect(
+        screen.getByText("Stated by the agent:", { exact: false })
+      ).toBeTruthy();
+      expect(screen.getByText(bindingMessage)).toBeTruthy();
+      expect(screen.getByText(cardTitle)).toBeTruthy();
+      expect(screen.queryByText("Purchase Authorization")).toBeNull();
+
+      fireEvent.click(
+        screen.getByRole("button", { name: "Approve with passkey" })
+      );
+
+      await waitFor(() => {
+        expect(screen.getByText("Request Approved")).toBeTruthy();
+      });
+      expect(screen.getByText(approvedText)).toBeTruthy();
+      expect(screen.queryByText(ACCOUNT_ACCESS)).toBeNull();
+    }
+  );
 
   it("names every requested scope with the server's label", () => {
     renderView({
