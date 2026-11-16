@@ -1,10 +1,15 @@
 "use client";
 
-import type { VaultCredentialMaterial } from "@/lib/privacy/secrets/vault";
+import type { RecoveryOptions } from "@/lib/auth/recovery-factors";
+import type {
+  VaultCredentialMaterial,
+  VaultKey,
+} from "@/lib/privacy/secrets/vault";
 
 import { Fingerprint, Mail, TriangleAlert } from "lucide-react";
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
+import { useCallback, useEffect, useState } from "react";
 
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -30,25 +35,55 @@ import { authClient, useSession } from "@/lib/auth/auth-client";
 import { registerPasskeyWithPrf } from "@/lib/auth/passkey/client";
 import { checkPrfSupport } from "@/lib/auth/passkey/prf";
 import { generatePrfSalt } from "@/lib/privacy/credentials/derivation";
+import { trpc } from "@/lib/trpc/client";
 
+import { RecoveryProofs } from "../_components/recovery-proofs";
+import { RemoveUnrecognizedPasskeys } from "../_components/remove-unrecognized-passkeys";
 import { VaultRecovery } from "../_components/vault-recovery";
 
-type RecoveryPhase = "email" | "sending" | "sent" | "registering" | "recover";
+type RecoveryPhase =
+  | "email"
+  | "sending"
+  | "sent"
+  | "loading"
+  | "confirm"
+  | "passkey_works"
+  | "registering"
+  | "recover"
+  | "remove";
 
 type PasskeyMaterial = Extract<VaultCredentialMaterial, { type: "passkey" }>;
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
+const PASSKEY_NOT_VERIFIED =
+  "Your passkey didn't ask for your PIN, fingerprint, or face, so it can't confirm a recovery. Confirm two other ways instead.";
+
 const PHASE_DESCRIPTIONS: Record<RecoveryPhase, string> = {
-  email: "Lost your passkey? Sign in with an email link and create a new one.",
-  sending:
-    "Lost your passkey? Sign in with an email link and create a new one.",
+  email: "Lost your passkey? Sign in with an email link to start.",
+  sending: "Lost your passkey? Sign in with an email link to start.",
   sent: "Check your email for the sign-in link.",
+  loading: "Checking your account.",
+  confirm: "Confirm it's you without your passkey.",
+  passkey_works: "You confirmed it's you with your passkey.",
   registering: "Create a new passkey on this device.",
   recover: "Your new passkey is registered.",
+  remove: "Review the passkeys on your account.",
 };
 
+/**
+ * Account recovery for a lost passkey (`?intent=remove` for a passkey the
+ * user does not recognize). Signed out, the user starts with an email link
+ * or a password or wallet sign-in. Signed in, the server's recovery factor
+ * rule decides whether a passkey may be added; until it allows one, the page
+ * asks for the proofs that confirm an account recovery.
+ */
 export default function RecoverPasskeyPage() {
+  const searchParams = useSearchParams();
+  const removing = searchParams.get("intent") === "remove";
+  const returnTo = removing
+    ? "/recovery/passkey?intent=remove"
+    : "/recovery/passkey";
   const { data: session, isPending: sessionLoading } = useSession();
 
   const [phase, setPhase] = useState<RecoveryPhase>("email");
@@ -58,12 +93,43 @@ export default function RecoverPasskeyPage() {
   const [prfSupported, setPrfSupported] = useState<boolean | null>(null);
   const [registering, setRegistering] = useState(false);
   const [newPasskey, setNewPasskey] = useState<PasskeyMaterial | null>(null);
+  const [options, setOptions] = useState<RecoveryOptions | null>(null);
+  const [openedVault, setOpenedVault] = useState<VaultKey | null>(null);
+  const [usedRecoveryKey, setUsedRecoveryKey] = useState(false);
+
+  const signedInUser = session?.user ?? null;
+
+  const refreshOptions = useCallback(async () => {
+    setPhase("loading");
+    try {
+      const next = await trpc.account.recoveryOptions.query();
+      setOptions(next);
+      if (next?.enrollment !== "allowed") {
+        setPhase("confirm");
+      } else if (removing) {
+        setPhase("remove");
+      } else if (next.passkeyReverified) {
+        // A working passkey is not a lost one: replacing it would retire it.
+        setPhase("passkey_works");
+      } else {
+        setPhase("registering");
+      }
+      return next;
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+      setPhase("confirm");
+      return null;
+    }
+  }, [removing]);
 
   useEffect(() => {
-    if (!sessionLoading && session?.user && phase === "email") {
-      setPhase("registering");
+    if (sessionLoading || !signedInUser || phase !== "email") {
+      return;
     }
-  }, [session, sessionLoading, phase]);
+    refreshOptions().catch(() => {
+      // refreshOptions reports its own errors
+    });
+  }, [sessionLoading, signedInUser, phase, refreshOptions]);
 
   useEffect(() => {
     let active = true;
@@ -99,7 +165,7 @@ export default function RecoverPasskeyPage() {
     try {
       await authClient.signIn.magicLink({
         email: trimmed,
-        callbackURL: "/recovery/passkey",
+        callbackURL: returnTo,
       });
       setPhase("sent");
     } catch {
@@ -164,7 +230,9 @@ export default function RecoverPasskeyPage() {
   return (
     <Card className="w-full max-w-md">
       <CardHeader className="text-center">
-        <CardTitle className="text-2xl">Recover Passkey</CardTitle>
+        <CardTitle className="text-2xl">
+          {removing ? "Review Passkeys" : "Recover Passkey"}
+        </CardTitle>
         <CardDescription>{PHASE_DESCRIPTIONS[phase]}</CardDescription>
       </CardHeader>
 
@@ -218,6 +286,17 @@ export default function RecoverPasskeyPage() {
               )}
               Send sign-in link
             </Button>
+
+            <p className="text-center text-muted-foreground text-sm">
+              Or{" "}
+              <Link
+                className="font-medium text-primary hover:underline"
+                href={`/sign-in?callbackURL=${encodeURIComponent(returnTo)}`}
+              >
+                sign in with your password or wallet
+              </Link>{" "}
+              first.
+            </p>
           </div>
         )}
 
@@ -244,12 +323,57 @@ export default function RecoverPasskeyPage() {
           </div>
         )}
 
+        {phase === "loading" && (
+          <div className="flex justify-center py-6">
+            <Spinner className="size-6 text-muted-foreground" />
+          </div>
+        )}
+
+        {phase === "confirm" && options && signedInUser ? (
+          <RecoveryProofs
+            email={signedInUser.email}
+            onProved={async (proof) => {
+              setError(null);
+              if (proof.vaultKey) {
+                setOpenedVault(proof.vaultKey);
+              }
+              if (proof.method === "recovery_key") {
+                setUsedRecoveryKey(true);
+              }
+              const next = await refreshOptions();
+              if (
+                proof.method === "passkey" &&
+                next &&
+                !next.passkeyReverified
+              ) {
+                setError(PASSKEY_NOT_VERIFIED);
+              }
+            }}
+            options={options}
+            returnTo={returnTo}
+            userId={signedInUser.id}
+          />
+        ) : null}
+
+        {phase === "passkey_works" && (
+          <div className="space-y-4">
+            <p className="text-muted-foreground text-sm">
+              Your passkey still works, so there's nothing to recover. Add a
+              passkey for this device in Settings, and remove any passkey you no
+              longer have there.
+            </p>
+            <Button asChild className="w-full" size="lg">
+              <Link href="/dashboard/settings">Go to Settings</Link>
+            </Button>
+          </div>
+        )}
+
         {phase === "registering" && (
           <div className="space-y-4">
             <p className="text-muted-foreground text-sm">
-              Next, you'll open your encrypted data with another way you still
-              have, such as your password, wallet, or recovery key, so it moves
-              to the new passkey.
+              {openedVault
+                ? "Your encrypted data is open and moves to the new passkey."
+                : "Next, you'll open your encrypted data with another way you still have, such as your password, wallet, or recovery key, so it moves to the new passkey."}
             </p>
 
             {prfSupported === false && (
@@ -279,10 +403,21 @@ export default function RecoverPasskeyPage() {
         )}
 
         {phase === "recover" && newPasskey ? (
-          <VaultRecovery newPasskey={newPasskey} />
+          <VaultRecovery
+            newPasskey={newPasskey}
+            offerRecoveryKey={usedRecoveryKey}
+            openedVault={openedVault}
+            passkeyInUse={Boolean(options?.signedInWithPasskey)}
+          />
         ) : null}
 
-        {phase !== "recover" && (
+        {phase === "remove" && (
+          <RemoveUnrecognizedPasskeys
+            hasPassword={Boolean(options?.hasPassword)}
+          />
+        )}
+
+        {phase !== "recover" && phase !== "remove" && (
           <div className="text-center text-muted-foreground text-sm">
             <Link
               className="font-medium text-primary hover:underline"
