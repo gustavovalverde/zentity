@@ -41,6 +41,8 @@ An unknown scope is page only, not grantable, and needs a session. An unknown or
 | `identity.*` | `my_profile` | user verification with a passkey, else session | no | no |
 | `email`, `offline_access`, `proof:sybil`, `proof:humanity:rp_unique`, `agent:*`, and other operational scopes | none | session | no | no |
 | RAR `payment_authorization` | `payment_authorization:sign` | user verification | no | bounded grants only |
+| RAR `purchase` | `purchase` | user verification | no | no |
+| RAR `x402_purchase`, and the `poh` scope it requires | `purchase` | user verification | no | no |
 
 The catalog's `approval_strength` is the manual ceremony, and `grantable` is a separate column, because one enum cannot say "a bounded grant may approve this, and a person needs user verification."
 
@@ -50,7 +52,7 @@ The catalog's `approval_strength` is the manual ceremony, and `grantable` is a s
 
 1. The request is the user's, pending, and unexpired.
 2. A notification approval (`channel` `push`, or no `channel`) of a page-only request is refused with `review_required`. A missing `channel` counts as `push`, because that is what an old service worker sends. The channel is client-asserted, so it can only refuse more.
-3. The user's tier satisfies `acr_values`.
+3. The user's tier satisfies `acr_values`, and for an `x402_purchase`, the user's identity strength meets the entry's `min_identity_strength` (`insufficient_identity_strength` otherwise, with the request left pending).
 4. For identity scopes, a release was staged for the request (`vault_unlock_required` otherwise).
 5. The ceremony: `requiredCeremony(policy, { hasPasskey })` is `user_verification` for the policy's ceremony, and for identity scopes when the user has a passkey. Then the endpoint verifies the passkey assertion.
 6. It inserts the `ciba_approval` row, whose unique `reference_id` lets only one decision win.
@@ -66,7 +68,7 @@ The approval page runs one ceremony at the Approve click. When the vault is pass
 
 ### The approval record
 
-`ciba_approval` holds one row per decision: the decision, `approval_method` (`session`, `user_verification`, or `capability_grant`), `approval_channel` (`push`, `page`, `email`, or `grant`), copies of the scope, binding message, details, and `acr_values`, the grant facts, the agent session and attestation, the authentication context, the request, decision, and expiry times, and the one access token the approval issued (`token_jti` for a JWT, `token_audience`, and `token_issued_at`). It is written before the plugin can consume the request and is deleted only with the user. It is the source of the CIBA token response members `oversight: { method, approved_at }` and, for a verified agent, `capabilities` and `delegation`, of agent introspection, and of the Requests tab history.
+`ciba_approval` holds one row per decision: the decision, `approval_method` (`session`, `user_verification`, or `capability_grant`), `approval_channel` (`push`, `page`, `email`, or `grant`), copies of the scope, binding message, details, and `acr_values`, the grant facts, the agent session and attestation, the authentication context, the request, decision, and expiry times, the one access token the approval issued (`token_jti` for a JWT, `token_audience`, and `token_issued_at`), and for an `x402_purchase` approval its one merchant Proof-of-Human mint (`poh_minted_at`, `poh_jti`). The mint sets those columns only while `poh_minted_at` is null, which makes it single use. It is written before the plugin can consume the request and is deleted only with the user. It is the source of the CIBA token response members `oversight: { method, approved_at }` and, for a verified agent, `capabilities` and `delegation`, of agent introspection, and of the Requests tab history.
 
 ### Error codes
 
@@ -108,3 +110,4 @@ Every other refusal uses a registered OAuth, OIDC, or CIBA code. The one specifi
 * 2026-11-16: Removed the `payment_authorization:sign` scope row. The scope no longer exists: a payment client registers the `payment_authorization` RAR type, and the payment entry alone makes a request a payment.
 * 2026-11-16: The record also supplies a verified agent's `capabilities` and `delegation` in the token response and at agent introspection, since access tokens no longer carry agent claims. A manual approval names the capabilities the policy table maps the request to.
 * 2026-11-16: The record keeps the access token its approval issued, which replaces the separate agent token snapshot; agent introspection finds a JWT's approval by `token_jti` and an opaque token's by `reference_id`.
+* 2026-11-16: Added the `purchase` and `x402_purchase` RAR rows and the `poh` scope row, all mapped to the `purchase` capability, which needs user verification and is never grantable. The decision checks an `x402_purchase` merchant's identity strength with `acr_values`, and the record marks an x402 approval's single Proof-of-Human mint.

@@ -16,7 +16,11 @@ import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth/auth-config";
 import { canonicalizeRequestOrigin } from "@/lib/auth/origin";
 
-import { resolveSubForClientId } from "./pairwise";
+import {
+  findPairwiseClient,
+  type PairwiseClient,
+  resolveSubForClient,
+} from "./pairwise";
 import {
   invalidAccessToken,
   type ResourceError,
@@ -98,8 +102,16 @@ export async function introspectZentityAccessToken(
 }
 
 export interface ProtectedResourcePrincipal {
+  /** The token's RFC 9396 details as issued, or an empty list. */
+  authorizationDetails: unknown[];
+  /** The client the token was issued to, which fixes its pairwise sector. */
+  client: PairwiseClient;
   clientId: string;
   dpopJkt: string;
+  /** The token's expiry, in seconds since the epoch. */
+  exp: number;
+  /** The approval the token came from (a CIBA token's `auth_req_id` hash). */
+  referenceId: string | null;
   scopes: string[];
   sub: string;
   userId: string;
@@ -152,9 +164,8 @@ export async function resolveProtectedResourcePrincipal(
       error: invalidAccessToken(request, "access token must be DPoP-bound"),
     };
   }
-  const sub =
-    userId && clientId ? await resolveSubForClientId(userId, clientId) : null;
-  if (!(userId && clientId && sub)) {
+  const client = clientId ? await findPairwiseClient(clientId) : null;
+  if (!(userId && clientId && client && typeof payload.exp === "number")) {
     return {
       ok: false,
       error: invalidAccessToken(request, "invalid access token"),
@@ -165,11 +176,18 @@ export async function resolveProtectedResourcePrincipal(
     ok: true,
     dpopNonce: verified.dpopNonce,
     principal: {
-      sub,
+      sub: await resolveSubForClient(userId, client),
       userId,
+      client,
       clientId,
       scopes: tokenScopes(payload),
       dpopJkt,
+      exp: payload.exp,
+      referenceId:
+        typeof payload.reference_id === "string" ? payload.reference_id : null,
+      authorizationDetails: Array.isArray(payload.authorization_details)
+        ? payload.authorization_details
+        : [],
     },
   };
 }

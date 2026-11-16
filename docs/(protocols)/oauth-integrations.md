@@ -617,10 +617,10 @@ Identity scopes are never persisted in consent records. The consent page reappea
 ## Proof of Human
 
 > **Endpoint:** `POST /api/auth/oauth2/proof-of-human`
-> **Required scope:** `poh` (granted at consent like any other scope)
-> **Code authority:** `apps/web/src/app/api/auth/oauth2/proof-of-human/route.ts`
+> **Required scope:** `poh`
+> **Code authority:** `apps/web/src/lib/auth/oidc/proof-of-human.ts`
 
-Some relying parties only need to know "is this a real, unique human?" — not anything about who that person is. The PoH endpoint exists for that case. It returns a compact, DPoP-bound JWT that asserts the user's status across three orthogonal axes (`identity`, `humanity`, `policy`) without disclosing PII, and uses the access token's pairwise `sub` so two RPs cannot cross-link the same user.
+Some relying parties only need to know whether a real, verified human is on the other side, not who that person is. The Proof-of-Human (PoH) endpoint mints a compact, DPoP-bound JWT (`typ: poh+jwt`, EdDSA) that states that without disclosing PII. The access token the caller presents decides which of two tokens it gets; there is no audience parameter.
 
 ### When to use it
 
@@ -630,26 +630,55 @@ Some relying parties only need to know "is this a real, unique human?" — not a
 | RP needs a boolean "this user has a humanity credential" | `proof:humanity` |
 | RP needs a per-RP nullifier from document/chip uniqueness | `proof:sybil` |
 | RP needs a per-RP pseudonym from humanity providers | `proof:humanity:rp_unique` |
-| RP needs a forward-portable signed assertion to ship downstream / on-chain | `poh` |
+| RP needs a signed, short-lived statement about the user it can check on its own server | `poh` (client mode) |
+| An agent must prove to an x402 merchant that the user is verified, for one purchase | `poh` with an `x402_purchase` approval (merchant mode) |
 | RP needs verified PII (name, DOB, document) | `identity.*` scopes |
 
-The PoH JWT is a *forward-portable* credential. `proof:*` claims are scoped to the issued tokens. The PoH JWT can be passed to a third party (or onto a smart contract) without granting them access to the original OAuth tokens.
+### Merchant mode
 
-### Token shape
+An agent gets a merchant-mode token from the CIBA access token of an `x402_purchase` approval, presented with the per-purchase DPoP key it polled that token with. The token is for one merchant and one purchase:
+
+```jsonc
+// header { "alg": "EdDSA", "typ": "poh+jwt", "kid": "..." }
+{
+  "iss": "https://app.zentity.xyz",
+  "sub": "<pairwise for the agent client and the merchant>",
+  "aud": "https://merchant.example",
+  "iat": 1763200000,
+  "exp": 1763200300,
+  "jti": "<128-bit random, base64url>",
+  "scope": "poh",
+  "cnf": { "jkt": "<thumbprint of the per-purchase key>" },
+  "act": { "sub": "<pairwise for the agent client and the merchant>", "sub_profile": "service" },
+  "poh": { "identity": { "strength_at_least": "documentary_full" }, "policy": { "version": "v1.0" } },
+  "authorization_details": [ { "type": "x402_purchase", "resource_url": "...", "payment_requirements": { }, "min_identity_strength": "documentary_full" } ]
+}
+```
+
+- `aud` is the origin of the approved `resource_url`.
+- `sub` is the pairwise value of the user for the sector `T(c, M)`: the agent client's sector, a space, and the merchant origin. It is stable for one client and merchant, differs across merchants and across clients, and never equals a subject any client receives, including a client registered at the merchant's host. It is pairwise even for a client with a public subject type, because the merchant is not that client. `act` appears only when a verified Agent-Assertion bound the request, with the agent session's pairwise value in the same sector.
+- `poh` states only that the user's identity meets the merchant's minimum. The token carries no `client_id`, `azp`, `ba_sub`, item, `resource_description`, identity flags, humanity axis, or PII.
+- `exp` is the earliest of 300 seconds, the requirement's `maxTimeoutSeconds`, and the CIBA token's expiry.
+- One approval mints one token. The mint sets `ciba_approval.poh_minted_at` only while it is null, so a second or concurrent mint gets `401 invalid_token`. The mint checks the user's identity strength again first; a user below the minimum also gets `401 invalid_token`, and the approval stays unspent.
+
+The agent presents the token to the merchant as `Authorization: DPoP <poh>` with a DPoP proof by the same key, never inside the x402 payment payload. The merchant's checks are in [Web3 Architecture](<../(architecture)/web3-architecture.md>).
+
+### Client mode
+
+Any other `poh` access token, such as one from an authorization-code sign-in, gets a token for its own client:
 
 ```jsonc
 {
   "iss": "https://app.zentity.xyz",
-  "sub": "<pairwise sub from access token>",
+  "sub": "<the client's subject for the user>",
+  "aud": "<client_id>",
   "iat": 1778164474,
-  "exp": 1778168074,
+  "exp": 1778164774,
+  "jti": "<128-bit random, base64url>",
   "scope": "poh",
-  "cnf": { "jkt": "<DPoP key thumbprint>" },
+  "cnf": { "jkt": "<DPoP key thumbprint of the presenting token>" },
   "poh": {
-    "identity": {
-      "verified": false,
-      "strength": "none"
-    },
+    "identity": { "verified": false, "strength": "none" },
     "humanity": { "proven": true },
     "policy":   { "version": "v1.0" }
   }
@@ -659,21 +688,22 @@ The PoH JWT is a *forward-portable* credential. `proof:*` claims are scoped to t
 | Path | Type | Meaning |
 | --- | --- | --- |
 | `poh.identity.verified` | bool | All required identity-evidence checks pass |
-| `poh.identity.strength` | `"none" \| "documentary" \| "documentary_full" \| "cryptographic_chip"` | Discrete evidence-strength tier |
+| `poh.identity.strength` | `"none" \| "documentary" \| "documentary_full" \| "cryptographic_chip"` | Identity-evidence strength |
 | `poh.humanity.proven` | bool | At least one active humanity credential |
 | `poh.policy.version` | string | Policy version under which checks were materialized |
 
 `identity.method` (`"ocr" | "nfc_chip"`) is intentionally absent: forwarding the verification path lets RPs discriminate against OCR users versus chip users, which is a privacy regression for users on the document track. RPs that genuinely need the method request `proof:verification` separately and read it from id_token claims.
 
-RPs compose their own predicates: `verified human` is `identity.verified && humanity.proven`; `unique human` is `humanity.proven`; `verified identity (no humanity required)` is `identity.verified`. The contract is deliberately structural rather than a single number; collapsing three axes into one scalar is what produced the `tier 1.5` rough edge in earlier drafts.
+RPs compose their own predicates: `verified human` is `identity.verified && humanity.proven`; `unique human` is `humanity.proven`; `verified identity (no humanity required)` is `identity.verified`.
+
+A client-mode token is for the client that holds it. A client checks `aud` against its own `client_id` and `cnf.jkt` against its own key; it does not hand the token to another party.
 
 ### Issuance contract
 
-- Caller presents an OAuth access token granted with `poh` scope.
-- Token must be DPoP-bound. The issued PoH JWT carries the same DPoP `jkt` in its `cnf` claim, so it cannot be replayed by a different client.
-- Issuer reads the user's verification read-model and projects the three axes above. No PII is read or returned.
-- Returns `403 not_verified` only when **both** axes are empty (`identity.verified=false && humanity.proven=false`).
-- Lifetime: 1 hour.
+- The caller presents a DPoP-bound access token with the `poh` scope and a DPoP proof with a server nonce. The PoH token carries the same key in `cnf.jkt`.
+- The response is `{ "token", "token_type": "DPoP", "expires_in" }` with `Cache-Control: no-store` and the next `DPoP-Nonce`.
+- A token without `poh` gets `403 insufficient_scope`. A bad, inactive, or used token, or an approval that is no longer usable, gets `401 invalid_token`.
+- Client mode returns `403 not_verified` only when **both** axes are empty (`identity.verified=false && humanity.proven=false`). Client-mode tokens live 300 seconds and are not single use at Zentity.
 
 ## Humanity credentials
 

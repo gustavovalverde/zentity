@@ -26,12 +26,12 @@ export interface ProofOfHumanPolicyAxis {
 }
 
 /**
- * Orthogonal-axes proof-of-human payload. RPs compose policy by reading the
- * axis they need; e.g. `verified human` = `identity.verified && humanity.proven`.
+ * The axes of a client-mode proof-of-human token. RPs compose policy by
+ * reading the axis they need; e.g. `verified human` =
+ * `identity.verified && humanity.proven`.
  *
- * The token is forward-portable; a downstream service can verify the
- * issuer signature plus the DPoP `cnf` thumbprint. No PII or per-RP
- * pseudonym appears in the PoH JWT.
+ * A client-mode token is audienced to the client that requested it and names
+ * the user by that client's subject; it carries no PII.
  */
 export interface ProofOfHumanClaims {
   humanity: ProofOfHumanHumanityAxis;

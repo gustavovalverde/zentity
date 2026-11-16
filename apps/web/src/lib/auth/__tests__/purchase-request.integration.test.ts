@@ -1,6 +1,6 @@
 import crypto from "node:crypto";
 
-import { signAgentAssertion } from "@zentity/sdk";
+import { signAgentAssertion, type TaskHashInput } from "@zentity/sdk";
 import { eq } from "drizzle-orm";
 import { exportJWK, generateKeyPair } from "jose";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -269,15 +269,19 @@ describe("purchase requests at bc-authorize", () => {
   it.each([
     [
       "the binding message alone",
-      { authorizationDetails: undefined, scope: "openid" },
+      (request: TaskHashInput): TaskHashInput => ({
+        bindingMessage: request.bindingMessage,
+        scope: "openid",
+      }),
     ],
     [
       "another amount",
-      {
+      (request: TaskHashInput): TaskHashInput => ({
+        ...request,
         authorizationDetails: JSON.stringify([
           { ...PURCHASE, amount: { value: "1.00", currency: "EUR" } },
         ]),
-      },
+      }),
     ],
   ])("refuses an Agent-Assertion signed over %s", async (_case, change) => {
     const agent = await createRegisteredAgent(userId, CLIENT_ID);
@@ -288,12 +292,11 @@ describe("purchase requests at bc-authorize", () => {
       binding_message: "Buy from Corner Books",
       authorization_details: JSON.stringify([PURCHASE]),
     };
-    const signed = {
+    const signed = change({
       bindingMessage: body.binding_message,
       scope: body.scope,
       authorizationDetails: body.authorization_details,
-      ...change,
-    };
+    });
     const assertion = await signAgentAssertion({ ...signed, ...agent });
 
     const response = await postBcAuthorize(body, {
