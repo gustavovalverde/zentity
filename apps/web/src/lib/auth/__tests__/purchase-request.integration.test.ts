@@ -6,6 +6,33 @@ import { exportJWK, generateKeyPair } from "jose";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const pushMock = vi.hoisted(() => ({ sent: 0 }));
+const identity = vi.hoisted(() => ({
+  strength: "documentary_full",
+  validity: "verified",
+}));
+vi.mock("@/lib/identity/verification/read-model", async (importOriginal) => {
+  const mod =
+    await importOriginal<
+      typeof import("@/lib/identity/verification/read-model")
+    >();
+  return {
+    ...mod,
+    getVerificationReadModel: async (userId: string) => {
+      const model = await mod.getVerificationReadModel(userId);
+      return {
+        ...model,
+        bundle: { ...model.bundle, validityStatus: identity.validity },
+        compliance: {
+          ...model.compliance,
+          identity: {
+            ...model.compliance.identity,
+            strength: identity.strength,
+          },
+        },
+      };
+    },
+  };
+});
 vi.mock("@/lib/agents/push-sender", async (importOriginal) => {
   const mod = await importOriginal<typeof import("@/lib/agents/push-sender")>();
   return {
@@ -23,7 +50,18 @@ import { db } from "@/lib/db/connection";
 import { agentHosts, agentSessions } from "@/lib/db/schema/agent";
 import { cibaRequests } from "@/lib/db/schema/ciba";
 import { oauthClients } from "@/lib/db/schema/oauth-provider";
-import { createTestUser, resetDatabase } from "@/test-utils/db-test-utils";
+import {
+  confirmWithPasskey,
+  postDecision,
+  requestStatus,
+  signInApprover,
+} from "@/test-utils/ciba-decision-test-utils";
+import {
+  createTestUser,
+  hashCibaAuthReqId,
+  resetDatabase,
+} from "@/test-utils/db-test-utils";
+import { TestAuthenticator } from "@/test-utils/webauthn-test-utils";
 
 const CIBA_GRANT_TYPE = "urn:openid:params:grant-type:ciba";
 const BC_AUTHORIZE_URL = "http://localhost:3000/api/auth/oauth2/bc-authorize";
@@ -178,6 +216,7 @@ describe("purchase requests at bc-authorize", () => {
   afterEach(() => {
     vi.unstubAllEnvs();
     pushMock.sent = 0;
+    identity.strength = "documentary_full";
   });
 
   async function storedAgentBinding() {
@@ -249,14 +288,12 @@ describe("purchase requests at bc-authorize", () => {
       binding_message: "Buy from Corner Books",
       authorization_details: JSON.stringify([PURCHASE]),
     };
-    const signed = Object.assign(
-      {
-        bindingMessage: body.binding_message,
-        scope: body.scope,
-        authorizationDetails: body.authorization_details,
-      },
-      change
-    );
+    const signed = {
+      bindingMessage: body.binding_message,
+      scope: body.scope,
+      authorizationDetails: body.authorization_details,
+      ...change,
+    };
     const assertion = await signAgentAssertion({ ...signed, ...agent });
 
     const response = await postBcAuthorize(body, {
@@ -493,5 +530,204 @@ describe("purchase requests at bc-authorize", () => {
         .where(eq(cibaRequests.clientId, PAYMENT_CLIENT_ID))
         .all()
     ).toHaveLength(0);
+  });
+});
+
+describe("deciding a purchase request", () => {
+  let userId: string;
+  let loginHint: string;
+
+  beforeEach(async () => {
+    await resetDatabase();
+    userId = await createTestUser();
+    await insertCibaClient(CLIENT_ID);
+    loginHint = (await resolveSubForClientId(userId, CLIENT_ID)) as string;
+  });
+
+  afterEach(() => {
+    identity.strength = "documentary_full";
+    identity.validity = "verified";
+  });
+
+  async function requestX402Purchase(): Promise<string> {
+    const response = await postBcAuthorize({
+      client_id: CLIENT_ID,
+      scope: X402_SCOPE,
+      login_hint: loginHint,
+      binding_message: "Proof-of-Human for merchant.example",
+      authorization_details: JSON.stringify([X402_PURCHASE]),
+    });
+    if (response.status !== 200) {
+      throw new Error(`bc-authorize answered ${response.status}`);
+    }
+    const row = await db
+      .select({ id: cibaRequests.id })
+      .from(cibaRequests)
+      .where(
+        eq(
+          cibaRequests.authReqId,
+          hashCibaAuthReqId(response.json.auth_req_id as string)
+        )
+      )
+      .get();
+    return row?.id as string;
+  }
+
+  async function readRequestDetails(
+    approver: Awaited<ReturnType<typeof signInApprover>>,
+    requestId: string
+  ) {
+    const response = await auth.handler(
+      new Request(
+        `http://localhost:3000/api/auth/ciba/request?request_id=${requestId}`,
+        { headers: { cookie: approver.cookie } }
+      )
+    );
+    return (await response.json()) as Record<string, unknown>;
+  }
+
+  // R24: purchases need a user-verified passkey assertion.
+  it("refuses a manual x402 approval without a passkey assertion", async () => {
+    await new TestAuthenticator().register(userId);
+    const requestId = await requestX402Purchase();
+    const approver = await signInApprover(userId);
+
+    const response = await postDecision(approver, {
+      request_id: requestId,
+      channel: "page",
+    });
+
+    expect(response.status).toBe(403);
+    expect(response.json.error).toBe("insufficient_user_authentication");
+    expect(await requestStatus(requestId)).toBe("pending");
+  });
+
+  it("tells a user without a passkey to add one", async () => {
+    const requestId = await requestX402Purchase();
+    const approver = await signInApprover(userId);
+
+    const response = await postDecision(approver, {
+      request_id: requestId,
+      channel: "page",
+    });
+
+    expect(response.status).toBe(409);
+    expect(response.json.error).toBe("passkey_required");
+  });
+
+  it("refuses an approval from a notification", async () => {
+    await new TestAuthenticator().register(userId);
+    const requestId = await requestX402Purchase();
+    const approver = await signInApprover(userId);
+
+    const response = await postDecision(approver, {
+      request_id: requestId,
+      channel: "push",
+    });
+
+    expect(response.status).toBe(403);
+    expect(response.json.error).toBe("review_required");
+  });
+
+  it("approves with a user-verified assertion at the required strength", async () => {
+    const authenticator = await new TestAuthenticator().register(userId);
+    const requestId = await requestX402Purchase();
+    const approver = await signInApprover(userId);
+    const webauthn = await confirmWithPasskey(
+      approver,
+      requestId,
+      authenticator
+    );
+
+    const response = await postDecision(approver, {
+      request_id: requestId,
+      channel: "page",
+      webauthn,
+    });
+
+    expect(response.status).toBe(200);
+    expect(
+      (await readRequestDetails(approver, requestId)).identity_strength
+    ).toEqual({ required: "documentary_full", satisfied: true });
+  });
+
+  // R14: the server, not only the agent, enforces the merchant's minimum.
+  it("refuses an approval below the merchant's identity strength", async () => {
+    identity.strength = "documentary";
+    const authenticator = await new TestAuthenticator().register(userId);
+    const requestId = await requestX402Purchase();
+    const approver = await signInApprover(userId);
+
+    expect(await readRequestDetails(approver, requestId)).toEqual(
+      expect.objectContaining({
+        identity_strength: { required: "documentary_full", satisfied: false },
+      })
+    );
+
+    // Checked before the passkey challenge is spent.
+    const withoutAssertion = await postDecision(approver, {
+      request_id: requestId,
+      channel: "page",
+    });
+    expect(withoutAssertion.status).toBe(403);
+    expect(withoutAssertion.json.error).toBe("insufficient_identity_strength");
+
+    const webauthn = await confirmWithPasskey(
+      approver,
+      requestId,
+      authenticator
+    );
+    const response = await postDecision(approver, {
+      request_id: requestId,
+      channel: "page",
+      webauthn,
+    });
+
+    expect(response.status).toBe(403);
+    expect(response.json.error).toBe("insufficient_identity_strength");
+    expect(await requestStatus(requestId)).toBe("pending");
+  });
+
+  it("refuses an approval while the identity's validity is stale", async () => {
+    identity.validity = "stale";
+    const authenticator = await new TestAuthenticator().register(userId);
+    const requestId = await requestX402Purchase();
+    const approver = await signInApprover(userId);
+
+    expect(await readRequestDetails(approver, requestId)).toEqual(
+      expect.objectContaining({
+        identity_strength: { required: "documentary_full", satisfied: false },
+      })
+    );
+
+    const webauthn = await confirmWithPasskey(
+      approver,
+      requestId,
+      authenticator
+    );
+    const response = await postDecision(approver, {
+      request_id: requestId,
+      channel: "page",
+      webauthn,
+    });
+
+    expect(response.status).toBe(403);
+    expect(response.json.error).toBe("insufficient_identity_strength");
+    expect(await requestStatus(requestId)).toBe("pending");
+  });
+
+  it("lets the user deny a request below the merchant's identity strength", async () => {
+    identity.strength = "none";
+    const requestId = await requestX402Purchase();
+    const approver = await signInApprover(userId);
+
+    const response = await postDecision(approver, {
+      request_id: requestId,
+      decision: "denied",
+      channel: "page",
+    });
+
+    expect(response.status).toBe(200);
+    expect(await requestStatus(requestId)).toBe("denied");
   });
 });

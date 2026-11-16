@@ -36,7 +36,7 @@ import {
   useVaultUnlock,
   VaultUnlockPanel,
 } from "@/components/vault-unlock";
-import { formatAcrValue } from "@/lib/agents/labels";
+import { formatAcrValue, formatIdentityStrength } from "@/lib/agents/labels";
 import { asyncHandler } from "@/lib/async-handler";
 import {
   findMissingIdentityFields,
@@ -542,6 +542,10 @@ export function AgentApprovalView({
   // ── Verification check (proof scopes need completed verification) ──
 
   const verificationMissing = hasProofScopes && assuranceTier < 2;
+  const identityShortfall =
+    details?.identity_strength?.satisfied === false
+      ? details.identity_strength.required
+      : null;
 
   // ── Actions ──────────────────────────────────────────────
 
@@ -994,6 +998,22 @@ export function AgentApprovalView({
             </Alert>
           )}
 
+          {identityShortfall && (
+            <Alert>
+              <AlertTriangle className="size-4" />
+              <AlertDescription className="space-y-2">
+                <p>
+                  This merchant requires identity verified to the{" "}
+                  {formatIdentityStrength(identityShortfall)} level. Yours does
+                  not meet it yet, so you can only deny this request.
+                </p>
+                <Button asChild size="sm" variant="outline">
+                  <Link href="/dashboard/verify">Verify your identity</Link>
+                </Button>
+              </AlertDescription>
+            </Alert>
+          )}
+
           {verificationMissing && (
             <Alert>
               <AlertTriangle className="size-4" />
@@ -1041,6 +1061,7 @@ export function AgentApprovalView({
               disabled={
                 isActing ||
                 verificationMissing ||
+                identityShortfall !== null ||
                 passkeyMissing ||
                 (hasIdentityScopes &&
                   !unlockAtApprove &&

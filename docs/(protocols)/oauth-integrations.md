@@ -274,7 +274,7 @@ The user is notified through three channels: web push notifications, email with 
 - For a user-verified approval, the page calls `POST /api/auth/ciba/decision/options`, runs one assertion with `userVerification: "required"` over the challenge, and posts the result as `webauthn` with the decision. When the request has identity scopes and the vault is passkey-wrapped and locked, the same assertion carries the PRF extension and opens the vault, so the user confirms once; the posted assertion keeps no extension results. When the opened profile lacks a requested field, the page names the missing fields and stages the available data only after a second Approve click, which posts the same assertion. The challenge is single use, lives 120 seconds, and is bound to the request and the session; a new options call replaces it. A `webauthn` member on a request that needs only a session is verified too, and records `user_verification`.
 - `channel` says where the user decided. A missing `channel` counts as `push`, the value service workers installed before the field existed imply.
 
-The decision runs its checks in this order: the request is the user's, pending, and unexpired; a notification approval of a page-only request is refused; `acr_values`; a staged identity release for identity scopes; the passkey assertion. A refusal leaves the request pending. The two endpoints each allow 20 requests per minute per IP. Errors:
+The decision runs its checks in this order: the request is the user's, pending, and unexpired; a notification approval of a page-only request is refused; `acr_values`; for an `x402_purchase`, the merchant's `min_identity_strength` against the user's current identity strength; a staged identity release for identity scopes; the passkey assertion. A refusal leaves the request pending, so an agent learns only that the request was approved, denied, or expired. `GET /api/auth/ciba/request` returns `identity_strength: { required, satisfied }` for an `x402_purchase`, and the approval page shows a shortfall before the user acts, disables Approve, keeps Deny, and links to identity verification. The two endpoints each allow 20 requests per minute per IP. Errors:
 
 | Condition | Status, `error`, description |
 | --- | --- |
@@ -283,6 +283,7 @@ The decision runs its checks in this order: the request is the user's, pending, 
 | Expired | 400 `expired_token` "This request has expired" |
 | Notification approval of a page-only request | 403 `review_required` "Open the approval page to review this request" |
 | Unmet `acr_values` | 403 `insufficient_user_authentication` |
+| Identity strength below an `x402_purchase` minimum | 403 `insufficient_identity_strength` |
 | Identity scopes without a staged release | 403 `vault_unlock_required` |
 | User verification needed, no `webauthn` | 403 `insufficient_user_authentication` "Confirm with your passkey to approve this request", with `approval_requirement: "user_verification"` |
 | User verification needed, no passkey | 409 `passkey_required` |

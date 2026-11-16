@@ -32,6 +32,17 @@ const ACR_LABELS: Record<string, string> = {
   "tier-3": "Requires chip-verified identity",
 };
 
+const IDENTITY_STRENGTH_LABELS: Record<string, string> = {
+  documentary: "Document",
+  documentary_full: "Document, full",
+  cryptographic_chip: "Passport chip",
+};
+
+/** A merchant's identity-strength requirement in words, e.g. "Document, full". */
+export function formatIdentityStrength(strength: string): string {
+  return IDENTITY_STRENGTH_LABELS[strength] ?? strength;
+}
+
 export function formatCapabilityName(name: string): string {
   return CAPABILITY_LABELS[name] ?? name;
 }
