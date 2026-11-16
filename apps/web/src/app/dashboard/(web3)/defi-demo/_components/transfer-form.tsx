@@ -13,6 +13,7 @@ import {
   CheckCircle,
   ExternalLink,
   Lock,
+  RefreshCw,
   Send,
 } from "lucide-react";
 
@@ -43,6 +44,7 @@ import {
   FieldLabel,
 } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import { useConfidentialChain } from "@/lib/blockchain/confidential/chain";
 import { useConfidentialTransfer } from "@/lib/blockchain/confidential/token-transfer";
 import { getUserFriendlyError } from "@/lib/blockchain/tx-errors";
 import { useDevFaucet } from "@/lib/blockchain/wagmi";
@@ -84,6 +86,11 @@ export function TransferForm({
 
   const { transfer, isReady, isPending, isConfirmed, txHash, error, reset } =
     useConfidentialTransfer({ contractAddress });
+  const {
+    status: confidentialChainStatus,
+    error: confidentialChainError,
+    refresh: refreshConfidentialChain,
+  } = useConfidentialChain();
 
   // Check if recipient is attested
   const { data: recipientStatus, refetch: checkRecipient } = useQuery(
@@ -250,6 +257,30 @@ export function TransferForm({
                   </Button>
                 ) : null}
               </div>
+            );
+          }
+
+          if (confidentialChainStatus === "error") {
+            return (
+              <Alert variant="destructive">
+                <AlertTriangle className="h-4 w-4" />
+                <AlertDescription>
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <span>
+                      Encryption setup failed.{" "}
+                      {confidentialChainError?.message || "Please try again."}
+                    </span>
+                    <Button
+                      onClick={refreshConfidentialChain}
+                      size="sm"
+                      variant="outline"
+                    >
+                      <RefreshCw className="mr-1 h-3 w-3" />
+                      Retry
+                    </Button>
+                  </div>
+                </AlertDescription>
+              </Alert>
             );
           }
 
