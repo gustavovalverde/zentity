@@ -25,7 +25,8 @@
     "!dist/**/*.map",
     "README.md",
     "CHANGELOG.md",
-    "LICENSE"
+    "LICENSE",
+    "PATENTS"
   ],
   "scripts": {
     "build": "tsup src/index.ts src/agent-contract.ts src/fpa/index.ts src/node/index.ts src/protocol/index.ts src/rp/index.ts src/testing/index.ts --format esm,cjs --dts --clean --out-dir dist",
