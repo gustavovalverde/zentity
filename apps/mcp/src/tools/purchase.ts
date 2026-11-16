@@ -60,6 +60,7 @@ const purchaseOutputSchema = z.object({
     "denied",
     "expired",
     ...X402_REFUSALS,
+    "payment_failed",
   ]),
   approved: z.boolean().nullable(),
   bindingMessage: z.string(),
@@ -314,6 +315,44 @@ async function approveX402Purchase(
   return outcome.data;
 }
 
+/**
+ * The status of the merchant's final answer. Only a 2xx after the user's
+ * approval is `approved`; a merchant that never asked for a Proof-of-Human
+ * did not get one, and a refusal after approval is not a purchase.
+ */
+function merchantOutcome(
+  response: Response,
+  payload: unknown,
+  approvedStrength: string | undefined
+): Pick<PurchaseStructuredContent, "approved" | "error" | "status"> {
+  if (approvedStrength === undefined) {
+    return {
+      status: "unsupported_resource",
+      approved: false,
+      error: `The merchant answered ${response.status} without asking for a Zentity Proof-of-Human`,
+    };
+  }
+  if (response.ok) {
+    return { status: "approved", approved: true };
+  }
+  const merchantError =
+    payload && typeof payload === "object"
+      ? (payload as { error?: unknown }).error
+      : undefined;
+  if (response.status === 403 && merchantError === "approval_mismatch") {
+    return {
+      status: "approval_mismatch",
+      approved: false,
+      error: "The merchant refused the approved terms",
+    };
+  }
+  return {
+    status: "payment_failed",
+    approved: false,
+    error: `The merchant refused the payment with ${response.status}`,
+  };
+}
+
 async function runX402PurchaseTool(
   input: PurchaseInput,
   url: string,
@@ -321,7 +360,7 @@ async function runX402PurchaseTool(
   options: PurchaseToolOptions
 ) {
   const bindingMessage = x402BindingMessage(url);
-  let identityStrength: string | null = null;
+  let approvedStrength: string | undefined;
   try {
     const discovery = await discoverMcpOAuth();
     const x402Fetch = createX402Fetch({
@@ -329,21 +368,22 @@ async function runX402PurchaseTool(
       maxAmount: bounds.maxAmount,
       maxIdentityStrength: bounds.maxIdentityStrength,
       schemeClient: options.x402SchemeClient,
-      approve: (requirement, context) => {
-        identityStrength = context.minIdentityStrength;
-        return approveX402Purchase(input, requirement, context);
+      approve: async (requirement, context) => {
+        const approval = await approveX402Purchase(input, requirement, context);
+        approvedStrength = context.minIdentityStrength;
+        return approval;
       },
     });
     const response = await x402Fetch(url, { method: "GET" });
+    const payload = await readResponsePayload(response);
     return buildPurchaseResponse({
-      status: "approved",
-      approved: response.ok,
+      ...merchantOutcome(response, payload, approvedStrength),
       bindingMessage,
       fulfillment: null,
       x402: {
-        identity_strength: identityStrength,
+        identity_strength: approvedStrength ?? null,
         payment_response: readPaymentResponseHeader(response),
-        response: await readResponsePayload(response),
+        response: payload,
         status: response.status,
       },
     });
@@ -519,7 +559,8 @@ export function registerPurchaseTool(
         "Buy something on behalf of the user, who approves in the browser with a passkey.",
         "Without url: a purchase from a named merchant; pass merchant, item, amount, and currency, and the tool returns the user's shipping details once after approval.",
         "With url: an x402 resource that needs a Zentity Proof-of-Human. The user approves proving their identity to that merchant; the agent's own wallet pays the merchant's price, up to maxAmount. This needs a payment scheme client, so it answers payment_not_configured until one is configured.",
-        "Statuses: approved, needs_user_action, denied, expired, payment_not_configured, merchant_mismatch, untrusted_issuer, unsupported_resource, payment_bounds_exceeded, identity_strength_bound_exceeded, approval_mismatch.",
+        "Statuses: approved, needs_user_action, denied, expired, payment_not_configured, merchant_mismatch, untrusted_issuer, unsupported_resource, payment_bounds_exceeded, identity_strength_bound_exceeded, approval_mismatch, payment_failed.",
+        "An x402 purchase is approved only when the merchant accepts the payment after the user's approval; payment_failed means the user approved but the merchant refused the payment (see x402.status and x402.response), and unsupported_resource with an x402 field means the merchant answered without asking for a Proof-of-Human.",
       ].join(" "),
       inputSchema: z.object({
         merchant: z

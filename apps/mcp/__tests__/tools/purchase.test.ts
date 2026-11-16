@@ -132,7 +132,10 @@ function parse(result: unknown) {
 }
 
 /** A merchant that answers 402 until the payment arrives. */
-function mockNetwork(merchantRequirements: PaymentRequirement[] = []) {
+function mockNetwork(
+  merchantRequirements: PaymentRequirement[] = [],
+  merchant: { paid?: () => Response; unpaid?: () => Response } = {}
+) {
   const requests: { headers: Headers; url: string }[] = [];
   const spy = vi
     .spyOn(globalThis, "fetch")
@@ -151,10 +154,13 @@ function mockNetwork(merchantRequirements: PaymentRequirement[] = []) {
         );
       }
       if (headers.get(PAYMENT_SIGNATURE_HEADER)) {
-        return Promise.resolve(Response.json({ access: "granted" }));
+        return Promise.resolve(
+          merchant.paid?.() ?? Response.json({ access: "granted" })
+        );
       }
       return Promise.resolve(
-        merchant402(merchantRequirements.shift() ?? requirement())
+        merchant.unpaid?.() ??
+          merchant402(merchantRequirements.shift() ?? requirement())
       );
     });
   return { requests, spy };
@@ -325,6 +331,7 @@ describe("purchase", () => {
     );
 
     expect(parsed.status).toBe("approved");
+    expect(parsed.approved).toBe(true);
     expect(parsed.bindingMessage).toBe("Proof-of-Human for merchant.example");
     expect(parsed.x402).toEqual(
       expect.objectContaining({ identity_strength: "documentary", status: 200 })
@@ -417,6 +424,78 @@ describe("purchase", () => {
 
     expect(parsed.status).toBe("approval_mismatch");
   });
+
+  // The agent learns only what the user decided: a merchant that never asked
+  // for a Proof-of-Human was not approved.
+  it.each([
+    ["a 200", () => Response.json({ access: "granted" })],
+    ["a 401", () => Response.json({ error: "login" }, { status: 401 })],
+    [
+      "a 402 without PAYMENT-REQUIRED",
+      () => Response.json({ error: "pay" }, { status: 402 }),
+    ],
+  ])(
+    "answers unsupported_resource when the merchant answers %s",
+    async (_case, unpaid) => {
+      mockNetwork([], { unpaid });
+      const client = await connectClient({
+        auth: { oauth: mockOAuthContext, runtime: mockRuntimeState },
+        server: { purchase: { x402SchemeClient: stubSchemeClient() } },
+      });
+
+      const parsed = parse(
+        await client.callTool({
+          name: "purchase",
+          arguments: { url: MERCHANT_URL, maxAmount: 1 },
+        })
+      );
+
+      expect(parsed.status).toBe("unsupported_resource");
+      expect(parsed.approved).toBe(false);
+      expect(parsed.x402.identity_strength).toBeNull();
+      expect(mockBeginOrResumeInteractiveFlow).not.toHaveBeenCalled();
+    }
+  );
+
+  it.each([
+    [
+      "payment_failed",
+      () =>
+        Response.json(
+          { error: "payment_invalid", detail: "insufficient_funds" },
+          { status: 402 }
+        ),
+    ],
+    [
+      "payment_failed",
+      () => Response.json({ error: "invalid_token" }, { status: 401 }),
+    ],
+    [
+      "approval_mismatch",
+      () => Response.json({ error: "approval_mismatch" }, { status: 403 }),
+    ],
+  ])(
+    "answers %s when the merchant refuses the approved payment",
+    async (status, paid) => {
+      mockNetwork([], { paid });
+      approveFlows();
+      const client = await connectClient({
+        auth: { oauth: mockOAuthContext, runtime: mockRuntimeState },
+        server: { purchase: { x402SchemeClient: stubSchemeClient() } },
+      });
+
+      const parsed = parse(
+        await client.callTool({
+          name: "purchase",
+          arguments: { url: MERCHANT_URL, maxAmount: 1 },
+        })
+      );
+
+      expect(parsed.status).toBe(status);
+      expect(parsed.approved).toBe(false);
+      expect(parsed.x402.identity_strength).toBe("documentary");
+    }
+  );
 
   it.each([
     ["payment_bounds_exceeded", { maxAmount: 0.000_000_5 }],

@@ -373,7 +373,7 @@ That means both profile disclosure and purchase execution stay on the human appr
 The MCP `purchase` tool has two paths:
 
 - Without `url`, it requests a `purchase` entry (`merchant.name`, `item`, and an ISO 4217 `amount`) with the identity scopes a delivery needs, under the binding message `Buy from <merchant name>`. After approval it reads the staged shipping details once from UserInfo.
-- With `url`, it fetches an x402 resource. The approval is a Proof-of-Human for that merchant, under the binding message `Proof-of-Human for <merchant host>`; the agent's own wallet pays the merchant's price, up to `maxAmount` in USDC. The MCP server has no payment scheme client yet, so this path answers `payment_not_configured` before asking the user.
+- With `url`, it fetches an x402 resource. The approval is a Proof-of-Human for that merchant, under the binding message `Proof-of-Human for <merchant host>`; the agent's own wallet pays the merchant's price, up to `maxAmount` in USDC. The MCP server has no payment scheme client yet, so this path answers `payment_not_configured` before asking the user. With a scheme client, the tool answers `approved` only when the merchant accepts the payment after the user's approval; a merchant refusal after approval is `payment_failed` (or `approval_mismatch` when the merchant refuses the approved terms), and a merchant that answers without asking for a Proof-of-Human is `unsupported_resource`.
 
 ### The x402 sequence
 
