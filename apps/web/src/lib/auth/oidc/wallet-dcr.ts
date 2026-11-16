@@ -82,7 +82,8 @@ async function isPairwiseClient(clientId: unknown): Promise<boolean> {
  * The OIDC4VCI plugin looks the user up by the access token's `sub`, which is
  * pairwise for a pairwise client and so names no user. These two checks
  * refuse such a wallet with a clear error, at the offer and at the credential
- * endpoints, until the plugin resolves the user itself (upstream ask U25).
+ * endpoints, until the plugin resolves the user itself (U25 in
+ * docs/adr/platform/0002-better-auth-patches.md).
  */
 export async function authorizeWalletCredentialOffer(input: {
   clientId: string;

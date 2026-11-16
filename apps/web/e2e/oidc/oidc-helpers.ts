@@ -285,7 +285,8 @@ export async function createIssuerSession(_request: APIRequestContext) {
 /**
  * The wallet client the server creates for itself, which the dashboard's
  * credential offer targets. It has public subjects, so it receives
- * credentials (upstream ask U25 covers pairwise wallets).
+ * credentials. U25 in docs/adr/platform/0002-better-auth-patches.md covers
+ * pairwise wallets.
  */
 export const BUILT_IN_WALLET_CLIENT_ID = "zentity-wallet";
 

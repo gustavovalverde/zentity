@@ -112,7 +112,8 @@ test.describe("OIDC4VCI issuer", () => {
   });
 
   // A registered wallet is pairwise, and the OIDC4VCI plugin cannot resolve a
-  // pairwise subject to a user (upstream ask U25).
+  // pairwise subject to a user (U25 in
+  // docs/adr/platform/0002-better-auth-patches.md).
   test("refuses a credential offer for a registered wallet", async ({
     request,
   }) => {

@@ -50,7 +50,8 @@ async function insertWallet(
 }
 
 // The OIDC4VCI plugin looks the user up by the access token's `sub`, which is
-// pairwise for a pairwise wallet (upstream ask U25).
+// pairwise for a pairwise wallet (U25 in
+// docs/adr/platform/0002-better-auth-patches.md).
 describe("OIDC4VCI wallet subjects", () => {
   let userId: string;
   let sessionCookie: string;

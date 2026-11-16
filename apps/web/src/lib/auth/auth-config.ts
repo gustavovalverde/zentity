@@ -670,7 +670,8 @@ const FORM_CONTENT_TYPE = "application/x-www-form-urlencoded";
  * Gives a before-hook every `resource` value of a form body. Hooks see one
  * value per key, and the endpoint restores the repeated values afterwards
  * unless a hook replaced the value, so a check on the collapsed body would
- * miss all but the last indicator (RFC 8707 §2 allows repeats).
+ * miss all but the last indicator (RFC 8707 §2 allows repeats). Interim until
+ * hooks see repeated values (U26 in docs/adr/platform/0002-better-auth-patches.md).
  */
 async function readRepeatedFormResources(ctx: HookCtx): Promise<void> {
   const request = ctx.request;
@@ -745,8 +746,9 @@ async function beforeDcrRegister(ctx: HookCtx) {
 }
 
 // `/oauth2/create-client` takes no `subject_type` and would register a public
-// client (upstream ask U24). Its redirect URIs must satisfy the provider's
-// pairwise rules, and the after-hook makes the new client pairwise.
+// client (U24 in docs/adr/platform/0002-better-auth-patches.md). Its
+// redirect URIs must satisfy the provider's pairwise rules, and the after-hook
+// makes the new client pairwise.
 function beforeCreateClientRequirePairwiseRedirects(ctx: HookCtx) {
   const redirectUris: unknown = ctx.body?.redirect_uris;
   if (!Array.isArray(redirectUris)) {
@@ -2106,7 +2108,7 @@ export const auth = betterAuth({
         issuer: authIssuer,
         // signJwt signs with the plugin's keys and adds what the provider
         // cannot: EdDSA access tokens whose subject is pairwise for their
-        // audience (upstream ask U4).
+        // audience (U4 in docs/adr/platform/0002-better-auth-patches.md).
         sign: signJwt,
       },
     }),
