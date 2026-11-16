@@ -70,6 +70,7 @@
         "useConsistentArrowReturn": "off",
         "useThisInClassMethods": "off",
         "useNamedCaptureGroup": "off",
+        "noExcessiveClassesPerFile": "off",
         "noIncrementDecrement": "off",
         "useTestHooksInOrder": "off",
         "useConsistentTestIt": "off",
@@ -138,9 +139,6 @@
           "correctness": {
             "noUnusedVariables": "off"
           },
-          "performance": {
-            "noNamespaceImport": "off"
-          },
           "style": {
             "useImportType": "off"
           },
@@ -179,22 +177,6 @@
         "rules": {
           "suspicious": {
             "noBitwiseOperators": "off"
-          }
-        }
-      }
-    },
-    {
-      "includes": [
-        "src/lib/privacy/credentials/index.ts",
-        "src/lib/privacy/fhe/index.ts",
-        "src/lib/privacy/primitives/index.ts",
-        "src/lib/privacy/secrets/index.ts",
-        "src/lib/privacy/crypto/passkey-vault.ts"
-      ],
-      "linter": {
-        "rules": {
-          "performance": {
-            "noBarrelFile": "off"
           }
         }
       }

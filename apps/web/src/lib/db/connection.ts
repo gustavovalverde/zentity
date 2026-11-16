@@ -8,23 +8,14 @@ import { PHASE_PRODUCTION_BUILD } from "next/constants";
 
 import { env } from "@/env";
 
-// biome-ignore lint/performance/noNamespaceImport: Drizzle ORM requires namespace imports for schema spreading
 import * as agentSchema from "./schema/agent";
-// biome-ignore lint/performance/noNamespaceImport: Drizzle ORM requires namespace imports for schema spreading
 import * as authSchema from "./schema/auth";
-// biome-ignore lint/performance/noNamespaceImport: Drizzle ORM requires namespace imports for schema spreading
 import * as cibaSchema from "./schema/ciba";
-// biome-ignore lint/performance/noNamespaceImport: Drizzle ORM requires namespace imports for schema spreading
 import * as identitySchema from "./schema/identity";
-// biome-ignore lint/performance/noNamespaceImport: Drizzle ORM requires namespace imports for schema spreading
 import * as oauthProviderSchema from "./schema/oauth-provider";
-// biome-ignore lint/performance/noNamespaceImport: Drizzle ORM requires namespace imports for schema spreading
 import * as oidcCredentialsSchema from "./schema/oidc-credentials";
-// biome-ignore lint/performance/noNamespaceImport: Drizzle ORM requires namespace imports for schema spreading
 import * as organizationSchema from "./schema/organization";
-// biome-ignore lint/performance/noNamespaceImport: Drizzle ORM requires namespace imports for schema spreading
 import * as privacySchema from "./schema/privacy";
-// biome-ignore lint/performance/noNamespaceImport: Drizzle ORM requires namespace imports for schema spreading
 import * as revokedTokensSchema from "./schema/revoked-tokens";
 
 const schema = {

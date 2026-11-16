@@ -69,9 +69,6 @@
           "correctness": {
             "noUnusedVariables": "off"
           },
-          "performance": {
-            "noNamespaceImport": "off"
-          },
           "style": {
             "useImportType": "off",
             "noNestedTernary": "off"

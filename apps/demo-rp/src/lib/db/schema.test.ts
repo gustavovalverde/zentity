@@ -9,7 +9,6 @@ import { drizzle } from "drizzle-orm/libsql";
 import { getTableConfig, SQLiteTable } from "drizzle-orm/sqlite-core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-// biome-ignore lint/performance/noNamespaceImport: drizzle-kit snapshots every exported table
 import * as schema from "./schema";
 
 describe("demo-rp schema defaults", () => {

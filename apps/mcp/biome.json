@@ -16,6 +16,7 @@
     "rules": {
       "style": {
         "useConsistentMethodSignatures": "off",
+        "noExcessiveClassesPerFile": "off",
         "noIncrementDecrement": "off",
         "useDestructuring": "off",
         "useUnicodeRegex": "off",
