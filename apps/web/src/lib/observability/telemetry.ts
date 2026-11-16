@@ -13,6 +13,8 @@ import {
 
 import { env } from "@/env";
 
+import { getReleaseId } from "./release";
+
 let sdk: NodeSDK | null = null;
 
 const SIGNAL_PATH_SUFFIX = /\/v1\/(?:traces|metrics|logs)\/?$/;
@@ -22,12 +24,7 @@ export function getServiceName(): string {
 }
 
 export function getServiceVersion(): string {
-  return (
-    process.env.APP_VERSION ||
-    process.env.VERCEL_GIT_COMMIT_SHA ||
-    process.env.npm_package_version ||
-    "0.0.0"
-  );
+  return getReleaseId();
 }
 
 function getEnvironmentName(): string {

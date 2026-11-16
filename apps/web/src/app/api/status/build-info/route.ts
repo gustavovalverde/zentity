@@ -2,6 +2,8 @@ import { execSync } from "node:child_process";
 
 import { NextResponse } from "next/server";
 
+import { DEV_RELEASE_ID, getReleaseId } from "@/lib/observability/release";
+
 /**
  * Build info endpoint for deployment verification.
  *
@@ -19,19 +21,16 @@ import { NextResponse } from "next/server";
  */
 
 function getGitSha(): string {
-  // CI/Docker/Vercel environments
-  if (process.env.VERCEL_GIT_COMMIT_SHA) {
-    return process.env.VERCEL_GIT_COMMIT_SHA;
-  }
-  if (process.env.GIT_SHA) {
-    return process.env.GIT_SHA;
+  const releaseId = getReleaseId();
+  if (releaseId !== DEV_RELEASE_ID) {
+    return releaseId;
   }
 
   // Local development fallback
   try {
     return execSync("git rev-parse HEAD").toString().trim();
   } catch {
-    return "unknown";
+    return releaseId;
   }
 }
 

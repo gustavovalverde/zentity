@@ -245,6 +245,11 @@ export const env = createEnv({
     BB_CRS_PATH: z.string().default("/tmp/.bb-crs"),
     ZK_WARMUP_STRICT: booleanStringWithDefault(true),
 
+    // Release id: the commit the build was made from, in resolution order.
+    GIT_SHA: z.string().optional(),
+    VERCEL_GIT_COMMIT_SHA: z.string().optional(),
+    RAILWAY_GIT_COMMIT_SHA: z.string().optional(),
+
     // Observability. The OpenTelemetry SDK reads the other standard OTEL_*
     // variables itself; these decide whether it starts and name the service.
     LOG_LEVEL: z.enum(["error", "warn", "info", "debug"]).optional(),
