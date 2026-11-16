@@ -183,6 +183,8 @@ interface PurchaseLine {
 }
 
 export interface PurchaseDescription {
+  /** What the user did, shown once the approval is recorded. */
+  approvedText: string;
   lines: PurchaseLine[];
   /** One line for a push notification body, after the client name. */
   pushText: string;
@@ -237,6 +239,7 @@ export function describePurchase(detail: unknown): PurchaseDescription | null {
       title: "Purchase",
       lines: [{ source: "agent", label: STATED_BY_AGENT, text: statement }],
       pushText: `Purchase stated by the agent: ${statement}`,
+      approvedText: "You approved the purchase. The agent can now continue.",
     };
   }
 
@@ -275,6 +278,7 @@ export function describePurchase(detail: unknown): PurchaseDescription | null {
         },
       ],
       pushText: `Prove your identity to ${merchant} (${strength})`,
+      approvedText: `You proved to ${merchant} that your identity is verified. The agent can now continue.`,
     };
   }
 

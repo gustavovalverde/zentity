@@ -152,7 +152,11 @@ test.describe("demo-rp consumer scenarios", () => {
       const paid = await runX402Agent({
         url: resourceUrl,
         onPendingApproval: (authReqId) =>
-          approveCibaRequestWithPasskey(browser, authReqId),
+          approveCibaRequestWithPasskey(
+            browser,
+            authReqId,
+            `You proved to ${new URL(demoRpBaseURL).host} that your identity is verified. The agent can now continue.`
+          ),
       });
       expect(paid.status, await paid.clone().text()).toBe(200);
       expect(await paid.json()).toMatchObject({

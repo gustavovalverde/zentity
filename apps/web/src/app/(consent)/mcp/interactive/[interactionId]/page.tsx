@@ -41,35 +41,27 @@ interface InteractionCopy {
   title?: string;
 }
 
+/**
+ * Copy for a profile disclosure. Every other request, a purchase included,
+ * keeps the approval view's own text: the agent's binding message, labeled as
+ * the agent's, and a description derived from the stored request, so an x402
+ * approval reads as a Proof-of-Human for its merchant.
+ */
 function buildInteractionCopy(input: {
   fields: string[];
   tool: string;
-}): InteractionCopy {
-  if (input.tool === "my_profile") {
-    return {
-      title: "Profile Access Request",
-      description:
-        "An application is requesting access to the selected profile fields. Vault-protected fields require an unlock before they can be released.",
-      successDescription:
-        "You approved the profile disclosure request. The requesting agent can now continue.",
-      deniedDescription: "You denied the profile disclosure request.",
-      requestedProfileFields: input.fields,
-    };
+}): InteractionCopy | null {
+  if (input.tool !== "my_profile") {
+    return null;
   }
-
-  if (input.tool === "purchase") {
-    return {
-      title: "Purchase Authorization",
-      description:
-        "An application is requesting approval to complete a purchase on your behalf.",
-      successDescription:
-        "You approved the purchase request. The requesting agent can now continue.",
-      deniedDescription: "You denied the purchase request.",
-    };
-  }
-
   return {
-    title: "Authorization Request",
+    title: "Profile Access Request",
+    description:
+      "An application is requesting access to the selected profile fields. Vault-protected fields require an unlock before they can be released.",
+    successDescription:
+      "You approved the profile disclosure request. The requesting agent can now continue.",
+    deniedDescription: "You denied the profile disclosure request.",
+    requestedProfileFields: input.fields,
   };
 }
 

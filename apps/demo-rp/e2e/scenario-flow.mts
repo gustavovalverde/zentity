@@ -199,7 +199,8 @@ async function approverPage(browser: Browser): Promise<Page> {
  */
 export async function approveCibaRequestWithPasskey(
   browser: Browser,
-  authReqId: string
+  authReqId: string,
+  approvedText?: string
 ) {
   const page = await approverPage(browser);
   await page.goto(`/approve/${await findCibaRequestId(authReqId)}`);
@@ -207,6 +208,9 @@ export async function approveCibaRequestWithPasskey(
   await expect(page.getByText("Request Approved")).toBeVisible({
     timeout: 30_000,
   });
+  if (approvedText) {
+    await expect(page.getByText(approvedText)).toBeVisible();
+  }
 }
 
 export async function importVeripassCredential(

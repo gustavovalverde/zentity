@@ -826,6 +826,9 @@ export function AgentApprovalView({
   }
 
   if (state === "approved" || state === "rejected") {
+    const purchaseApproved = details?.authorization_details
+      ?.map((detail) => describePurchase(detail)?.approvedText)
+      .find(Boolean);
     const rejectedDescription = error
       ? error
       : (interactionCopy?.deniedDescription ??
@@ -841,6 +844,7 @@ export function AgentApprovalView({
             <CardDescription>
               {state === "approved"
                 ? (interactionCopy?.successDescription ??
+                  purchaseApproved ??
                   `You have granted ${details?.client_name ?? "the application"} access to your account.`)
                 : rejectedDescription}
             </CardDescription>

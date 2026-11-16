@@ -206,6 +206,8 @@ describe("describePurchase", () => {
         },
       ],
       pushText: "Prove your identity to merchant.example (Document, full)",
+      approvedText:
+        "You proved to merchant.example that your identity is verified. The agent can now continue.",
     });
   });
 
@@ -231,6 +233,7 @@ describe("describePurchase", () => {
       ],
       pushText:
         "Purchase stated by the agent: A paperback from Corner Books, €12.00",
+      approvedText: "You approved the purchase. The agent can now continue.",
     });
     expect(JSON.stringify(description)).not.toContain("$");
   });
