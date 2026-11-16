@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import { KeyRound, Settings, TriangleAlert, User } from "lucide-react";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
@@ -7,23 +7,23 @@ import { PageHeader } from "@/components/chrome/page-header";
 import { Web3Provider } from "@/components/providers/web3-provider";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { configuredSocialProviders } from "@/lib/auth/auth-config";
 import { getCachedSession } from "@/lib/auth/session";
 import { db } from "@/lib/db/connection";
 import { userHasPassword } from "@/lib/db/queries/auth";
+import { accounts } from "@/lib/db/schema/auth";
 import { oauthClients, oauthConsents } from "@/lib/db/schema/oauth-provider";
 import { getVaultAccess } from "@/lib/privacy/secrets/vault-access";
 
 import { VaultAccessNotice } from "../_components/vault-access-notice";
+import { ConnectedAccountsCard } from "./_components/connected-accounts-card";
 import { ConnectedAppsCard } from "./_components/connected-apps-card";
 import { DeleteAccountSection } from "./_components/delete-account-section";
 import { EmailSection } from "./_components/email-section";
 import { OpaqueChangePasswordSection } from "./_components/opaque-change-password-section";
 import { PasskeyManagementSection } from "./_components/passkey-management-section";
 import { RecoveryKeySection } from "./_components/recovery-key-section";
-import {
-  ConnectedAccountsCard,
-  SessionsCard,
-} from "./_components/security-cards";
+import { SessionsCard } from "./_components/security-cards";
 import { SetPasswordSection } from "./_components/set-password-section";
 import { UserDataSection } from "./_components/user-data-section";
 
@@ -51,7 +51,7 @@ export default async function SettingsPage({
     redirect("/sign-in");
   }
 
-  const [hasPassword, access, consents] = await Promise.all([
+  const [hasPassword, access, consents, socialAccounts] = await Promise.all([
     userHasPassword(session.user.id),
     getVaultAccess(session.user.id),
     db
@@ -71,6 +71,21 @@ export default async function SettingsPage({
         eq(oauthConsents.clientId, oauthClients.clientId)
       )
       .where(eq(oauthConsents.userId, session.user.id)),
+    configuredSocialProviders.length > 0
+      ? db
+          .select({
+            id: accounts.id,
+            providerId: accounts.providerId,
+            createdAt: accounts.createdAt,
+          })
+          .from(accounts)
+          .where(
+            and(
+              eq(accounts.userId, session.user.id),
+              inArray(accounts.providerId, configuredSocialProviders)
+            )
+          )
+      : [],
   ]);
 
   const credentialSections = (
@@ -151,7 +166,13 @@ export default async function SettingsPage({
           />
           <SessionsCard />
           <ConnectedAppsCard consents={consents} />
-          <ConnectedAccountsCard />
+          {configuredSocialProviders.length > 0 ? (
+            <ConnectedAccountsCard
+              accounts={socialAccounts}
+              linkError={params.tab === "account" ? params.error : undefined}
+              providers={configuredSocialProviders}
+            />
+          ) : null}
 
           <div className="pt-6">
             <SectionHeader
