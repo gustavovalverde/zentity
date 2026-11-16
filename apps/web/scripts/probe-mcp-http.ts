@@ -265,6 +265,21 @@ async function cleanupProbeState(state: ProbeState): Promise<void> {
   ]);
 }
 
+/** A Streamable HTTP response is JSON, or SSE whose data line holds it. */
+function parseJsonRpc(contentType: string | null, body: string): unknown {
+  if (contentType?.includes("text/event-stream")) {
+    const data = body
+      .split("\n")
+      .find((line) => line.startsWith("data:"))
+      ?.slice("data:".length);
+    if (!data) {
+      throw new Error(`No data line in the SSE response: ${body}`);
+    }
+    return JSON.parse(data);
+  }
+  return JSON.parse(body);
+}
+
 async function callTool(
   mcpEndpoint: string,
   accessToken: string,
@@ -293,7 +308,10 @@ async function callTool(
     )
   );
   return {
-    json: JSON.parse(body) as JsonRpcToolResponse,
+    json: parseJsonRpc(
+      response.headers.get("content-type"),
+      body
+    ) as JsonRpcToolResponse,
     response,
   };
 }
