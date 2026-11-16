@@ -126,9 +126,22 @@ describe("dpop client", () => {
     );
 
     expect(proof).toContain("\"htu\":\"https://issuer.example/oauth2/token\"");
-    await expect(
-      client.proofFor("POST", "https://issuer.example/oauth2/token#frag")
-    ).rejects.toThrow("fragment");
+  });
+
+  it("drops the query and fragment from htu instead of rejecting the URL", async () => {
+    const client = await createDpopClient();
+
+    for (const url of [
+      "https://issuer.example/oauth2/token#frag",
+      "https://issuer.example/oauth2/token?client_id=abc#frag",
+      new URL("https://issuer.example/oauth2/token#frag"),
+    ]) {
+      const proof = await client.proofFor("POST", url);
+      expect(proof).toContain(
+        "\"htu\":\"https://issuer.example/oauth2/token\""
+      );
+      expect(proof).not.toContain("frag");
+    }
   });
 
   describe("fetch", () => {
