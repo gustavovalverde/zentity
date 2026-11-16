@@ -43,8 +43,8 @@ import { Spinner } from "@/components/ui/spinner";
 import { asyncHandler } from "@/lib/async-handler";
 import { authClient } from "@/lib/auth/auth-client";
 import {
+  describeScopes,
   HIDDEN_SCOPES,
-  SCOPE_DESCRIPTIONS,
 } from "@/lib/auth/oidc/disclosure/registry";
 import { groupScopes } from "@/lib/auth/oidc/disclosure/scope-display";
 import { formatDate } from "@/lib/date-format";
@@ -190,8 +190,8 @@ export function ConnectedAppsCard({
                         ))}
                         {visibleScopes.length > 0 && (
                           <span className="text-muted-foreground text-xs leading-5">
-                            {visibleScopes
-                              .map((s) => SCOPE_DESCRIPTIONS[s] ?? s)
+                            {describeScopes(visibleScopes)
+                              .map((line) => line.description)
                               .join(", ")}
                           </span>
                         )}
