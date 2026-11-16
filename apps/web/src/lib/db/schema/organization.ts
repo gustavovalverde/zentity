@@ -1,7 +1,6 @@
-import { sql } from "drizzle-orm";
 import { index, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
 
-import { users } from "./auth";
+import { isoTimestampNow, users } from "./auth";
 
 export const organizations = sqliteTable(
   "organization",
@@ -11,7 +10,7 @@ export const organizations = sqliteTable(
     slug: text("slug").notNull(),
     logo: text("logo"),
     metadata: text("metadata", { mode: "json" }),
-    createdAt: text("createdAt").notNull().default(sql`(datetime('now'))`),
+    createdAt: text("createdAt").notNull().default(isoTimestampNow),
     updatedAt: text("updatedAt"),
   },
   (table) => [
@@ -31,7 +30,7 @@ export const members = sqliteTable(
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
     role: text("role").notNull().default("member"),
-    createdAt: text("createdAt").notNull().default(sql`(datetime('now'))`),
+    createdAt: text("createdAt").notNull().default(isoTimestampNow),
   },
   (table) => [
     index("member_org_idx").on(table.organizationId),
@@ -50,7 +49,7 @@ export const invitations = sqliteTable(
     role: text("role").notNull(),
     status: text("status").notNull().default("pending"),
     expiresAt: text("expiresAt"),
-    createdAt: text("createdAt").notNull().default(sql`(datetime('now'))`),
+    createdAt: text("createdAt").notNull().default(isoTimestampNow),
     inviterId: text("inviterId")
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
