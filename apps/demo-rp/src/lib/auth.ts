@@ -222,7 +222,9 @@ function makeProviderConfig(
 ) {
   return {
     providerId: oauthProviderId,
-    discoveryUrl: `${env.ZENTITY_URL}/.well-known/openid-configuration`,
+    // Zentity's issuer is `${ZENTITY_URL}/api/auth`, and generic-oauth refuses
+    // a document whose issuer the discovery URL does not name.
+    discoveryUrl: `${env.ZENTITY_URL}/api/auth/.well-known/openid-configuration`,
     clientId,
     postLogoutRedirectURI: `${env.NEXT_PUBLIC_APP_URL}/${scenarioId}`,
     scopes,

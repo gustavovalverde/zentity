@@ -1,6 +1,8 @@
+import { execFile } from "node:child_process";
 import crypto from "node:crypto";
+import { promisify } from "node:util";
 
-import { eq } from "drizzle-orm";
+import { eq, like } from "drizzle-orm";
 import { decodeJwt, SignJWT } from "jose";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -206,6 +208,16 @@ async function refreshStatus(
     tokens.dpopKeyPair
   );
   return status;
+}
+
+/** Runs the deploy-time transition script against the test database. */
+async function runTransitionScript(): Promise<string> {
+  const { stdout } = await promisify(execFile)(
+    "pnpm",
+    ["exec", "tsx", "scripts/backfill-oauth-token-transition.ts"],
+    { env: process.env }
+  );
+  return stdout;
 }
 
 /** The `jti`s the wallet runtime's revocation feed reports. */
@@ -444,6 +456,43 @@ describe("RFC 7009 token revocation", () => {
     const result = await revoke({ token, ...credentialsFor(OWNER.id) });
     expect(result.status).toBe(200);
     expect(await introspectionActive(token)).toBe(false);
+  });
+
+  it("backfills provider marks for JWTs an earlier release revoked", async () => {
+    const tokens = await issueTokens(userId, sessionId, OWNER.id);
+    const { jti } = decodeJwt(tokens.accessToken);
+    if (typeof jti !== "string") {
+      throw new Error("access token has no jti");
+    }
+    // Earlier releases recorded a JWT's revocation only in revoked_token.
+    await db
+      .insert(revokedTokens)
+      .values([
+        { jti, revokedAt: new Date() },
+        { jti: "expired-jti", revokedAt: new Date(Date.now() - 7_200_000) },
+      ])
+      .run();
+    expect(await introspectionActive(tokens.accessToken)).toBe(true);
+
+    expect(await runTransitionScript()).toContain(
+      "revocation markers added: 1"
+    );
+    expect(await runTransitionScript()).toContain(
+      "revocation markers added: 0"
+    );
+
+    const markers = await db
+      .select({ identifier: verifications.identifier })
+      .from(verifications)
+      .where(like(verifications.identifier, "oauth-revoked-access-token:%"))
+      .all();
+    expect(markers).toEqual([
+      { identifier: `oauth-revoked-access-token:${jti}` },
+    ]);
+    expect(await introspectionActive(tokens.accessToken)).toBe(false);
+    expect(await userInfoStatus(tokens.accessToken, tokens.dpopKeyPair)).toBe(
+      401
+    );
   });
 
   it("lets a public client revoke its own token with its client_id", async () => {
