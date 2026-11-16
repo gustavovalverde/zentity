@@ -59,7 +59,12 @@ export function buildConfidentialClientNetworks({
       rpcUrl: confidentialChainRpcUrl,
     },
     [hardhat.id]: {
-      chain: { ...hardhat, network: localRpcUrl },
+      chain: {
+        ...hardhat,
+        // @fhevm/hardhat-plugin's mock deploys KMSVerifier at this address; remove when the preset and plugin agree.
+        kmsContractAddress: "0xbE0E383937d564D7FF0BC3b46c51f0bF8d5C311A",
+        network: localRpcUrl,
+      },
       chainId: hardhat.id,
       id: "hardhat",
       mode: "cleartext",

@@ -23,6 +23,9 @@ describe("confidential client networks", () => {
     expect(hardhat?.mode).toBe("cleartext");
     expect(hardhat?.rpcUrl).toBe("http://127.0.0.1:9545");
     expect(hardhat?.chain.network).toBe("http://127.0.0.1:9545");
+    expect(hardhat?.chain.kmsContractAddress).toBe(
+      "0xbE0E383937d564D7FF0BC3b46c51f0bF8d5C311A"
+    );
   });
 
   it("routes Sepolia through the relayer proxy with the configured RPC", () => {
