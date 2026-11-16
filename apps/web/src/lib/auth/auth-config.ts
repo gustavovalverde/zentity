@@ -74,7 +74,6 @@ import {
 } from "@/lib/assurance/oidc-claims";
 import { getAccountAssurance } from "@/lib/assurance/posture";
 import {
-  AUTHENTICATION_CONTEXT_CLAIM,
   createSessionAuthenticationContext,
   deleteUnreferencedAuthenticationContext,
   getAuthenticationStateBySessionId,
@@ -914,10 +913,13 @@ async function beforeCibaTokenLoadRequest(ctx: HookCtx) {
 }
 
 /**
- * Drains the CIBA token stash after `/oauth2/token` by recording the issued
- * token on the approval, whose `reference_id` every CIBA token carries as its
- * own. Introspection finds the approval of a JWT by that `jti` and of an
- * opaque token by its `reference_id`.
+ * Drains the CIBA token stash after `/oauth2/token`: writes the approval-time
+ * authentication context onto the issued access token record (a Zentity
+ * extension column the upstream issuance does not set, so no token or
+ * introspection response carries it), and records the issued token on the
+ * approval, whose `reference_id` every CIBA token carries as its own.
+ * Introspection finds the approval of a JWT by that `jti` and of an opaque
+ * token by its `reference_id`.
  */
 async function afterCibaTokenPersist(ctx: HookCtx) {
   const pending = await getPendingCibaToken();
@@ -925,6 +927,14 @@ async function afterCibaTokenPersist(ctx: HookCtx) {
     return;
   }
   const { authReqIdHash } = pending;
+
+  if (pending.authContextId) {
+    await db
+      .update(oauthAccessTokens)
+      .set({ authContextId: pending.authContextId })
+      .where(eq(oauthAccessTokens.referenceId, authReqIdHash))
+      .run();
+  }
 
   const responseBody = await readReturnedResponseBody(
     (ctx.context as { returned?: unknown }).returned
@@ -1068,24 +1078,7 @@ async function buildIdTokenDisclosureClaims(input: {
 
   let assuranceClaims: Record<string, unknown> = {};
   if (scopeList.includes("openid")) {
-    // For refresh-token grants the original CIBA request may have been
-    // deleted. Fall back to the refresh token's stored authContextId.
-    let resolvedAuth = auth;
-    if (!resolvedAuth && input.referenceId) {
-      const refreshRow = await db
-        .select({ authContextId: oauthRefreshTokens.authContextId })
-        .from(oauthRefreshTokens)
-        .where(eq(oauthRefreshTokens.referenceId, input.referenceId))
-        .limit(1)
-        .get();
-      if (refreshRow?.authContextId) {
-        resolvedAuth = await resolveAuthenticationContext({
-          authContextId: refreshRow.authContextId,
-          sessionId: null,
-        });
-      }
-    }
-    if (!resolvedAuth) {
+    if (!auth) {
       throw invalidGrantDisclosureError(
         "Authentication context required for ID token issuance"
       );
@@ -1094,13 +1087,10 @@ async function buildIdTokenDisclosureClaims(input: {
       isAuthenticated: true,
     });
     assuranceClaims = {
-      ...buildNamespacedAssuranceClaim(assurance, resolvedAuth),
+      ...buildNamespacedAssuranceClaim(assurance, auth),
     };
   }
 
-  const authContextClaims = auth
-    ? { [AUTHENTICATION_CONTEXT_CLAIM]: auth.id }
-    : {};
   const releaseContext =
     input.referenceId && input.clientId
       ? await loadReleaseContext(
@@ -1113,12 +1103,11 @@ async function buildIdTokenDisclosureClaims(input: {
   );
 
   // The claims-request parameter filters the standard/proof claims it can name.
-  // The namespaced zentity_assurance and auth-context claims are always included
-  // when they apply, like any zentity-owned claim a client cannot opt out of.
+  // The namespaced zentity_assurance claim is always included when it applies,
+  // like any zentity-owned claim a client cannot opt out of.
   return {
     ...filterClaimsByRequest(proofClaims, idTokenFilter),
     ...assuranceClaims,
-    ...authContextClaims,
   };
 }
 
@@ -1140,12 +1129,8 @@ async function buildAccessTokenDisclosureClaims(
   });
   const clientId = info.client?.clientId;
   const referenceId = info.referenceId;
-  const sessionId = info.sessionId;
   const scopeList = toScopeList(info.scopes);
   const claims: Record<string, unknown> = {};
-  // Non-empty when this is a CIBA-issued token whose approval captured an
-  // authentication context.
-  const cibaAuthContextId = await pendingCibaAuthContextId(referenceId);
 
   // Per-RP sybil nullifier
   if (scopeList.includes("proof:sybil") && clientId) {
@@ -1168,10 +1153,6 @@ async function buildAccessTokenDisclosureClaims(
     }
   }
 
-  if (cibaAuthContextId) {
-    claims[AUTHENTICATION_CONTEXT_CLAIM] = cibaAuthContextId;
-  }
-
   // Extend the identity-payload TTL whenever a token is minted for a
   // release-bound request so the payload survives until userinfo consumes it.
   if (referenceId && clientId) {
@@ -1184,21 +1165,6 @@ async function buildAccessTokenDisclosureClaims(
         Date.now() + 3600 * 1000
       );
       claims[RELEASE_BINDING_CLAIM] = releaseContext.releaseId;
-    }
-  }
-
-  // sessionId-bound authentication context is only added when there is no
-  // session (CIBA / opaque introspection); the session-bound path derives it
-  // from the session directly.
-  if (!(sessionId || claims[AUTHENTICATION_CONTEXT_CLAIM]) && referenceId) {
-    const refreshRow = await db
-      .select({ authContextId: oauthRefreshTokens.authContextId })
-      .from(oauthRefreshTokens)
-      .where(eq(oauthRefreshTokens.referenceId, referenceId))
-      .limit(1)
-      .get();
-    if (refreshRow?.authContextId) {
-      claims[AUTHENTICATION_CONTEXT_CLAIM] = refreshRow.authContextId;
     }
   }
 

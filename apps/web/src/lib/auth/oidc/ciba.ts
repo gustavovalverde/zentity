@@ -30,7 +30,6 @@ import { approvalPolicy, requiredCeremony } from "@/lib/agents/capability";
 import { computeAcr, loginMethodToAmr } from "@/lib/assurance/oidc-claims";
 import { getAccountAssurance } from "@/lib/assurance/posture";
 import {
-  AUTHENTICATION_CONTEXT_CLAIM,
   createAuthenticationContext,
   getAuthenticationStateBySessionId,
 } from "@/lib/auth/auth-context";
@@ -112,7 +111,7 @@ export function getPendingCibaToken(): Promise<PendingCibaToken | null> {
   return pendingCibaTokenState.get();
 }
 
-// ── Token grant actor and authentication ─────────────────────────────
+// ── Token grant actor ────────────────────────────────────────────────
 
 async function pendingCibaTokenFor(
   params: OAuthTokenIssueParams
@@ -176,11 +175,9 @@ function approvalTokenResponse(
  * Better Auth owns a token's `act` and stamps only the one a grant passes to
  * `issueTokens`, which the `@better-auth/ciba` grant does not do, so the CIBA
  * grant issues through a provider that adds it, along with the approval's
- * authentication context and the token response members. The authentication
- * context goes in the token's claims, which the provider stores on an opaque
- * token, because the token has no session to resolve it from. Like any
- * delegated issuance, a CIBA token then comes without a refresh token,
- * because a refreshed token would no longer name the actor.
+ * token response members. Like any delegated issuance, a CIBA token then
+ * comes without a refresh token, because a refreshed token would no longer
+ * name the actor.
  */
 function issueCibaTokensWithActor(context: AuthContext): void {
   const grants = oauthProviderOptions(context).extensions?.find(
@@ -200,14 +197,6 @@ function issueCibaTokensWithActor(context: AuthContext): void {
           return input.provider.issueTokens({
             ...params,
             act: await resolveCibaActor(params, pending),
-            ...(pending?.authContextId
-              ? {
-                  accessTokenClaims: {
-                    ...params.accessTokenClaims,
-                    [AUTHENTICATION_CONTEXT_CLAIM]: pending.authContextId,
-                  },
-                }
-              : {}),
             tokenResponse: {
               ...params.tokenResponse,
               ...approvalTokenResponse(pending),

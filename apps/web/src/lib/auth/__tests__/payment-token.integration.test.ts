@@ -43,7 +43,10 @@ import { GET as listRevocations } from "@/app/api/auth/oauth2/revoked/route";
 import { env } from "@/env";
 import { auth } from "@/lib/auth/auth-config";
 import { createAuthenticationContext } from "@/lib/auth/auth-context";
-import { stageFinalCibaDisclosure } from "@/lib/auth/oidc/disclosure/context";
+import {
+  RELEASE_BINDING_CLAIM,
+  stageFinalCibaDisclosure,
+} from "@/lib/auth/oidc/disclosure/context";
 import { createScopeHash } from "@/lib/auth/oidc/disclosure/delivery";
 import { pairwiseValue, resolveSubForClientId } from "@/lib/auth/oidc/pairwise";
 import { getAuthIssuer } from "@/lib/auth/oidc/well-known";
@@ -429,6 +432,27 @@ describe("payment_authorization token", () => {
     const claims = decodeJwt(accessToken);
     expect((claims.exp ?? 0) - (claims.iat ?? 0)).toBe(120);
     expect(claims.ba_sub).toEqual(expect.any(String));
+    // R8: a staged release adds only its binding claim; the proof scopes add
+    // no anti-abuse handle to a token for an outside audience.
+    expect(Object.keys(claims).toSorted()).toEqual(
+      [
+        "iss",
+        "sub",
+        "ba_sub",
+        "aud",
+        "azp",
+        "client_id",
+        "scope",
+        "iat",
+        "exp",
+        "jti",
+        "cnf",
+        "reference_id",
+        "authorization_details",
+        "act",
+        RELEASE_BINDING_CLAIM,
+      ].toSorted()
+    );
 
     const userInfo = await fetchUserInfo(accessToken, dpopKeyPair);
     expect(userInfo).toEqual({
@@ -497,10 +521,34 @@ describe("payment_authorization token", () => {
   // what the approval authorizes goes to the client in the token response.
   it("keeps the actor Zentity computed for a verified agent", async () => {
     const agent = await createRegisteredAgent(userId);
-    const { authReqId } = await approvePayment({ agent });
+    const { authReqId, authReqIdHash } = await approvePayment({ agent });
 
     const response = (await pollToken(authReqId)).json;
     const claims = decodeJwt(response.access_token as string);
+    // R8: the wallet reads aud, jti, exp, cnf, and authorization_details;
+    // nothing else beyond the RFC 9068 and provider claims reaches it.
+    expect(Object.keys(claims).toSorted()).toEqual(
+      [
+        "iss",
+        "sub",
+        "ba_sub",
+        "aud",
+        "azp",
+        "client_id",
+        "scope",
+        "iat",
+        "exp",
+        "jti",
+        "cnf",
+        "reference_id",
+        "authorization_details",
+        "act",
+      ].toSorted()
+    );
+    // R4: the request hash appears once, as the token's reference_id.
+    expect(JSON.stringify(claims).split(authReqIdHash).length - 1).toBe(1);
+    expect(JSON.stringify(response)).not.toContain(agent.sessionId);
+    expect(JSON.stringify(response)).not.toContain(agent.hostId);
     for (const claim of [
       "task",
       "audit",

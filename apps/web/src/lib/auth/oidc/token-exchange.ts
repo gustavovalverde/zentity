@@ -24,11 +24,11 @@ import {
   AGENT_BOOTSTRAP_SCOPE_SET,
   AGENT_BOOTSTRAP_TOKEN_USE,
 } from "@/lib/agents/session";
+import { resolveAuthenticationContext } from "@/lib/auth/auth-context";
 import {
-  AUTHENTICATION_CONTEXT_CLAIM,
-  resolveAuthenticationContext,
-} from "@/lib/auth/auth-context";
-import { mintOpaqueAccessToken } from "@/lib/auth/oidc/haip/opaque-access-token";
+  loadOpaqueAccessTokenAuthContextId,
+  mintOpaqueAccessToken,
+} from "@/lib/auth/oidc/haip/opaque-access-token";
 import { isZentityAccessToken } from "@/lib/auth/oidc/resource-access-token";
 import { db } from "@/lib/db/connection";
 import { cibaApprovals } from "@/lib/db/schema/ciba";
@@ -104,21 +104,18 @@ async function hasCibaApproval(referenceId: unknown): Promise<boolean> {
 
 /**
  * The subject's authentication context, resolved on the server and never
- * read from a claim the client presented: its session's, or for an opaque
- * token without a session, the one stored with the token's claims.
+ * read from a claim: its session's, or for an opaque token without a session,
+ * the one stored with the token.
  */
 async function resolveSubjectAuthContextId(
   subjectToken: string,
   subject: JWTPayload
 ): Promise<string | null> {
   const sessionId = typeof subject.sid === "string" ? subject.sid : null;
-  const stored = subject[AUTHENTICATION_CONTEXT_CLAIM];
   const authContextId =
-    sessionId ||
-    subjectToken.split(".").length === 3 ||
-    typeof stored !== "string"
+    sessionId || subjectToken.split(".").length === 3
       ? null
-      : stored;
+      : await loadOpaqueAccessTokenAuthContextId(subjectToken);
   const context = await resolveAuthenticationContext({
     authContextId,
     sessionId,
@@ -311,12 +308,11 @@ async function exchangeToken({
   }
 
   const sessionId = typeof subject.sid === "string" ? subject.sid : undefined;
-  // A session-bound token resolves its authentication through the session.
   const accessToken = await mintOpaqueAccessToken({
-    accessTokenClaims: {
-      ...(bootstrap ? { zentity_token_use: AGENT_BOOTSTRAP_TOKEN_USE } : {}),
-      ...(sessionId ? {} : { [AUTHENTICATION_CONTEXT_CLAIM]: authContextId }),
-    },
+    accessTokenClaims: bootstrap
+      ? { zentity_token_use: AGENT_BOOTSTRAP_TOKEN_USE }
+      : {},
+    authContextId: sessionId ? undefined : authContextId,
     clientId: client.clientId,
     dpopJkt,
     expiresAt: new Date(exp * 1000),

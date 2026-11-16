@@ -12,7 +12,6 @@ const WALLET_AUDIENCE = vi.hoisted(() => {
 import { POST as registerClient } from "@/app/api/auth/oauth2/register/route";
 import { env } from "@/env";
 import { auth } from "@/lib/auth/auth-config";
-import { AUTHENTICATION_CONTEXT_CLAIM } from "@/lib/auth/auth-context";
 import { encryptPrivateKey } from "@/lib/auth/oidc/jwt-signer";
 import { resolveSubForClientId } from "@/lib/auth/oidc/pairwise";
 import { introspectZentityAccessToken } from "@/lib/auth/oidc/resource-principal";
@@ -238,12 +237,6 @@ async function insertOpaqueToken(input: {
   userId: string;
 }) {
   const token = `opaque-${crypto.randomUUID()}`;
-  const accessTokenClaims = {
-    ...input.accessTokenClaims,
-    ...(input.authContextId
-      ? { [AUTHENTICATION_CONTEXT_CLAIM]: input.authContextId }
-      : {}),
-  };
   await db
     .insert(oauthAccessTokens)
     .values({
@@ -251,16 +244,16 @@ async function insertOpaqueToken(input: {
       clientId: input.clientId ?? AGENT_ID,
       userId: input.userId,
       sessionId: input.sessionId ?? null,
+      authContextId: input.authContextId ?? null,
       referenceId: input.referenceId ?? crypto.randomUUID(),
       scopes: JSON.stringify(input.scopes.split(" ")),
       expiresAt: input.expiresAt ?? new Date(Date.now() + 3_600_000),
       confirmation: input.dpopKeyPair
         ? JSON.stringify({ jkt: await jwkThumbprint(input.dpopKeyPair) })
         : null,
-      accessTokenClaims:
-        Object.keys(accessTokenClaims).length > 0
-          ? JSON.stringify(accessTokenClaims)
-          : null,
+      accessTokenClaims: input.accessTokenClaims
+        ? JSON.stringify(input.accessTokenClaims)
+        : null,
     })
     .run();
   return token;

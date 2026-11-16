@@ -20,10 +20,7 @@ import {
   ensureCapabilitiesSeeded,
 } from "@/lib/agents/capability";
 import { auth } from "@/lib/auth/auth-config";
-import {
-  AUTHENTICATION_CONTEXT_CLAIM,
-  createAuthenticationContext,
-} from "@/lib/auth/auth-context";
+import { createAuthenticationContext } from "@/lib/auth/auth-context";
 import { TOKEN_EXCHANGE_GRANT_TYPE } from "@/lib/auth/oidc/token-exchange";
 import { db } from "@/lib/db/connection";
 import {
@@ -111,9 +108,7 @@ async function issueBootstrapToken(
   await db
     .insert(oauthAccessTokens)
     .values({
-      accessTokenClaims: JSON.stringify({
-        [AUTHENTICATION_CONTEXT_CLAIM]: authContextId,
-      }),
+      authContextId,
       clientId: CLIENT_ID,
       confirmation: JSON.stringify({
         jkt: await calculateJwkThumbprint(dpopKeyPair.jwk, "sha256"),
@@ -372,7 +367,7 @@ describe("CIBA approval from capability grants", () => {
     // The ID token carries the authentication that delegated the agent
     // session, not a fresh login the user never performed.
     const idToken = decodeJwt(token.json.id_token as string);
-    expect(idToken[AUTHENTICATION_CONTEXT_CLAIM]).toBe(delegationAuthContextId);
+    expect(idToken).not.toHaveProperty("zentity_auth_context_id");
     expect(idToken.auth_time).toBe(
       Math.floor(delegationAuthenticatedAt.getTime() / 1000)
     );

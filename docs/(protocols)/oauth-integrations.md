@@ -344,7 +344,7 @@ Clients cannot claim a resource themselves: a `zentity_protected_resource` regis
 | No authentication context resolves for it | `subject_token has no authentication context` |
 | Expires before the exchanged token could be issued | `the token this grant derives from has expired` |
 
-The authentication context comes from the server, never from a claim the client presents: the subject's session, or for an opaque subject without a session, the context stored with its claims. A JWT subject without a session has no context and is refused. An exchanged token issued without a session stores that context as `zentity_auth_context_id` among its access-token claims, which introspection returns, as it does for a CIBA token.
+The authentication context comes from the server, never from a claim: the subject's session, or for an opaque subject without a session, its stored context. A JWT subject without a session has no context and is refused. An exchanged token issued without a session keeps that context in a column of its token record that introspection does not return, as a CIBA token does.
 
 A remote MCP host's grant ends with the user's browser session. Once the user signs out or the session expires, the host's MCP-audience token is inactive, so the exchange refuses it. Its `offline_access` refresh token survives sign-out, but the refresh does not restore access: an `openid` refresh is refused with `invalid_grant` because no authentication context remains for the ID token, and any access token a refresh issues carries the ended `sid`, which the OAuth provider treats as revoked. The host must authorize its MCP connector again.
 

@@ -7,10 +7,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { env } from "@/env";
 import { auth } from "@/lib/auth/auth-config";
-import {
-  AUTHENTICATION_CONTEXT_CLAIM,
-  createAuthenticationContext,
-} from "@/lib/auth/auth-context";
+import { createAuthenticationContext } from "@/lib/auth/auth-context";
 import { createCibaApproval } from "@/lib/auth/oidc/ciba";
 import { pairwiseValue } from "@/lib/auth/oidc/pairwise";
 import { db } from "@/lib/db/connection";
@@ -146,13 +143,9 @@ async function inspectCibaAccessToken(
     if (typeof payload.jti !== "string" || payload.jti.length === 0) {
       throw new Error("Expected JWT access token to carry a jti");
     }
-    if (
-      authContextId &&
-      payload[AUTHENTICATION_CONTEXT_CLAIM] !== authContextId
-    ) {
-      throw new Error(
-        `Expected JWT auth context ${authContextId}, got ${String(payload[AUTHENTICATION_CONTEXT_CLAIM])}`
-      );
+    // R10: the approval's authentication context stays on the server.
+    if ("zentity_auth_context_id" in payload) {
+      throw new Error("Expected no authentication context id in the JWT");
     }
     return { kind: "jwt" as const, payload };
   }
@@ -171,11 +164,9 @@ async function inspectCibaAccessToken(
       `Expected opaque token userId ${userId}, got ${String(record.userId)}`
     );
   }
-  const storedAuthContextId =
-    record.accessTokenClaims[AUTHENTICATION_CONTEXT_CLAIM];
-  if (authContextId && storedAuthContextId !== authContextId) {
+  if (authContextId && record.authContextId !== authContextId) {
     throw new Error(
-      `Expected opaque token auth context ${authContextId}, got ${String(storedAuthContextId)}`
+      `Expected opaque token auth context ${authContextId}, got ${String(record.authContextId)}`
     );
   }
   return { kind: "opaque" as const, record };

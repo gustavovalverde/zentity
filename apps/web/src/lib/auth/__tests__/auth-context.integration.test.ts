@@ -1,8 +1,10 @@
 import crypto from "node:crypto";
 
 import { eq, sql } from "drizzle-orm";
+import { decodeJwt } from "jose";
 import { beforeEach, describe, expect, it } from "vitest";
 
+import { env } from "@/env";
 import {
   createSessionAuthenticationContext,
   deleteUnreferencedAuthenticationContext,
@@ -15,8 +17,12 @@ import {
   createTestAuthContext,
   createTestCibaRequest,
   createTestUser,
+  findStoredOpaqueAccessToken,
   resetDatabase,
 } from "@/test-utils/db-test-utils";
+import { postTokenWithDpop } from "@/test-utils/dpop-test-utils";
+
+const CIBA_GRANT_TYPE = "urn:openid:params:grant-type:ciba";
 
 async function insertSession(userId: string, createdAt: string) {
   const sessionId = crypto.randomUUID();
@@ -177,5 +183,61 @@ describe("deleteUnreferencedAuthenticationContext", () => {
     await deleteUnreferencedAuthenticationContext(authContextId);
 
     expect(await contextExists(authContextId)).toBe(true);
+  });
+});
+
+// R10: an authentication context id is a browser-session correlator, so no
+// token carries it; the server finds a token's context on its own records.
+describe("authentication context ids in tokens", () => {
+  const clientId = "auth-context-token-client";
+
+  beforeEach(async () => {
+    await resetDatabase();
+    await db
+      .insert(oauthClients)
+      .values({
+        clientId,
+        name: "Auth Context Client",
+        redirectUris: JSON.stringify(["http://localhost/callback"]),
+        grantTypes: JSON.stringify([CIBA_GRANT_TYPE]),
+        tokenEndpointAuthMethod: "none",
+        subjectType: "pairwise",
+        sectorIdentifier: `client/${clientId}`,
+        metadata: JSON.stringify({ backchannel_token_delivery_mode: "poll" }),
+      })
+      .run();
+  });
+
+  it.each([
+    ["a JWT access token", [env.MCP_PUBLIC_URL]],
+    ["an opaque access token", undefined],
+  ])("are not in the ID token or %s", async (_case, resources) => {
+    const userId = await createTestUser();
+    const { authReqId, authContextId } = await createTestCibaRequest({
+      clientId,
+      userId,
+      status: "approved",
+      ...(resources ? { resources: JSON.stringify(resources) } : {}),
+    });
+
+    const { status, json } = await postTokenWithDpop({
+      grant_type: CIBA_GRANT_TYPE,
+      auth_req_id: authReqId,
+      client_id: clientId,
+    });
+
+    expect(status).toBe(200);
+    const accessToken = json.access_token as string;
+    const accessClaims =
+      accessToken.split(".").length === 3
+        ? decodeJwt(accessToken)
+        : (await findStoredOpaqueAccessToken(accessToken))?.accessTokenClaims;
+    const idToken = decodeJwt(json.id_token as string);
+    for (const artifact of [accessClaims, idToken, json]) {
+      expect(artifact).not.toHaveProperty("zentity_auth_context_id");
+      expect(JSON.stringify(artifact)).not.toContain(authContextId);
+    }
+    // The ID token still states the approval's assurance.
+    expect(idToken.zentity_assurance).toEqual(expect.any(Object));
   });
 });

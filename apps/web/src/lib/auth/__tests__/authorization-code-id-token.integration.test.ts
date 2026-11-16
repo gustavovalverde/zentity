@@ -3,10 +3,7 @@ import crypto from "node:crypto";
 import { decodeJwt } from "jose";
 import { beforeEach, describe, expect, it } from "vitest";
 
-import {
-  AUTHENTICATION_CONTEXT_CLAIM,
-  createAuthenticationContext,
-} from "@/lib/auth/auth-context";
+import { createAuthenticationContext } from "@/lib/auth/auth-context";
 import {
   claimsRequestForEndpoint,
   loadReleaseContext,
@@ -169,6 +166,6 @@ describe("authorization_code id_token claims filtering", () => {
       unknown
     >;
     expect(assurance.acr).toBe("urn:zentity:assurance:tier-0");
-    expect(idTokenClaims[AUTHENTICATION_CONTEXT_CLAIM]).toBe(authContext.id);
+    expect(idTokenClaims).not.toHaveProperty("zentity_auth_context_id");
   });
 });
