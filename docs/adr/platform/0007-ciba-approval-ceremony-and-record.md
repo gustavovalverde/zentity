@@ -37,9 +37,9 @@ An unknown scope is page only, not grantable, and needs a session. An unknown or
 | --- | --- | --- | --- | --- |
 | `openid` | none | session | yes | neutral |
 | `compliance:read` | `check_compliance` | session | yes | yes |
-| `proof:*` predicates | `my_proofs` | session | yes | yes |
+| `proof:*` predicates other than `proof:sybil` and `proof:humanity:rp_unique` | `my_proofs` | session | yes | yes |
 | `identity.*` | `my_profile` | user verification with a passkey, else session | no | no |
-| `email`, `offline_access`, `proof:sybil`, `agent:*`, and other operational scopes | none | session | no | no |
+| `email`, `offline_access`, `proof:sybil`, `proof:humanity:rp_unique`, `agent:*`, and other operational scopes | none | session | no | no |
 | RAR `payment_authorization` | `payment_authorization:sign` | user verification | no | bounded grants only |
 | scope `payment_authorization:sign` | `payment_authorization:sign` | user verification | no | only with a payment entry |
 

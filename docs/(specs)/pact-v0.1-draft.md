@@ -583,9 +583,9 @@ The consent router derives what a request needs from one policy table with a row
 |------|------------|----------|--------|-----------|
 | `openid` | none (neutral) | `session` | Yes | neutral |
 | `compliance:read` | `check_compliance` | `session` | Yes | Yes |
-| Proof scopes (`proof:age`, `proof:nationality`, and the other `proof:*` predicates) | `my_proofs` | `session` | Yes | Yes |
+| Proof scopes (`proof:age`, `proof:nationality`, and the other `proof:*` predicates except the per-RP pseudonyms) | `my_proofs` | `session` | Yes | Yes |
 | Identity scopes (`identity.*`) | `my_profile` | `user_verification` when the user has a passkey, else `session` | No | No |
-| `email`, `offline_access`, `proof:sybil`, `agent:*`, and other operational scopes | none | `session` | No | No |
+| `email`, `offline_access`, `proof:sybil`, `proof:humanity:rp_unique`, `agent:*`, and other operational scopes | none | `session` | No | No |
 | `payment_authorization` entry | `payment_authorization:sign` | `user_verification` | No | Bounded grants only |
 
 The request as a whole:
