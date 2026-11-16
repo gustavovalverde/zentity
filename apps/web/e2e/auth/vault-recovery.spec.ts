@@ -65,7 +65,7 @@ async function resetPassword(page: Page, email: string): Promise<string> {
   await page.goto("/recovery/password");
   await page.getByRole("textbox", { name: EMAIL_LABEL }).fill(email);
   await page.getByRole("button", { name: "Send Reset Link" }).click();
-  await page.goto(await mail.waitForLink(email));
+  await page.goto(await mail.waitForLink(email, "/recovery/password/reset"));
 
   await expect(page.getByText(RESET_NOTICE)).toBeVisible();
   const newPassword = `Reset-${crypto.randomUUID()}`;
@@ -113,7 +113,7 @@ test.describe("Vault recovery", () => {
     await page.goto("/recovery/passkey");
     await page.getByLabel(EMAIL_LABEL).fill(email);
     await page.getByRole("button", { name: "Send sign-in link" }).click();
-    await page.goto(await mail.waitForLink(email));
+    await page.goto(await mail.waitForLink(email, "/magic-link/verify"));
     await page.waitForURL(RECOVERY_PASSKEY_URL);
 
     await addPrfAuthenticator(page);

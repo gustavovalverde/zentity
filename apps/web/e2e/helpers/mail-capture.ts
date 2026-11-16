@@ -51,17 +51,27 @@ export class MailCapture {
     return capture;
   }
 
-  async waitForLink(to: string, timeoutMs = 30_000): Promise<string> {
+  /**
+   * The newest link to `to` whose path ends with `path`. Other mail can
+   * reach the same address meanwhile, such as an account security notice.
+   */
+  async waitForLink(
+    to: string,
+    path: string,
+    timeoutMs = 30_000
+  ): Promise<string> {
     const deadline = Date.now() + timeoutMs;
     while (Date.now() < deadline) {
-      const message = this.messages.filter((m) => m.to.includes(to)).at(-1);
-      const link = message ? URL_PATTERN.exec(message.text)?.[0] : undefined;
+      const link = this.messages
+        .filter((m) => m.to.includes(to))
+        .map((m) => URL_PATTERN.exec(m.text)?.[0])
+        .findLast((url) => url && new URL(url).pathname.endsWith(path));
       if (link) {
         return link;
       }
       await new Promise((resolve) => setTimeout(resolve, 250));
     }
-    throw new Error(`No email with a link reached ${to}`);
+    throw new Error(`No email with a ${path} link reached ${to}`);
   }
 
   clear(): void {
