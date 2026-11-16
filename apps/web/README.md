@@ -9,7 +9,7 @@ This is the main web application for Zentity, providing:
 
 - **Sign-up** — 2-step wizard (email optional → account creation) with three
   authentication methods: passkeys, OPAQUE passwords, or wallet signatures
-  (EIP-712)
+  (Sign-In with Ethereum)
 - **Verification preflight** — FHE key enrollment is performed when users start
   verification
 - **Dashboard verification** — Document upload + liveness + proof generation

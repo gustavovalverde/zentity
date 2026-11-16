@@ -113,7 +113,7 @@ PAR is optional: a client may push its authorization request to the PAR endpoint
 
 For first-party CLI clients (e.g., the MCP server) that authenticate directly without browser redirects. Implements `draft-ietf-oauth-first-party-apps`.
 
-The AS resolves the user's credentials and selects the best CLI-compatible challenge: OPAQUE (password) > EIP-712 (wallet) > `redirect_to_web` (passkey-only fallback). Only clients with the `firstParty` flag can use this endpoint.
+The AS resolves the user's credentials and selects the best CLI-compatible challenge: OPAQUE (password) > Sign-In with Ethereum (wallet) > `redirect_to_web` (passkey-only fallback). Only clients with the `firstParty` flag can use this endpoint.
 
 #### OPAQUE flow (3 rounds)
 
@@ -136,7 +136,7 @@ sequenceDiagram
   AS-->>Client: { access_token, id_token, token_type: "DPoP", auth_session }
 ```
 
-#### EIP-712 flow (2 rounds)
+#### Sign-In with Ethereum flow (2 rounds)
 
 ```mermaid
 sequenceDiagram
@@ -145,20 +145,20 @@ sequenceDiagram
   participant AS as Zentity AS
 
   Client->>AS: POST /oauth2/authorize-challenge<br/>(identifier, client_id, scope, DPoP proof)
-  AS-->>Client: 401 { challenge_type: "eip712", auth_session, nonce, typed_data }
+  AS-->>Client: 401 { challenge_type: "siwe", auth_session, message }
 
-  Client->>AS: POST /oauth2/authorize-challenge<br/>(auth_session, signature, DPoP proof)
+  Client->>AS: POST /oauth2/authorize-challenge<br/>(auth_session, siwe_signature, DPoP proof)
   AS-->>Client: 200 { authorization_code }
 
   Client->>AS: POST /oauth2/token (code, DPoP proof)
   AS-->>Client: { access_token, id_token, token_type: "DPoP", auth_session }
 ```
 
-**Credential resolution**: The AS queries registered credentials and selects OPAQUE > EIP-712 > `redirect_to_web`. Unknown users receive a timing-safe OPAQUE challenge (indistinguishable from real). Passkey-only users receive `redirect_to_web` with an `auth_session` and no authorization request. A client that receives `redirect_to_web` must start its own browser authorization code flow with PKCE and a redirect URI it controls. The SDK's installed client (`createInstalledClientAuth`) signs in through that browser flow directly: it uses a loopback `redirect_uri` and pushes the request through PAR when discovery advertises a PAR endpoint.
+**Credential resolution**: The AS queries registered credentials and selects OPAQUE > Sign-In with Ethereum > `redirect_to_web`. Unknown users receive a timing-safe OPAQUE challenge (indistinguishable from real). Passkey-only users receive `redirect_to_web` with an `auth_session` and no authorization request. A client that receives `redirect_to_web` must start its own browser authorization code flow with PKCE and a redirect URI it controls. The SDK's installed client (`createInstalledClientAuth`) signs in through that browser flow directly: it uses a loopback `redirect_uri` and pushes the request through PAR when discovery advertises a PAR endpoint.
 
 **DPoP binding**: The DPoP key thumbprint (`jkt`) is bound to the `auth_session` at creation and enforced on all subsequent rounds. Key mismatch returns `invalid_session`. The issued authorization code carries the same thumbprint as `dpop_jkt`, so the token endpoint redeems it only with a DPoP proof from that key and returns `invalid_dpop_proof` otherwise.
 
-**EIP-712 nonce**: The nonce in `typed_data` is single-use and expires 15 minutes after it is issued. A signature over an expired or already redeemed nonce returns 401 `access_denied`, and concurrent finish rounds for one nonce yield at most one authorization code.
+**Wallet message**: `message` is an EIP-4361 message that the AS builds. Its domain and URI are the app origin from `NEXT_PUBLIC_APP_URL`, its statement is `Sign in to Zentity from a first-party app.`, and its Request ID is the challenge session's id. The client signs it with EIP-191 `personal_sign` (the SDK's `WalletAuthorizationStrategy.signMessage`), and the AS verifies the signature as an ECDSA signature from the wallet's own key (EOA). The message's nonce is single-use and expires with the message, five minutes after it is issued. A signature over an expired or already redeemed message returns 401 `access_denied`, and concurrent finish rounds for one message yield at most one authorization code. The browser sign-in and sign-up messages carry different statements and no Request ID, so a signature made for one of them is refused here, and a first-party signature is refused by the browser endpoints.
 
 **Step-up re-authentication**: When a CIBA token exchange fails due to `acr_values` mismatch, first-party clients receive HTTP 403 with `{ error: "insufficient_authorization", auth_session }` instead of 400 `interaction_required`. The client re-enters the challenge endpoint with the `auth_session` to re-authenticate at a higher assurance level, then exchanges the resulting code for upgraded tokens.
 

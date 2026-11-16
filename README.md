@@ -108,7 +108,7 @@ Most integrations need only proof scopes.
 | --- | --- | --- | --- |
 | ZK proving and verification | Noir + Barretenberg (bb.js + bb-worker) | Modern DSL, efficient proving, browser-capable client proofs with server verification | [ZK Architecture](docs/%28protocols%29/zk-architecture.md), [ADR ZK](docs/adr/zk/0001-client-side-zk-proving.md) |
 | Encrypted computation and payment-time compliance | TFHE-rs + Zama confidential chain + Base mirror | Compute on encrypted attributes, support optional on-chain attestations, and expose a narrow public predicate for x402/resource-server reads | [Web3 Architecture](docs/%28architecture%29/web3-architecture.md), [ADR FHE](docs/adr/fhe/0001-fhevm-onchain-attestations.md), [ADR-0005](docs/adr/fhe/0005-base-compliance-mirror-for-payment-reads.md) |
-| Auth + key custody | Passkey PRF + OPAQUE + EIP-712 Wallet | Passwordless, password-based, or Web3-native auth with user-held keys for sealing profiles and wrapping FHE keys | [ADR Privacy](docs/adr/privacy/0001-passkey-first-auth-prf-custody.md), [ADR Privacy](docs/adr/privacy/0003-passkey-sealed-profile.md), [ADR Privacy](docs/adr/privacy/0010-opaque-password-auth.md) |
+| Auth + key custody | Passkey PRF + OPAQUE + Wallet (SIWE sign-in, EIP-712 keys) | Passwordless, password-based, or Web3-native auth with user-held keys for sealing profiles and wrapping FHE keys | [ADR Privacy](docs/adr/privacy/0001-passkey-first-auth-prf-custody.md), [ADR Privacy](docs/adr/privacy/0003-passkey-sealed-profile.md), [ADR Privacy](docs/adr/privacy/0010-opaque-password-auth.md) |
 | Verifiable credentials | OIDC4VCI + OIDC4VP + SD-JWT + DCQL + JARM | Standards-based wallet interoperability with selective disclosure and encrypted responses | [SSI Architecture](docs/%28architecture%29/ssi-architecture.md), [RFC-0016](docs/rfcs/0016-oidc-vc-issuance-and-presentation.md) |
 | HAIP compliance | DPoP, PAR, wallet attestation, DCQL, JARM, x5c | High Assurance Interoperability Profile for regulated wallet integrations (eIDAS 2.0 alignment) | [OAuth Integrations](docs/%28protocols%29/oauth-integrations.md) |
 | Data integrity | SHA256 commitments + salts | Bind data without storing it and allow erasure by deleting salt | [Tamper Model](docs/%28architecture%29/tamper-model.md), [ADR Privacy](docs/adr/privacy/0005-hash-only-claims-and-audit-hashes.md) |
@@ -235,7 +235,7 @@ flowchart LR
 - Multi-document identity model with document-scoped proofs and evidence packs
 - Salted SHA256 commitments for dedup and integrity checks (name, document number, nationality)
 - FHE key registration + encryption for birth_year_offset, country_code, compliance_level, liveness score
-- Passkey-first auth with OPAQUE password and wallet (EIP-712) alternatives
+- Passkey-first auth with OPAQUE password and wallet (Sign-In with Ethereum) alternatives
 - Credential-sealed profile secret for user-controlled PII (client decrypt only)
 - Credential-wrapped FHE key storage (multi-device support; explicit user unlock required)
 - OAuth 2.1 provider flow (authorize, consent, token exchange)
