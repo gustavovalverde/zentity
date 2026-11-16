@@ -3,9 +3,10 @@
 /**
  * One-time transition for the move to the OAuth provider's JWT revocation,
  * per-token `accessTokenClaims`, the first-party-apps plugin, the CIBA
- * approval record, its token and Proof-of-Human columns, and OIDC4VCI
- * credentials without a subject. Every step is idempotent, and the script
- * applies them in one transaction.
+ * approval record, its token and Proof-of-Human columns, OIDC4VCI
+ * credentials without a subject, and the removal of two-factor
+ * authentication. Every step is idempotent, and the script applies them in
+ * one transaction.
  *
  * 1. Moves the timestamp defaults that #298 and #338 changed from
  *    `datetime('now')` to an ISO 8601 timestamp, and recreates the two partial
@@ -75,6 +76,13 @@
  *    issued: those rows store the SD-JWT, and those credentials carry the
  *    user id as `sub`. Users request a new credential from the dashboard.
  *    Skipped once `pnpm db:push` has dropped the column.
+ * 15. With `--after-deploy` only: drops the `two_factor` table and
+ *    `user.two_factor_enabled`, which hold the TOTP secrets, backup codes,
+ *    and enrollment flag of the removed two-factor plugin. The previous
+ *    release names `two_factor_enabled` in every query of `user`, so neither
+ *    may go before that release stops serving. `ALTER TABLE ... DROP COLUMN`
+ *    keeps every other column, row, and index of `user`; no index or foreign
+ *    key names the column.
  *
  * Rollout order. Production moves to this release in one deploy of the web
  * service, the MCP server, and demo-rp. Merging a pull request deploys
@@ -101,17 +109,21 @@
  *   c. Deploy the web service, the MCP server, and demo-rp together. The web
  *      service, the SDK, and the MCP server compute the Agent-Assertion task
  *      hash the same way only within one release.
- *   d. Once the new release serves all traffic, run this script again. It
- *      covers revocations and exchanged tokens the previous release wrote
- *      after step a.
+ *   d. Once the new release serves all traffic, run this script again with
+ *      `--after-deploy`. It covers revocations and exchanged tokens the
+ *      previous release wrote after step a, and drops the two-factor data
+ *      (step 15). Never pass `--after-deploy` at step a: the previous release
+ *      fails every request that reads a user once the column is gone.
  *   e. Run `pnpm db:push` once. It drops `auth_challenge_session`,
  *      `oauth_access_token.exchange_claims`, the `reason`, `actor_sub`, and
  *      `audience` columns of `revoked_token`, the approval columns and
  *      `pairwise_act_sub` of `ciba_request`, `agent_token_snapshot`,
  *      `oidc4vci_issued_credential.credential`, and `oidc4vci_status_list`,
  *      which the previous release reads or writes, so it must not run before
- *      step d. When they hold rows, it asks to confirm the data loss;
- *      `--force` confirms it without a terminal. drizzle-kit exits 0 even
+ *      step d. When step d ran without `--after-deploy`, it also drops
+ *      `two_factor` and `user.two_factor_enabled`. When the dropped tables
+ *      and columns hold rows, it asks to confirm the data loss; `--force`
+ *      confirms it without a terminal. drizzle-kit exits 0 even
  *      when SQLite rejects a statement and rolls the push back, so check its
  *      output for an error.
  *
@@ -122,7 +134,7 @@
  * leaves to a default. In-flight `auth_challenge_session` handles (10-minute
  * lifetime) stop working at step c.
  *
- *   TURSO_DATABASE_URL=... TURSO_AUTH_TOKEN=... pnpm exec tsx scripts/backfill-oauth-token-transition.ts
+ *   TURSO_DATABASE_URL=... TURSO_AUTH_TOKEN=... pnpm exec tsx scripts/backfill-oauth-token-transition.ts [--after-deploy]
  */
 
 import { createClient, type InStatement } from "@libsql/client";
@@ -284,6 +296,12 @@ const CIBA_APPROVAL_ADDED_COLUMNS = [
 const ACCESS_TOKEN_AUTH_CONTEXT_DDL =
   "ALTER TABLE `oauth_access_token` ADD `auth_context_id` text REFERENCES authentication_context(id) ON DELETE set null ON UPDATE no action";
 
+const TWO_FACTOR_TABLE_DROP_DDL = "DROP TABLE `two_factor`";
+const TWO_FACTOR_COLUMN_DROP_DDL =
+  "ALTER TABLE `user` DROP COLUMN `two_factor_enabled`";
+
+const afterDeploy = process.argv.includes("--after-deploy");
+
 const url = process.env.TURSO_DATABASE_URL || "file:./.data/dev.db";
 const authToken = process.env.TURSO_AUTH_TOKEN;
 const client = createClient(authToken ? { url, authToken } : { url });
@@ -406,6 +424,14 @@ async function main(): Promise<void> {
     "auth_context_id"
   ));
 
+  const twoFactorData = [
+    ...((await hasTable("two_factor")) ? [TWO_FACTOR_TABLE_DROP_DDL] : []),
+    ...((await hasColumn("user", "two_factor_enabled"))
+      ? [TWO_FACTOR_COLUMN_DROP_DDL]
+      : []),
+  ];
+  const twoFactorDrops = afterDeploy ? twoFactorData : [];
+
   const timestampDefaults = await isoTimestampDefaultStatements();
   const addGrantable =
     (await hasTable("agent_capability")) &&
@@ -433,6 +459,7 @@ async function main(): Promise<void> {
     ...cibaApprovalIndexes,
     ...(allowNullCredential ? [OIDC4VCI_CREDENTIAL_NULLABLE_DDL] : []),
     OIDC4VCI_STATUS_ENTRY_INDEX_DDL,
+    ...twoFactorDrops,
   ];
 
   const statements: InStatement[] = [
@@ -534,6 +561,13 @@ async function main(): Promise<void> {
       ? `exchange_claims copied: ${copied?.rowsAffected ?? 0}`
       : "exchange_claims copied: skipped (column already dropped)"
   );
+  let twoFactor = "already dropped";
+  if (twoFactorDrops.length > 0) {
+    twoFactor = "dropped";
+  } else if (twoFactorData.length > 0) {
+    twoFactor = "kept until --after-deploy";
+  }
+  console.log(`two_factor and user.two_factor_enabled: ${twoFactor}`);
 }
 
 main()
