@@ -1,12 +1,19 @@
 import "server-only";
 
+import { randomUUID } from "node:crypto";
+
 import { makeSignature } from "better-auth/crypto";
 import { and, eq } from "drizzle-orm";
 
 import { env } from "@/env";
 import { auth } from "@/lib/auth/auth-config";
 import { TOKEN_EXCHANGE_GRANT_TYPE } from "@/lib/auth/oidc/token-exchange";
+import {
+  isServiceAccountEmail,
+  serviceAccountEmail,
+} from "@/lib/auth/service-account";
 import { db } from "@/lib/db/connection";
+import { users } from "@/lib/db/schema/auth";
 import {
   oauthClientResources,
   oauthClients,
@@ -28,17 +35,6 @@ export const MCP_CLIENT_SCOPES = [
   "poh",
 ];
 
-/**
- * The account that owns the MCP HTTP client. The provider's client
- * administration APIs act only for a signed-in user and change only clients
- * that user owns, so provisioning signs this account in for each run. It has
- * no credentials and never signs in otherwise.
- */
-const SERVICE_OWNER = {
-  email: "mcp-provisioning@zentity.invalid",
-  name: "MCP provisioning",
-};
-
 export interface McpClientCredentials {
   clientId: string;
   /** Present when the client was created or its secret rotated. */
@@ -46,26 +42,67 @@ export interface McpClientCredentials {
   created: boolean;
 }
 
-async function serviceOwnerHeaders(): Promise<{
-  headers: Headers;
-  revoke: () => Promise<void>;
-}> {
+/**
+ * The provider's client administration APIs act only for a signed-in user and
+ * change only clients that user owns, so each client gets an owner account of
+ * its own, created with it. The owner has no credentials, and provisioning
+ * signs it in only for the length of a run. No existing account is ever
+ * reused as an owner, so no user can arrange to own the client.
+ */
+async function createOwner(): Promise<string> {
   const context = await auth.$context;
-  const owner =
-    (await context.internalAdapter.findUserByEmail(SERVICE_OWNER.email))
-      ?.user ??
-    (await context.internalAdapter.createUser(
-      { ...SERVICE_OWNER, emailVerified: false },
-      { method: "admin" }
-    ));
-  const session = await context.internalAdapter.createSession(owner.id);
+  const owner = await context.internalAdapter.createUser(
+    {
+      email: serviceAccountEmail(`mcp-${randomUUID()}`),
+      name: "MCP provisioning",
+      emailVerified: false,
+    },
+    { method: "admin" }
+  );
+  return owner.id;
+}
+
+async function withOwnerSession<T>(
+  ownerId: string,
+  run: (headers: Headers) => Promise<T>
+): Promise<T> {
+  const context = await auth.$context;
+  const session = await context.internalAdapter.createSession(ownerId);
   const signature = await makeSignature(session.token, context.secret);
-  return {
-    headers: new Headers({
-      cookie: `${context.authCookies.sessionToken.name}=${session.token}.${signature}`,
-    }),
-    revoke: () => context.internalAdapter.deleteSession(session.token),
-  };
+  try {
+    return await run(
+      new Headers({
+        cookie: `${context.authCookies.sessionToken.name}=${session.token}.${signature}`,
+      })
+    );
+  } finally {
+    await context.internalAdapter.deleteSession(session.token);
+  }
+}
+
+/**
+ * The owner of the client `clientId` names, or null when no such client
+ * exists. Refuses a client provisioning did not create, so a mistaken
+ * `MCP_CLIENT_ID` cannot turn someone's client into the MCP server's.
+ */
+async function findProvisionedOwner(clientId: string): Promise<string | null> {
+  const row = await db
+    .select({ ownerId: oauthClients.userId, ownerEmail: users.email })
+    .from(oauthClients)
+    .leftJoin(users, eq(users.id, oauthClients.userId))
+    .where(eq(oauthClients.clientId, clientId))
+    .get();
+  if (!row) {
+    return null;
+  }
+  if (
+    !(row.ownerId && row.ownerEmail && isServiceAccountEmail(row.ownerEmail))
+  ) {
+    throw new Error(
+      `Client ${clientId} was not created by MCP provisioning; unset MCP_CLIENT_ID to create a new client.`
+    );
+  }
+  return row.ownerId;
 }
 
 const clientSettings = {
@@ -75,24 +112,6 @@ const clientSettings = {
   // The CIBA plugin stores and reads its client fields in `metadata`.
   metadata: { backchannel_token_delivery_mode: "poll" },
 };
-
-async function findOwnedClient(clientId: string, ownerEmail: string) {
-  const context = await auth.$context;
-  const owner = await context.internalAdapter.findUserByEmail(ownerEmail);
-  if (!owner) {
-    return null;
-  }
-  return await db
-    .select({ clientId: oauthClients.clientId })
-    .from(oauthClients)
-    .where(
-      and(
-        eq(oauthClients.clientId, clientId),
-        eq(oauthClients.userId, owner.user.id)
-      )
-    )
-    .get();
-}
 
 async function isLinked(clientId: string): Promise<boolean> {
   const link = await db
@@ -117,12 +136,10 @@ export async function provisionMcpClient(options: {
   clientId?: string | undefined;
   rotateSecret?: boolean;
 }): Promise<McpClientCredentials> {
-  const { headers, revoke } = await serviceOwnerHeaders();
-  try {
-    const existing = options.clientId
-      ? await findOwnedClient(options.clientId, SERVICE_OWNER.email)
-      : null;
-    if (!existing) {
+  const { clientId } = options;
+  const ownerId = clientId ? await findProvisionedOwner(clientId) : null;
+  if (!(clientId && ownerId)) {
+    return await withOwnerSession(await createOwner(), async (headers) => {
       // No redirect URIs, so the provider stores the sector client/<id>.
       const created = await auth.api.adminCreateOAuthClient({
         headers,
@@ -139,9 +156,10 @@ export async function provisionMcpClient(options: {
         clientSecret: created.client_secret,
         created: true,
       };
-    }
+    });
+  }
 
-    const { clientId } = existing;
+  return await withOwnerSession(ownerId, async (headers) => {
     await auth.api.adminUpdateOAuthClient({
       headers,
       body: { client_id: clientId, update: clientSettings },
@@ -164,7 +182,5 @@ export async function provisionMcpClient(options: {
       clientSecret: rotated.client_secret,
       created: false,
     };
-  } finally {
-    await revoke();
-  }
+  });
 }

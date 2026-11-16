@@ -12,6 +12,7 @@ import { setSessionCookie } from "better-auth/cookies";
 import { z } from "zod";
 
 import { replaceSessionAuthenticationContext } from "@/lib/auth/auth-context";
+import { isServiceAccountEmail } from "@/lib/auth/service-account";
 
 import { finishOpaqueLogin, OpaqueLoginError, startOpaqueLogin } from "./login";
 import {
@@ -583,6 +584,11 @@ export const opaque = (options: OpaquePluginOptions) => {
           if (email.length > 254 || email.length < 3) {
             throw new APIError("BAD_REQUEST", {
               message: "Invalid email format",
+            });
+          }
+          if (isServiceAccountEmail(email)) {
+            throw new APIError("BAD_REQUEST", {
+              message: "This email address can't be used",
             });
           }
 

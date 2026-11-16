@@ -1,3 +1,5 @@
+import type { Session } from "@/lib/auth/auth-config";
+
 import crypto from "node:crypto";
 
 import { beginCibaApproval, pollCibaTokenOnce } from "@zentity/sdk";
@@ -20,6 +22,7 @@ import {
   oauthClientResources,
   oauthClients,
 } from "@/lib/db/schema/oauth-provider";
+import { signUpRouter } from "@/lib/trpc/routers/sign-up";
 import {
   createTestCibaApproval,
   createTestUser,
@@ -49,6 +52,17 @@ function storedClients() {
     })
     .from(oauthClients)
     .all();
+}
+
+const SERVICE_ACCOUNT_EMAIL = /^mcp-[0-9a-f-]{36}@zentity\.invalid$/;
+
+async function clientOwner(clientId: string) {
+  return await db
+    .select({ id: users.id, email: users.email })
+    .from(oauthClients)
+    .innerJoin(users, eq(users.id, oauthClients.userId))
+    .where(eq(oauthClients.clientId, clientId))
+    .get();
 }
 
 describe("MCP HTTP client provisioning", () => {
@@ -93,12 +107,103 @@ describe("MCP HTTP client provisioning", () => {
     expect(await db.select().from(sessions).all()).toEqual([]);
   });
 
-  it("creates a new client when the given one is not the provisioned one", async () => {
+  it("creates a new client when the given one does not exist", async () => {
     const first = await provisionMcpClient({});
     const other = await provisionMcpClient({ clientId: "unknown-client" });
 
     expect(other.created).toBe(true);
     expect(other.clientId).not.toBe(first.clientId);
+  });
+
+  it("never makes an existing account the client's owner", async () => {
+    // Sign-up stores an address without proving it, so a user may hold any
+    // address a fixed owner lookup would name.
+    const claimantId = await createTestUser({
+      email: "mcp-provisioning@zentity.invalid",
+    });
+
+    const { clientId } = await provisionMcpClient({});
+    const owner = await clientOwner(clientId);
+
+    expect(owner?.id).not.toBe(claimantId);
+    expect(owner?.email).toMatch(SERVICE_ACCOUNT_EMAIL);
+    expect(await provisionMcpClient({ clientId })).toEqual({
+      clientId,
+      created: false,
+    });
+  });
+
+  it("keeps sign-up from storing an owner's address", async () => {
+    const userId = await createTestUser();
+    const signUp = signUpRouter.createCaller({
+      authContext: null,
+      flowId: null,
+      flowIdSource: "none",
+      req: new Request("http://localhost/api/trpc"),
+      requestId: "test-request-id",
+      session: {
+        user: { id: userId, email: `user-${userId}@example.com` },
+        session: { id: "session" },
+      } as unknown as Session,
+    });
+
+    await expect(
+      signUp.completeAccountCreation({ email: "mcp-owner@zentity.invalid" })
+    ).rejects.toThrow("This email address can't be used");
+    const opaqueSignUp = await authHandlerFetch(
+      `${AUTH_URL}/sign-up/opaque/challenge`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email: "MCP-Owner@Zentity.Invalid",
+          registrationRequest: "AAAA",
+        }),
+      }
+    );
+    expect(opaqueSignUp.status).toBe(400);
+    expect(await opaqueSignUp.json()).toMatchObject({
+      message: "This email address can't be used",
+    });
+    expect(
+      await db
+        .select({ email: users.email })
+        .from(users)
+        .where(eq(users.id, userId))
+        .get()
+    ).toEqual({ email: `user-${userId}@example.com` });
+    expect(await db.select({ id: users.id }).from(users).all()).toHaveLength(1);
+  });
+
+  it("refuses to update a client it did not create", async () => {
+    const userId = await createTestUser({ email: "rp@example.com" });
+    await db.insert(oauthClients).values({
+      clientId: "users-client",
+      name: "A user's client",
+      redirectUris: JSON.stringify(["https://rp.example/callback"]),
+      grantTypes: JSON.stringify(["authorization_code"]),
+      tokenEndpointAuthMethod: "client_secret_basic",
+      clientSecret: "secret",
+      userId,
+    });
+
+    await expect(
+      provisionMcpClient({ clientId: "users-client" })
+    ).rejects.toThrow("was not created by MCP provisioning");
+    expect(
+      await db
+        .select({
+          grantTypes: oauthClients.grantTypes,
+          skipConsent: oauthClients.skipConsent,
+        })
+        .from(oauthClients)
+        .where(eq(oauthClients.clientId, "users-client"))
+        .get()
+    ).toEqual({
+      grantTypes: JSON.stringify(["authorization_code"]),
+      skipConsent: null,
+    });
+    expect(await db.select().from(oauthClientResources).all()).toEqual([]);
   });
 
   it("rotates the secret only when asked", async () => {
@@ -198,10 +303,8 @@ describe("MCP HTTP client provisioning", () => {
       family_name: "Lovelace",
     });
     // The provisioning owner is an account of its own, never the user.
-    expect(
-      (await db.select({ email: users.email }).from(users).all()).map(
-        (row) => row.email
-      )
-    ).toContain("mcp-provisioning@zentity.invalid");
+    const owner = await clientOwner(clientId);
+    expect(owner?.id).not.toBe(userId);
+    expect(owner?.email).toMatch(SERVICE_ACCOUNT_EMAIL);
   });
 });

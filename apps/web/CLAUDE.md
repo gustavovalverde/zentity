@@ -35,7 +35,7 @@ Each sub-directory is a bounded context; the filename inside identifies the conc
 |---|---|
 | `agents/` | Agent host/session model, host attestation, capability grants, pairwise actor subject, approval evaluate/resolve, web push |
 | `assurance/` | Assurance tier computation, security posture queries, OIDC claims, feature gating |
-| `auth/` | Better-auth config, session read (`session.ts`) + client cleanup (`session-cleanup.ts`), resource-auth (Bearer/DPoP), auth context events, per-method sub-dirs: `opaque/`, `passkey/` (PRF evaluation, and `step-up.ts`, the request-bound passkey confirmation for CIBA approvals), `siwe/`, `oidc/` |
+| `auth/` | Better-auth config, session read (`session.ts`) + client cleanup (`session-cleanup.ts`), resource-auth (Bearer/DPoP), auth context events, the reserved address domain of Zentity's own service accounts (`service-account.ts`), per-method sub-dirs: `opaque/`, `passkey/` (PRF evaluation, and `step-up.ts`, the request-bound passkey confirmation for CIBA approvals), `siwe/`, `oidc/` |
 | `auth/oidc/` | OIDC provider: JWT signing, disclosure, HAIP (DPoP/PAR/JARM), back-channel logout, step-up, token exchange (`token-exchange.ts`), and the MCP HTTP client provisioning behind `pnpm mcp:provision` (`mcp-client.ts`) |
 | `blockchain/` | Confidential-chain provider + helpers (`confidential/`), on-chain attestation (`attestation/`), wagmi config, tx error mapping |
 | `db/` | Drizzle schema (`schema/`) + queries (`queries/`), one file per bounded context |
