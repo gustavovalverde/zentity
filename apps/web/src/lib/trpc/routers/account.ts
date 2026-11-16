@@ -7,18 +7,21 @@
 import "server-only";
 
 import { TRPCError } from "@trpc/server";
+import { isAPIError } from "better-auth/api";
 import { eq } from "drizzle-orm";
 import { z } from "zod";
 
 import { auth } from "@/lib/auth/auth-config";
 import { db } from "@/lib/db/connection";
-import { deleteBlockchainAttestationsByUserId } from "@/lib/db/queries/attestation";
 import { getUserCreatedAt, userHasPassword } from "@/lib/db/queries/auth";
-import { deleteIdentityData } from "@/lib/db/queries/identity";
 import { passkeys } from "@/lib/db/schema/auth";
 import { getVerificationReadModel } from "@/lib/identity/verification/read-model";
 
-import { protectedProcedure, router } from "../server";
+import {
+  protectedProcedure,
+  requireRecoveryFactorChange,
+  router,
+} from "../server";
 
 export const accountRouter = router({
   /**
@@ -82,7 +85,7 @@ export const accountRouter = router({
       })
     )
     .mutation(async ({ ctx, input }) => {
-      const { userId, session } = ctx;
+      const { session } = ctx;
 
       // Verify email matches to prevent accidental deletion
       if (
@@ -94,15 +97,10 @@ export const accountRouter = router({
         });
       }
 
-      // Execute deletion in order:
-      // 1. Delete identity attestation data (removes salts/commitments)
-      await deleteIdentityData(userId);
+      await requireRecoveryFactorChange(ctx, "account_deletion");
 
-      // 2. Delete blockchain attestation records
-      await deleteBlockchainAttestationsByUserId(userId);
-
-      // 3. Delete user from better-auth (cascades to sessions, accounts)
-      // This also invalidates the current session
+      // Better Auth erases identity and attestation data in `beforeDelete`,
+      // then deletes the user, its sessions, and its accounts.
       let result: { success?: boolean } | null = null;
       try {
         result = await auth.api.deleteUser({
@@ -110,6 +108,12 @@ export const accountRouter = router({
           body: {},
         });
       } catch (error) {
+        if (isAPIError(error) && error.body?.code === "SESSION_EXPIRED") {
+          throw new TRPCError({
+            code: "FORBIDDEN",
+            message: "Sign in again, then delete your account.",
+          });
+        }
         throw new TRPCError({
           code: "INTERNAL_SERVER_ERROR",
           message:

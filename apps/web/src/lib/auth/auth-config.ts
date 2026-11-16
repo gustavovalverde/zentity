@@ -1907,6 +1907,19 @@ export const auth = betterAuth({
   user: {
     deleteUser: {
       enabled: true,
+      // Runs only once the endpoint's checks pass, so a refused deletion
+      // leaves the vault and identity data in place.
+      beforeDelete: async (user) => {
+        const [
+          { deleteIdentityData },
+          { deleteBlockchainAttestationsByUserId },
+        ] = await Promise.all([
+          import("@/lib/db/queries/identity"),
+          import("@/lib/db/queries/attestation"),
+        ]);
+        await deleteIdentityData(user.id);
+        await deleteBlockchainAttestationsByUserId(user.id);
+      },
     },
     changeEmail: {
       enabled: true,

@@ -25,6 +25,7 @@ import {
 } from "@/lib/db/schema/auth";
 import { encryptedSecrets, secretWrappers } from "@/lib/db/schema/privacy";
 import { computeSecretBlobRef } from "@/lib/privacy/secrets/storage.server";
+import { accountRouter } from "@/lib/trpc/routers/account";
 import { secretsRouter } from "@/lib/trpc/routers/secrets";
 import { createTestUser, resetDatabase } from "@/test-utils/db-test-utils";
 import { TestAuthenticator } from "@/test-utils/webauthn-test-utils";
@@ -187,6 +188,32 @@ function secrets(
       session: { id: session.sessionId },
     } as unknown as Session,
   });
+}
+
+function account(userId: string, session: TestSession) {
+  return accountRouter.createCaller({
+    authContext: null,
+    authenticatedWith: "session_cookie",
+    flowId: null,
+    flowIdSource: "none",
+    req: new Request(`${APP}/api/trpc`, {
+      headers: { cookie: session.cookie, origin: APP },
+    }),
+    requestId: "test-request-id",
+    session: {
+      user: { id: userId, email: "owner@example.com" },
+      session: { id: session.sessionId },
+    } as unknown as Session,
+  });
+}
+
+async function userExists(userId: string): Promise<boolean> {
+  const row = await db
+    .select({ id: users.id })
+    .from(users)
+    .where(eq(users.id, userId))
+    .get();
+  return Boolean(row);
 }
 
 async function wrapperIds(rootId: string): Promise<string[]> {
@@ -493,6 +520,20 @@ describe("recovery factor changes on a passkey account", () => {
       expect(await wrapperIds(rootId)).toEqual(before);
     });
 
+    it("refuses to delete the account before erasing anything", async () => {
+      const rootId = await createVault(userId);
+
+      await expect(
+        account(userId, session).deleteAccount({ confirmEmail: email })
+      ).rejects.toMatchObject({ code: "FORBIDDEN" });
+      expect(
+        await refusal(await post("/delete-user", {}, session.cookie))
+      ).toEqual(REFUSED);
+      expect(await userExists(userId)).toBe(true);
+      expect(await vaultRootId(userId)).toBe(rootId);
+      expect(await wrapperIds(rootId)).toHaveLength(2);
+    });
+
     it("refuses to remove the only passkey, so the rule still holds", async () => {
       expect(
         await refusal(
@@ -628,6 +669,16 @@ describe("recovery factor changes on a passkey account", () => {
       });
 
       expect(await wrapperIds(rootId)).toEqual(["recovery_key"]);
+    });
+
+    it("allows the account to be deleted", async () => {
+      await createVault(userId);
+
+      await expect(
+        account(userId, session).deleteAccount({ confirmEmail: email })
+      ).resolves.toEqual({ success: true });
+      expect(await userExists(userId)).toBe(false);
+      expect(await vaultRootId(userId)).toBeUndefined();
     });
 
     it("does not lend the sign-in to an OAuth access token", async () => {
@@ -837,6 +888,26 @@ describe("recovery factor changes on an account without a passkey", () => {
     await secrets(userId, session).removeCredential({
       credentialId: "passkey-credential",
     });
+  });
+
+  it("keeps the vault when Better Auth refuses a stale session's deletion", async () => {
+    const userId = await createTestUser({
+      email: "owner@example.com",
+      emailVerified: true,
+    });
+    const session = await sessionSignedInWith(userId, "opaque", {
+      createdAt: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000),
+    });
+    const rootId = await createVault(userId);
+
+    await expect(
+      account(userId, session).deleteAccount({
+        confirmEmail: "owner@example.com",
+      })
+    ).rejects.toMatchObject({ code: "FORBIDDEN" });
+    expect(await userExists(userId)).toBe(true);
+    expect(await vaultRootId(userId)).toBe(rootId);
+    expect(await wrapperIds(rootId)).toHaveLength(2);
   });
 
   it("still sends a verification link to a session-less request", async () => {

@@ -5,6 +5,7 @@
  * one would let a password or a stolen session turn into lasting control,
  * so every such change asks `checkRecoveryFactorChange` first. Removing a
  * passkey asks too: an account that drops its last passkey leaves the rule.
+ * So does deleting the account, which removes every factor at once.
  *
  * Allowed states (NIST SP 800-63B-4 §4.1.2.1, OWASP ASVS 5 V7.5.1):
  * - `no_passkey`: the account holds no passkey, and keeps today's rules.
@@ -54,6 +55,7 @@ export const REVERIFICATION_REQUIRED_MESSAGE =
   "Confirm it's you with your passkey, or sign in again with an email link, then try again.";
 
 export type RecoveryFactorChange =
+  | "account_deletion"
   | "email"
   | "passkey"
   | "password"
@@ -715,6 +717,12 @@ export function recoveryFactorsPlugin() {
         {
           matcher: (ctx) => ctx.path === "/unlink-account",
           handler: createAuthMiddleware(beforeUnlinkAccount),
+        },
+        {
+          matcher: (ctx) => ctx.path === "/delete-user",
+          handler: createAuthMiddleware(async (ctx) => {
+            await requireReverifiedSession(ctx, "account_deletion");
+          }),
         },
         {
           matcher: (ctx) => ctx.path === "/change-email",
