@@ -162,7 +162,7 @@ Current cases that need a push:
 |----------|---------|-------------|
 | `PORT` | 3102 | Server port |
 | `NEXT_PUBLIC_APP_URL` | <http://localhost:3102> | Public URL |
-| `NEXT_PUBLIC_ZENTITY_URL` | <http://localhost:3000> | Zentity URL (client-side) |
+| `NEXT_PUBLIC_ZENTITY_URL` | <http://localhost:3000> | Public Zentity URL. Links point here, VP verification expects `<url>/api/auth` as the credential issuer, and the status list is fetched from this origin, so the demo server must reach it |
 | `BETTER_AUTH_SECRET` | demo-rp-secret... | Auth secret |
 | `ZENTITY_URL` | <http://localhost:3000> | Zentity server URL |
 | `DATABASE_URL` | file:./.data/demo-rp.db | SQLite database URL |
@@ -249,14 +249,17 @@ The `/veripass` page implements a digital credential wallet with an OID4VP verif
 
 ### SD-JWT Presentation Verification
 
-`verifyVpToken()` in `src/lib/verify.ts` verifies the presentation with `@sd-jwt/core`:
+`verifyVpToken()` in `src/lib/verify.ts` verifies the presentation with `@sd-jwt/sd-jwt-vc`:
 
-- The `vp_token` must answer the session's DCQL query. It is either the OpenID4VP 1.0 object, keyed by the credential query id (`identity_credential`) and holding exactly one presentation, or a bare presentation string. An object keyed by any other id is rejected.
+- The `vp_token` must answer the session's DCQL query. It is either the OpenID4VP 1.0 object, keyed by the credential query id (`identity_credential`) and holding exactly one presentation, or a bare presentation string. Both forms go through the same verification. An object keyed by any other id is rejected.
 - The credential's `vct` must be one the query names in `vct_values`, and the credential must carry every claim path the query lists. Claims beyond the query, such as a scenario's optional claims, are accepted.
-- The issuer JWT signature must verify against the Zentity JWKS.
+- The issuer JWT signature must verify against the Zentity JWKS, and its `iss` must be Zentity's auth issuer, `NEXT_PUBLIC_ZENTITY_URL` followed by `/api/auth`. The comparison uses the public URL, never `ZENTITY_URL`.
+- The credential must carry a `status.status_list` reference, and the Token Status List it names must mark it valid. A revoked or suspended credential is rejected, and so is a credential without a status reference.
+- The status list is fetched only from the issuer's origin. A reference to any other origin is rejected without a request. The fetch follows no redirects, skips caches, and fails after 5 seconds or 64 KiB. The list must be a `statuslist+jwt` token that the Zentity JWKS verifies, that names the same issuer, and whose `sub` is the referenced URI. When the list cannot be fetched or verified, the presentation is rejected.
 - Every disclosure must match an `_sd` digest the issuer signed. Disclosures are also decoded strictly, so duplicate JSON member names are rejected.
 - The KB-JWT (`typ: kb+jwt`) must be signed by the holder key in the credential's `cnf.jwk`, and its `sd_hash` must cover exactly the presented issuer JWT and disclosures.
 - The KB-JWT `aud` must be the session's `client_id`, its `nonce` the session nonce, and its `iat` no older than 300 seconds.
+- Time checks on the credential, the status list token, and the KB-JWT allow 30 seconds of clock skew, because the status list token is minted when it is fetched and wallets set the KB-JWT `iat` from their own clocks.
 
 The session result holds only the claims the holder selectively disclosed, not the issuer's always-visible claims such as `iss`, `vct`, or `cnf`.
 
