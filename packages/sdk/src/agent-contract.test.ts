@@ -9,7 +9,7 @@ const ISSUER = "https://zentity.example";
 function configurationDocument() {
   return {
     aap_claims_version: 1,
-    act_did_emission_policy: "attested_hosts_only",
+    act_did_emission_policy: "never",
     approval_methods: ["ciba"],
     approval_page_url_template: `${ISSUER}/approve/{request_id}`,
     bootstrap_token_exchange: {

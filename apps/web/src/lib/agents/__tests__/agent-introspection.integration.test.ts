@@ -1,10 +1,10 @@
 import crypto from "node:crypto";
 
-import { encodeEd25519DidKeyFromJwk } from "@zentity/sdk/protocol";
 import { decodeJwt } from "jose";
 import { beforeEach, describe, expect, it } from "vitest";
 
-import { resolveAgentSubForClient } from "@/lib/agents/actor-subject";
+import { findActorClient, resolveAgentSub } from "@/lib/agents/actor-subject";
+import { clientSector } from "@/lib/auth/oidc/pairwise";
 import { getAuthIssuer } from "@/lib/auth/oidc/well-known";
 import { db } from "@/lib/db/connection";
 import { agentHosts, agentSessions } from "@/lib/db/schema/agent";
@@ -26,11 +26,6 @@ const TEST_CLIENT_ID = "ciba-test-agent";
 const INTROSPECTOR_CLIENT_ID = "agent-introspector";
 const TEST_RESOURCE = "http://localhost:3000/api/auth";
 const RP_API_AUDIENCE = `${getAuthIssuer()}/resource/rp-api`;
-const HOST_DID = encodeEd25519DidKeyFromJwk({
-  crv: "Ed25519",
-  kty: "OKP",
-  x: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
-});
 const AAP_CLAIM_KEYS = [
   "act",
   "task",
@@ -290,20 +285,19 @@ describe("Agent Introspection", () => {
       }
     }
 
-    const expectedActorId = await resolveAgentSubForClient(
-      sessionId,
-      TEST_CLIENT_ID
-    );
+    const client = await findActorClient(TEST_CLIENT_ID);
+    const expectedActorId = client
+      ? await resolveAgentSub({
+          client,
+          sector: clientSector(client),
+          sessionId,
+        })
+      : sessionId;
 
     expect(result.body.sub).toBe(userId);
     expect(result.body.act).toEqual({
-      did: HOST_DID,
-      host_attestation: "attested",
-      host_id: hostId,
-      session_id: sessionId,
       sub: expectedActorId,
       sub_profile: "service",
-      type: "mcp-agent",
     });
     expect(result.body.task).toEqual({
       constraints: [{ field: "merchant", op: "eq", value: "Test Store" }],

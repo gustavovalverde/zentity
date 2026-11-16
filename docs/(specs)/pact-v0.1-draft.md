@@ -296,22 +296,22 @@ Where:
 
 - `MAC` is a keyed message authentication code with at least 128 bits of output. HMAC-SHA-256 (RFC 2104) meets this requirement.
 - `PAIRWISE_SECRET` is a server-side secret of at least 32 bytes.
-- `sector` is the RP's registered sector identifier, following the same mechanism used for user pairwise `sub` in VEIL Section 4.2. Deployments that do not yet support `sector_identifier_uri` MUST still enforce a stable single-host registration rule so the derived sector remains deterministic.
+- `sector` is the sector of the token that carries `act`, the same one its user `sub` uses. For a token the AS keeps (an opaque token), it is the client's registered sector identifier, following the mechanism used for user pairwise `sub` in VEIL Section 4.2. For a token to one audience `A` outside the AS (a JWT access token), it is the token sector `T(c, A) = clientSector + " " + A`, with `A` the normalized resource identifier. A space cannot occur in a client sector, so a token sector never equals one. Deployments that do not yet support `sector_identifier_uri` MUST still enforce a stable single-host registration rule so the derived sector remains deterministic.
 - `sessionId` is the internal agent session identifier.
 
 **Properties:**
 
-- Two RPs receiving tokens from the same agent session see different `act.sub` values.
-- The same derivation applies to `agent.id` in the PACT delegation claim set.
+- Two RPs, or two audiences of one client, receiving tokens from the same agent session see different `act.sub` values.
+- The AS does not index `act.sub` values. It finds the session behind a token through the token's approval record.
 - Deployments that need global agent tracking MUST use an agent-specific client setting distinct from VEIL's user-facing `subject_type`. Reusing `subject_type` would disable pairwise user identifiers at the same time.
 - Pairwise derivation uses the session ID (not host ID) because the acting principal is the runtime session, not the installation.
 
 **Where pairwise identifiers appear:**
 
-- `act.sub` in access tokens
-- `agent.id` in the PACT delegation claim set
-- The introspection response
-- The CIBA request snapshot (server-side)
+- `act.sub` in access tokens, which carry `act` as exactly `{ "sub", "sub_profile": "service" }`
+- The introspection response, which returns the token's own `act`
+
+**Identifiers that never leave the AS:** the agent session id, the host id, the host key and its DID, the approval id, the CIBA request id (`auth_req_id` and its hash outside `reference_id`), the authentication context id, the deployment release id, the task hash and description, and the parent token's `jti`.
 
 The threat model and mitigation rationale are described in §13.1. Pairwise derivation extends OIDC Core's user-`sub` privacy model to the agent principal.
 
@@ -990,7 +990,7 @@ Agent display metadata (`model`, `runtime`, `version`) is informational and self
 
 ### 13.4 Pairwise Opt-Out
 
-RPs that require stable agent identifiers (for example, for regulatory audit trails) opt in through an agent-specific signal distinct from VEIL's user-facing `subject_type`. The default is pairwise.
+RPs that require stable agent identifiers (for example, for regulatory audit trails) are given them through an agent-specific signal distinct from VEIL's user-facing `subject_type`. In Zentity this is the `agent_subject_type` client metadata member, which an administrator sets on the agent client. The default is pairwise.
 
 ---
 

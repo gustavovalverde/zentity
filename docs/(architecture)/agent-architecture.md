@@ -332,7 +332,6 @@ When Zentity receives a valid assertion, it snapshots server-owned runtime metad
 - `task_id`
 - `task_hash`
 - `assertion_verified`
-- `pairwise_act_sub`
 
 That snapshot is what ties the later token to the actual registered runtime, not a free-form claim supplied by the client at approval time.
 
@@ -546,17 +545,18 @@ Pairwise privacy matters because the same agent installation may interact with m
 Agent pairwise identifiers are derived from:
 
 - the `agent_session.id`
-- the target client's sector identifier
+- the token's sector
 - the shared `PAIRWISE_SECRET`
 
-The server uses the same sector as human pairwise subject derivation: the sector the OAuth provider stored on the client at registration. That is the first redirect host for a client whose redirect URIs are all `https`, and `client/<client_id>` for loopback, custom-scheme, metadata-document, and redirect-less clients (see [Pairwise subject identifiers](<../(protocols)/oauth-integrations.md#pairwise-subject-identifiers>)).
+```text
+act.sub = Base64(HMAC-SHA256(PAIRWISE_SECRET, sector + "." + agentSessionId))
+```
 
-Actor publicity is controlled independently from the human `sub`. Client metadata may set `agent_subject_type` to `public` or `pairwise`; when absent, the actor layer defaults to pairwise identifiers. Using a dedicated `agent_subject_type` avoids coupling where making `act.sub` public also makes the human `sub` public. When the effective agent subject type is `public`, the actor identifier falls back to the raw session ID. Otherwise it becomes a pairwise pseudonym derived from the session ID and the client's sector.
+The sector is the one the token's user `sub` uses. It starts from the sector the OAuth provider stored on the client at registration: the first redirect host for a client whose redirect URIs are all `https`, and `client/<client_id>` for loopback, custom-scheme, metadata-document, and redirect-less clients (see [Pairwise subject identifiers](<../(protocols)/oauth-integrations.md#pairwise-subject-identifiers>)). A JWT access token for one audience outside Zentity, such as the MCP server or the agent wallet, appends that audience after a space, so each audience sees its own `act.sub` for the same session. An opaque token, which only Zentity reads, uses the client's sector alone.
 
-That gives the actor layer the same privacy model as the user layer without forcing both layers to share the same publicity setting:
+Nothing maps an `act.sub` back to its session. Zentity reads the agent behind a token from the token's approval record, so no reverse index of actor values exists.
 
-- `agent_subject_type: "public"` opts the actor layer into stable identifiers
-- `agent_subject_type: "pairwise"` yields RP-scoped pseudonyms even if the user `sub` is public
+Actor publicity is controlled independently from the human `sub`. An administrator may set `agent_subject_type` to `public` in a client's metadata; any other value, or none, keeps pairwise identifiers, even for a client whose user `sub` is public. When it is `public`, the actor identifier is the raw session ID, and no audience separation applies to it.
 
 ### Why session IDs are used
 
@@ -564,13 +564,12 @@ The derivation starts from the session ID rather than the host ID because the ru
 
 ### Where pairwise actor IDs appear
 
-Current pairwise actor identifiers appear in:
+`act.sub` is the only actor identifier on the wire. It appears in:
 
-- `agent.id` and `act.sub` inside access tokens
-- the introspection response AAP `agent.id` for the calling machine client
-- the CIBA request snapshot stored on the server
+- the `act` claim of an agent-backed CIBA access token, and the `act` stored with an opaque one
+- the agent introspection response, which returns the token's own `act`
 
-This makes actor privacy a transport-wide property rather than a UI-only convention.
+The session id, host id, host key and DID, approval id, CIBA request id, authentication context id, and task hash stay on the server.
 
 ---
 

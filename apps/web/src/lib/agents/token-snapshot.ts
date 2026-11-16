@@ -10,15 +10,15 @@ import type { GrantConstraint } from "./approval-evaluate";
 
 import { createHash } from "node:crypto";
 
-import { encodeEd25519DidKeyFromJwk } from "@zentity/sdk/protocol";
 import { eq } from "drizzle-orm";
 
+import { clientSector } from "@/lib/auth/oidc/pairwise";
 import { db } from "@/lib/db/connection";
 import { findCibaApproval } from "@/lib/db/queries/ciba";
-import { agentHosts, agentTokenSnapshots } from "@/lib/db/schema/agent";
+import { agentTokenSnapshots } from "@/lib/db/schema/agent";
 import { getReleaseId } from "@/lib/observability/release";
 
-import { resolveAgentSubForClient } from "./actor-subject";
+import { findActorClient, resolveAgentSub } from "./actor-subject";
 import { buildAapClaims, resolveOversightMethod } from "./claims";
 
 interface LoadedTokenSnapshot {
@@ -128,23 +128,6 @@ function buildCapabilitiesFromConstraints(
   ];
 }
 
-async function findHostDid(
-  hostId: string | null | undefined
-): Promise<string | undefined> {
-  if (!hostId) {
-    return undefined;
-  }
-
-  const host = await db
-    .select({ publicKey: agentHosts.publicKey })
-    .from(agentHosts)
-    .where(eq(agentHosts.id, hostId))
-    .limit(1)
-    .get();
-
-  return host ? encodeEd25519DidKeyFromJwk(host.publicKey) : undefined;
-}
-
 /**
  * Agent claims for a token, or null when the request had no verified agent
  * or no recorded approval. Pass `approval` when the caller already loaded it.
@@ -166,10 +149,11 @@ async function resolveTokenSnapshot(
     return null;
   }
 
-  const [pairwiseActorSub, hostDid] = await Promise.all([
-    resolveAgentSubForClient(row.agentSessionId, audienceClientId),
-    findHostDid(row.hostId),
-  ]);
+  const sessionId = row.agentSessionId;
+  const client = await findActorClient(audienceClientId);
+  const pairwiseActorSub = client
+    ? await resolveAgentSub({ client, sector: clientSector(client), sessionId })
+    : sessionId;
   const hostAttestation = asHostAttestationTier(row.attestationTier);
   const constraints = approval.constraints ?? undefined;
 
@@ -184,14 +168,7 @@ async function resolveTokenSnapshot(
       verified: hostAttestation === "attested",
     },
     claims: buildAapClaims({
-      act: {
-        sub: pairwiseActorSub,
-        sessionId: row.agentSessionId,
-        hostAttestation,
-        ...(hostDid ? { did: hostDid } : {}),
-        ...(row.hostId ? { hostId: row.hostId } : {}),
-        type: "mcp-agent",
-      },
+      act: { sub: pairwiseActorSub },
       task: {
         hash: buildTaskHash(row, approval),
         description: buildTaskDescription(row, approval),

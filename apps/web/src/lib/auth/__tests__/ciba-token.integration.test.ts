@@ -1,19 +1,18 @@
 import crypto from "node:crypto";
 
-import { encodeEd25519DidKeyFromJwk } from "@zentity/sdk/protocol";
 import { makeSignature } from "better-auth/crypto";
 import { eq } from "drizzle-orm";
 import { decodeJwt } from "jose";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { env } from "@/env";
-import { resolveAgentSubForClient } from "@/lib/agents/actor-subject";
 import { auth } from "@/lib/auth/auth-config";
 import {
   AUTHENTICATION_CONTEXT_CLAIM,
   createAuthenticationContext,
 } from "@/lib/auth/auth-context";
 import { createCibaApproval } from "@/lib/auth/oidc/ciba";
+import { pairwiseValue } from "@/lib/auth/oidc/pairwise";
 import { db } from "@/lib/db/connection";
 import { agentHosts, agentSessions } from "@/lib/db/schema/agent";
 import { cibaApprovals, cibaRequests } from "@/lib/db/schema/ciba";
@@ -31,11 +30,6 @@ import { postTokenWithDpop } from "@/test-utils/dpop-test-utils";
 const CIBA_GRANT_TYPE = "urn:openid:params:grant-type:ciba";
 const TEST_CLIENT_ID = "ciba-test-agent";
 const TEST_RESOURCE = "http://localhost:3000/api/auth";
-const HOST_DID = encodeEd25519DidKeyFromJwk({
-  crv: "Ed25519",
-  kty: "OKP",
-  x: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
-});
 let defaultAuthContextId: string;
 
 async function createTestClient(clientId = TEST_CLIENT_ID) {
@@ -372,19 +366,16 @@ describe("CIBA token endpoint", () => {
       userId,
       defaultAuthContextId
     );
+    expect(tokenShape.kind).toBe("jwt");
     if (tokenShape.kind === "jwt") {
       expect(tokenShape.payload).not.toHaveProperty("agent_sub");
       expect(tokenShape.payload).not.toHaveProperty("zentity_context_id");
       expect(tokenShape.payload).not.toHaveProperty("zentity_release_id");
-      const actorId = await resolveAgentSubForClient(sessionId, TEST_CLIENT_ID);
+      // Every audience is Zentity-hosted, so the actor is pairwise in the
+      // client's own sector, its first redirect host.
       expect(tokenShape.payload.act).toEqual({
-        did: HOST_DID,
-        host_attestation: "attested",
-        host_id: hostId,
-        session_id: sessionId,
-        sub: actorId,
+        sub: await pairwiseValue("localhost", sessionId),
         sub_profile: "service",
-        type: "mcp-agent",
       });
       expect(tokenShape.payload.task).toEqual({
         constraints: [{ field: "merchant", op: "eq", value: "Test Store" }],

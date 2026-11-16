@@ -1,22 +1,14 @@
 import type {
   AapAccessTokenClaims,
   CapabilityClaim,
-  HostAttestationTier,
   OversightMethod,
 } from "@zentity/sdk/protocol";
 
 import { AAP_CLAIMS_VERSION } from "@zentity/sdk/protocol";
 
 interface BuildAapClaimsInput {
-  act: {
-    did?: string | null;
-    hostAttestation: HostAttestationTier;
-    hostId?: string | null;
-    operator?: string | null;
-    sessionId: string;
-    sub: string;
-    type?: string | null;
-  };
+  /** The agent session's pairwise subject in the token's sector. */
+  act: { sub: string };
   audit: {
     cibaRequestId?: string | null;
     contextId: string;
@@ -80,14 +72,6 @@ export function buildAapClaims(
       sub: input.act.sub,
       // Already pairwise for the client, so the provider presents it as is.
       sub_profile: "service",
-      host_attestation: input.act.hostAttestation,
-      session_id: input.act.sessionId,
-      ...(input.act.hostAttestation === "attested" && input.act.did
-        ? { did: input.act.did }
-        : {}),
-      ...(input.act.hostId ? { host_id: input.act.hostId } : {}),
-      ...(input.act.operator ? { operator: input.act.operator } : {}),
-      ...(input.act.type ? { type: input.act.type } : {}),
     },
     task: {
       hash: input.task.hash,
@@ -127,21 +111,10 @@ export function getAapClaimsFromPayload(
   const parsedClaims: Partial<AapAccessTokenClaims> = {};
 
   const act = asRecord(payload.act);
-  if (
-    act &&
-    typeof act.sub === "string" &&
-    typeof act.host_attestation === "string" &&
-    typeof act.session_id === "string"
-  ) {
+  if (act && typeof act.sub === "string") {
     parsedClaims.act = {
       sub: act.sub,
       ...(act.sub_profile === "service" ? { sub_profile: "service" } : {}),
-      host_attestation: act.host_attestation as HostAttestationTier,
-      session_id: act.session_id,
-      ...(typeof act.did === "string" ? { did: act.did } : {}),
-      ...(typeof act.host_id === "string" ? { host_id: act.host_id } : {}),
-      ...(typeof act.operator === "string" ? { operator: act.operator } : {}),
-      ...(typeof act.type === "string" ? { type: act.type } : {}),
     };
   }
 

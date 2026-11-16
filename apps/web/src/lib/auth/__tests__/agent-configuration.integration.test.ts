@@ -35,7 +35,7 @@ describe("Agent Auth Discovery — structure", () => {
     const config = await parseConfig(await getConfiguration());
 
     expect(config.aap_claims_version).toBe(1);
-    expect(config.act_did_emission_policy).toBe("attested_hosts_only");
+    expect(config.act_did_emission_policy).toBe("never");
     expect(config.issuer).toBeDefined();
     expect(config.registration_endpoint).toBeDefined();
     expect(config.host_registration_endpoint).toBeDefined();

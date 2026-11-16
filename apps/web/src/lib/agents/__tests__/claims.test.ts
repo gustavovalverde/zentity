@@ -6,15 +6,7 @@ import { buildAapClaims, getAapClaimsFromPayload } from "@/lib/agents/claims";
 describe("AAP claims", () => {
   it("builds canonical access token claims", () => {
     const claims = buildAapClaims({
-      act: {
-        did: "did:key:z6MkAgent",
-        hostAttestation: "attested",
-        hostId: "host-1",
-        operator: "user-1",
-        sessionId: "session-1",
-        sub: "agent-sub",
-        type: "agent",
-      },
+      act: { sub: "agent-sub" },
       audit: {
         cibaRequestId: "ciba-1",
         contextId: "context-1",
@@ -42,16 +34,7 @@ describe("AAP claims", () => {
 
     expect(claims).toEqual({
       aap_claims_version: AAP_CLAIMS_VERSION,
-      act: {
-        did: "did:key:z6MkAgent",
-        host_attestation: "attested",
-        host_id: "host-1",
-        operator: "user-1",
-        session_id: "session-1",
-        sub: "agent-sub",
-        sub_profile: "service",
-        type: "agent",
-      },
+      act: { sub: "agent-sub", sub_profile: "service" },
       audit: {
         ciba_request_id: "ciba-1",
         context_id: "context-1",
@@ -84,12 +67,7 @@ describe("AAP claims", () => {
 
   it("omits optional actor and task fields when they are not claimable", () => {
     const claims = buildAapClaims({
-      act: {
-        did: "did:key:z6MkUntrusted",
-        hostAttestation: "unverified",
-        sessionId: "session-1",
-        sub: "agent-sub",
-      },
+      act: { sub: "agent-sub" },
       audit: {
         contextId: "context-1",
         releaseId: "release-1",
@@ -112,12 +90,7 @@ describe("AAP claims", () => {
       },
     });
 
-    expect(claims.act).toEqual({
-      host_attestation: "unverified",
-      session_id: "session-1",
-      sub: "agent-sub",
-      sub_profile: "service",
-    });
+    expect(claims.act).toEqual({ sub: "agent-sub", sub_profile: "service" });
     expect(claims.task).not.toHaveProperty("constraints");
     expect(claims.audit).not.toHaveProperty("request_id");
     expect(claims.delegation).toEqual({
@@ -169,7 +142,8 @@ describe("AAP claims", () => {
       },
     });
 
-    expect(claims.act?.did).toBe("did:key:z6MkAgent");
+    // R2: raw session, host, and key identifiers never reach the parsed actor.
+    expect(claims.act).toEqual({ sub: "agent-sub" });
     expect(claims.audit?.ciba_request_id).toBe("ciba-1");
     expect(claims.capabilities).toEqual([
       { action: "purchase", constraints: { max_amount: 50 } },
@@ -188,7 +162,7 @@ describe("AAP claims", () => {
     expect(
       getAapClaimsFromPayload({
         aap_claims_version: "legacy",
-        act: { sub: "agent-sub" },
+        act: { sub: 42 },
         audit: { release_id: "release-1" },
         capabilities: [{ constraints: { ignored: true } }],
         delegation: { depth: 1, max_depth: "2", parent_jti: 42 },

@@ -234,7 +234,7 @@ sequenceDiagram
 
   User->>AS: Approve via dashboard / push notification
   Agent->>AS: POST /oauth2/token + DPoP proof
-  AS-->>Agent: 200 { access_token, id_token, token_type: "DPoP", act: { sub: pairwise_agent_session_sub } }
+  AS-->>Agent: 200 { access_token, id_token, token_type: "DPoP", oversight }
 
   Note over Agent,RS: Use tokens
   Agent->>RS: Authorization: DPoP <token> + DPoP proof (with ath)

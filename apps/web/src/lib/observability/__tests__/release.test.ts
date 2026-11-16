@@ -4,7 +4,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@/lib/db/connection", () => ({ db: {} }));
 vi.mock("@/lib/agents/actor-subject", () => ({
-  resolveAgentSubForClient: () => Promise.resolve("pairwise-actor"),
+  findActorClient: () => Promise.resolve(null),
+  resolveAgentSub: () => Promise.resolve("pairwise-actor"),
 }));
 
 const RELEASE_VARS = [

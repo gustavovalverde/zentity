@@ -39,7 +39,6 @@ import crypto from "node:crypto";
 
 import { GET as listRevocations } from "@/app/api/auth/oauth2/revoked/route";
 import { env } from "@/env";
-import { resolveAgentSubForClient } from "@/lib/agents/actor-subject";
 import { auth } from "@/lib/auth/auth-config";
 import { createAuthenticationContext } from "@/lib/auth/auth-context";
 import { stageFinalCibaDisclosure } from "@/lib/auth/oidc/disclosure/context";
@@ -500,8 +499,11 @@ describe("payment_authorization token", () => {
     expect(claims.sub).toBe(
       await pairwiseValue(`client/${CLIENT_ID} ${WALLET_AUDIENCE}`, userId)
     );
-    expect(claims.act).toMatchObject({
-      sub: await resolveAgentSubForClient(agent.sessionId, CLIENT_ID),
+    expect(claims.act).toEqual({
+      sub: await pairwiseValue(
+        `client/${CLIENT_ID} ${WALLET_AUDIENCE}`,
+        agent.sessionId
+      ),
       sub_profile: "service",
     });
   });

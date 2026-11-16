@@ -25,6 +25,7 @@ import {
 import { and, eq } from "drizzle-orm";
 import { z } from "zod";
 
+import { resolveAgentSub } from "@/lib/agents/actor-subject";
 import { resolveCibaApprovalData } from "@/lib/agents/approval-resolve";
 import { approvalPolicy, requiredCeremony } from "@/lib/agents/capability";
 import { computeAcr, loginMethodToAmr } from "@/lib/assurance/oidc-claims";
@@ -39,6 +40,11 @@ import {
   releaseIdFor,
 } from "@/lib/auth/oidc/disclosure/context";
 import { oauthProviderOptions } from "@/lib/auth/oidc/oauth-provider";
+import {
+  clientSector,
+  externalAudience,
+  tokenSector,
+} from "@/lib/auth/oidc/pairwise";
 import { findSatisfiedAcr } from "@/lib/auth/oidc/step-up";
 import {
   hasPasskey,
@@ -79,6 +85,8 @@ import {
 export interface PendingCibaToken {
   /** Agent AAP claims for a verified agent session, embedded in the JWT. */
   agentClaims: AapAccessTokenClaims | null;
+  /** The verified agent session the token's `act` names. */
+  agentSessionId: string | null;
   /** Approval-time authentication context, "" when none was captured. */
   authContextId: string;
   /** The stored `auth_req_id` hash, which every CIBA token references. */
@@ -120,16 +128,30 @@ async function pendingCibaTokenFor(
 
 /**
  * The RFC 8693 actor a CIBA token names: the verified agent session behind
- * the request, otherwise the client, which acts for the user.
+ * the request, pairwise in the token's own sector (the client and the one
+ * audience outside Zentity, or the client alone for an opaque token),
+ * otherwise the client, which acts for the user.
  */
-function resolveCibaActor(
+async function resolveCibaActor(
   params: OAuthTokenIssueParams,
   pending: PendingCibaToken | null
-): OAuthActorClaim {
-  const agentActor = pending?.agentClaims?.act;
-  return agentActor
-    ? { ...agentActor }
-    : { sub: params.client.clientId, sub_profile: "service" };
+): Promise<OAuthActorClaim> {
+  const sessionId = pending?.agentSessionId;
+  if (!sessionId) {
+    return { sub: params.client.clientId, sub_profile: "service" };
+  }
+  const client = {
+    redirectUris: params.client.redirectUris ?? [],
+    sectorIdentifier: params.client.sectorIdentifier ?? null,
+  };
+  const audience = externalAudience(params.resources);
+  const sector = audience
+    ? tokenSector(client, audience)
+    : clientSector(client);
+  return {
+    sub: await resolveAgentSub({ client: params.client, sector, sessionId }),
+    sub_profile: "service",
+  };
 }
 
 /**
@@ -159,7 +181,7 @@ function issueCibaTokensWithActor(context: AuthContext): void {
           const pending = await pendingCibaTokenFor(params);
           return input.provider.issueTokens({
             ...params,
-            act: resolveCibaActor(params, pending),
+            act: await resolveCibaActor(params, pending),
             ...(pending?.authContextId
               ? {
                   accessTokenClaims: {

@@ -917,6 +917,7 @@ async function beforeCibaTokenLoadRequest(ctx: HookCtx) {
   );
   await setPendingCibaToken({
     agentClaims: contribution?.claims ?? null,
+    agentSessionId: contribution?.snapshot.agentSessionId ?? null,
     authContextId: row.authContextId ?? "",
     authReqIdHash,
     oversight: approval?.approvalMethod

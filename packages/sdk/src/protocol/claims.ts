@@ -1,6 +1,7 @@
 export const AAP_CLAIMS_VERSION = 1 as const;
 export const AGENT_DID_METHODS_SUPPORTED = ["did:key"] as const;
-export const ACT_DID_EMISSION_POLICY = "attested_hosts_only" as const;
+/** No token carries a host's DID; `act.sub` is the only actor identifier. */
+export const ACT_DID_EMISSION_POLICY = "never" as const;
 
 export type SdkErrorCode =
 	| "compliance_insufficient"
@@ -29,16 +30,16 @@ export interface CapabilityClaim {
 	constraints?: unknown;
 }
 
+/**
+ * The RFC 8693 actor of an agent-backed token: a pairwise identifier for the
+ * agent session in the token's own sector, so each audience sees its own
+ * value. Session, host, and key identifiers stay with the authorization
+ * server.
+ */
 export interface AccessTokenActClaim {
 	sub: string;
 	/** RFC 8693 actor profile: the agent is a service, not a user. */
 	sub_profile?: "service";
-	did?: string;
-	host_attestation: HostAttestationTier;
-	session_id: string;
-	host_id?: string;
-	operator?: string;
-	type?: string;
 }
 
 export interface AccessTokenTaskClaim {

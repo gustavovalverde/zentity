@@ -1,175 +1,78 @@
-import crypto from "node:crypto";
+import { describe, expect, it } from "vitest";
 
-import { and, eq } from "drizzle-orm";
-import { beforeEach, describe, expect, it } from "vitest";
-
-import { resolveAgentSubForClient } from "@/lib/agents/actor-subject";
-import { revokeSessionForActor } from "@/lib/agents/management";
-import { resolveSubForClient } from "@/lib/auth/oidc/pairwise";
+import { resolveAgentSub } from "@/lib/agents/actor-subject";
+import { pairwiseValue } from "@/lib/auth/oidc/pairwise";
 import { db } from "@/lib/db/connection";
-import { agentHosts, agentSessions } from "@/lib/db/schema/agent";
-import { oauthClients, pairwiseSubjects } from "@/lib/db/schema/oauth-provider";
-import { createTestUser, resetDatabase } from "@/test-utils/db-test-utils";
+import { pairwiseSubjects } from "@/lib/db/schema/oauth-provider";
 
-async function createClient(input: {
-  clientId: string;
-  metadata?: Record<string, unknown>;
-  subjectType: "pairwise" | "public";
-}) {
-  await db
-    .insert(oauthClients)
-    .values({
-      clientId: input.clientId,
-      name: input.clientId,
-      redirectUris: JSON.stringify(["https://rp.example.com/callback"]),
-      grantTypes: JSON.stringify(["authorization_code"]),
-      metadata: input.metadata ? JSON.stringify(input.metadata) : null,
-      subjectType: input.subjectType,
-      tokenEndpointAuthMethod: "none",
-    })
-    .run();
-}
+const SESSION_ID = "agent-session-1";
 
-async function createAgentSession(userId: string, clientId: string) {
-  const [host] = await db
-    .insert(agentHosts)
-    .values({
-      userId,
-      clientId,
-      publicKey: JSON.stringify({
-        crv: "Ed25519",
-        kty: "OKP",
-        x: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
-      }),
-      publicKeyThumbprint: `host-thumbprint-${crypto.randomUUID()}`,
-      name: "Test Host",
-    })
-    .returning({ id: agentHosts.id });
-  if (!host) {
-    throw new Error("Expected host fixture");
-  }
+describe("resolveAgentSub", () => {
+  it("is pairwise in the token's sector by default", async () => {
+    const sub = await resolveAgentSub({
+      client: { clientId: "agent-client" },
+      sector: "client/agent-client https://mcp.example",
+      sessionId: SESSION_ID,
+    });
 
-  const [session] = await db
-    .insert(agentSessions)
-    .values({
-      hostId: host.id,
-      publicKey: JSON.stringify({
-        crv: "Ed25519",
-        kty: "OKP",
-        x: "AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE",
-      }),
-      publicKeyThumbprint: `agent-thumbprint-${crypto.randomUUID()}`,
-      displayName: "Test Agent",
-    })
-    .returning({ id: agentSessions.id });
-  if (!session) {
-    throw new Error("Expected session fixture");
-  }
-
-  return session.id;
-}
-
-/** The agent session the pairwise index maps `sub` to, in any sector. */
-async function indexedAgentSession(sub: string) {
-  const row = await db
-    .select({ subjectId: pairwiseSubjects.subjectId })
-    .from(pairwiseSubjects)
-    .where(
-      and(
-        eq(pairwiseSubjects.sub, sub),
-        eq(pairwiseSubjects.subjectType, "agent_session")
-      )
-    )
-    .get();
-  return row?.subjectId ?? null;
-}
-
-describe("pairwise agent identifiers", () => {
-  let userId: string;
-
-  beforeEach(async () => {
-    await resetDatabase();
-    userId = await createTestUser();
+    expect(sub).toBe(
+      await pairwiseValue("client/agent-client https://mcp.example", SESSION_ID)
+    );
   });
 
-  it("supports pairwise users with public agent identifiers", async () => {
-    const clientId = "pairwise-user-public-agent";
-    await createClient({
-      clientId,
-      metadata: { agent_subject_type: "public" },
-      subjectType: "pairwise",
+  it("differs between the audiences of one client", async () => {
+    const client = { clientId: "agent-client" };
+    const mcp = await resolveAgentSub({
+      client,
+      sector: "client/agent-client https://mcp.example",
+      sessionId: SESSION_ID,
     });
-    const sessionId = await createAgentSession(userId, clientId);
-
-    const userSub = await resolveSubForClient(userId, {
-      sectorIdentifier: null,
-      redirectUris: ["https://rp.example.com/callback"],
-      subjectType: "pairwise",
+    const wallet = await resolveAgentSub({
+      client,
+      sector: "client/agent-client urn:zentity:wallet:test",
+      sessionId: SESSION_ID,
     });
-    const agentSub = await resolveAgentSubForClient(sessionId, clientId);
+    const opaque = await resolveAgentSub({
+      client,
+      sector: "client/agent-client",
+      sessionId: SESSION_ID,
+    });
 
-    expect(userSub).not.toBe(userId);
-    expect(agentSub).toBe(sessionId);
+    expect(new Set([mcp, wallet, opaque, SESSION_ID]).size).toBe(4);
   });
 
-  it("supports public users with pairwise agent identifiers", async () => {
-    const clientId = "public-user-pairwise-agent";
-    await createClient({
-      clientId,
-      metadata: { agent_subject_type: "pairwise" },
-      subjectType: "public",
+  it("names the session for a client an administrator made public", async () => {
+    const sub = await resolveAgentSub({
+      client: {
+        clientId: "agent-client",
+        metadata: JSON.stringify({ agent_subject_type: "public" }),
+      },
+      sector: "client/agent-client",
+      sessionId: SESSION_ID,
     });
-    const sessionId = await createAgentSession(userId, clientId);
 
-    const userSub = await resolveSubForClient(userId, {
-      sectorIdentifier: null,
-      redirectUris: ["https://rp.example.com/callback"],
-      subjectType: "public",
-    });
-    const agentSub = await resolveAgentSubForClient(sessionId, clientId);
-
-    expect(userSub).toBe(userId);
-    expect(agentSub).not.toBe(sessionId);
-    expect(await indexedAgentSession(agentSub)).toBe(sessionId);
+    expect(sub).toBe(SESSION_ID);
   });
 
-  it("defaults agent identifiers to pairwise even when human subjects are public", async () => {
-    const clientId = "public-user-default-agent";
-    await createClient({ clientId, subjectType: "public" });
-    const sessionId = await createAgentSession(userId, clientId);
+  it("keeps the pairwise default for malformed metadata", async () => {
+    const sub = await resolveAgentSub({
+      client: { clientId: "agent-client", metadata: "{not json" },
+      sector: "client/agent-client",
+      sessionId: SESSION_ID,
+    });
 
-    const agentSub = await resolveAgentSubForClient(sessionId, clientId);
-
-    expect(agentSub).not.toBe(sessionId);
-    expect(await indexedAgentSession(agentSub)).toBe(sessionId);
+    expect(sub).not.toBe(SESSION_ID);
   });
 
-  it("removes indexed pairwise agent rows when a session is revoked", async () => {
-    const clientId = "pairwise-agent-revoke";
-    await createClient({
-      clientId,
-      metadata: { agent_subject_type: "pairwise" },
-      subjectType: "public",
+  it("writes nothing that maps the value back to the session", async () => {
+    await db.delete(pairwiseSubjects).run();
+
+    await resolveAgentSub({
+      client: { clientId: "agent-client" },
+      sector: "client/agent-client",
+      sessionId: SESSION_ID,
     });
-    const sessionId = await createAgentSession(userId, clientId);
-    const pairwiseSub = await resolveAgentSubForClient(sessionId, clientId);
 
-    const indexedBefore = await db
-      .select({ subjectId: pairwiseSubjects.subjectId })
-      .from(pairwiseSubjects)
-      .where(eq(pairwiseSubjects.subjectId, sessionId))
-      .all();
-    expect(indexedBefore).toHaveLength(1);
-
-    await revokeSessionForActor({ kind: "browser_user", userId }, sessionId);
-
-    const indexedAfter = await db
-      .select({ subjectId: pairwiseSubjects.subjectId })
-      .from(pairwiseSubjects)
-      .where(eq(pairwiseSubjects.subjectId, sessionId))
-      .all();
-    expect(indexedAfter).toHaveLength(0);
-
-    expect(await indexedAgentSession(pairwiseSub)).toBeNull();
+    expect(await db.select().from(pairwiseSubjects).all()).toEqual([]);
   });
 });
