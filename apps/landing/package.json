@@ -44,7 +44,7 @@
   },
   "devDependencies": {
     "@biomejs/biome": "^2.6.7",
-    "@react-router/dev": "^7.18.5",
+    "@react-router/dev": "^8.5.1",
     "@tailwindcss/vite": "^4.3.5",
     "@types/mdx": "^2.0.14",
     "@types/node": "^26.6.6",
