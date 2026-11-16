@@ -165,6 +165,7 @@ Current cases that need a push:
 | `NEXT_PUBLIC_ZENTITY_URL` | <http://localhost:3000> | Public Zentity URL. Links point here, VP verification expects `<url>/api/auth` as the credential issuer, and the status list is fetched from this origin, so the demo server must reach it |
 | `BETTER_AUTH_SECRET` | demo-rp-secret... | Auth secret |
 | `ZENTITY_URL` | <http://localhost:3000> | Zentity server URL |
+| `OAUTH_DPOP_KEY_SEED` | Required in production | Seed (min 32 chars) for the DPoP key that binds Zentity sign-in tokens. Keep it stable and different from `ZPAY_DPOP_KEY_SEED`. Without it, development uses a key that changes on every restart |
 | `DATABASE_URL` | file:./.data/demo-rp.db | SQLite database URL |
 | `OIDC4VCI_WALLET_CLIENT_ID` | zentity-wallet | OID4VCI wallet client ID |
 | `VERIFIER_CERT_PATH` | .data/certs/ | Path to x509 dev certificates |
@@ -180,6 +181,7 @@ Current cases that need a push:
 
 - **Next.js 16** with App Router
 - **better-auth** with `genericOAuth` plugin (`overrideUserInfo: true` for step-up)
+- **DPoP sign-in**: `genericOAuth` signs the code exchange and refresh with one key derived from `OAUTH_DPOP_KEY_SEED` and sends `dpop_jkt` on the authorization request. Userinfo, the agent bootstrap token exchange, validity pulls, and Proof-of-Human requests present the tokens with the same key. Sign-in does not use PAR: Zentity's PAR endpoint requires a `resource` indicator, which would change the access token audience
 - **shadcn/ui** for components
 - **SQLite** (via better-sqlite3) for session storage
 - **All-DCR**: Every route scenario self-registers via RFC 7591 and persists the `client_id` in the `dcr_client` table keyed by `scenarioId`

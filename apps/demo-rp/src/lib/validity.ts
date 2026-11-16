@@ -171,12 +171,10 @@ export async function getScenarioValidityState(args: {
   const subject = sessionAccount?.subject ?? null;
   const accessToken = sessionAccount?.accessToken ?? null;
 
-  const [latestNotice, dpop] = await Promise.all([
+  const latestNotice =
     clientId && subject
-      ? readLatestValidityNotice({ clientId, subject })
-      : Promise.resolve(null),
-    accessToken ? getOAuthDpopClient(accessToken) : Promise.resolve(null),
-  ]);
+      ? await readLatestValidityNotice({ clientId, subject })
+      : null;
 
   if (!(clientId && accessToken)) {
     return {
@@ -189,19 +187,11 @@ export async function getScenarioValidityState(args: {
     };
   }
 
-  if (!dpop) {
-    return {
-      clientId,
-      latestNotice,
-      scenarioId: args.scenarioId,
-      pullError: "Missing DPoP key for current RP session.",
-      snapshot: null,
-      subject,
-    };
-  }
-
   try {
-    const snapshot = await fetchRemoteValidityState({ accessToken, dpop });
+    const snapshot = await fetchRemoteValidityState({
+      accessToken,
+      dpop: await getOAuthDpopClient(),
+    });
 
     return {
       clientId,

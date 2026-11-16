@@ -5,14 +5,13 @@ import {
   requestProofOfHumanToken,
 } from "@zentity/sdk/rp";
 import { and, eq } from "drizzle-orm";
-import { calculateJwkThumbprint } from "jose";
 import { headers } from "next/headers";
 
 import { getAuth } from "@/lib/auth";
 import { getDb } from "@/lib/db/connection";
-import { account, oauthDpopKey } from "@/lib/db/schema";
+import { account } from "@/lib/db/schema";
 import { env } from "@/lib/env";
-import { getOAuthDpopClient } from "@/lib/oauth-dpop-client";
+import { getOAuthDpopClient, getOAuthDpopJkt } from "@/lib/oauth-dpop-client";
 import { getOAuthProviderId } from "@/scenarios/route-scenario-registry";
 
 const X402_OAUTH_PROVIDER_ID = getOAuthProviderId("x402");
@@ -74,14 +73,9 @@ export async function acquirePohToken(): Promise<PohResult | PohError> {
     }
   }
 
-  const dpop = await getOAuthDpopClient(acct.accessToken);
-  if (!dpop) {
-    return { error: "dpop_keys_missing", status: 500 };
-  }
-
   const result = await requestProofOfHumanToken({
     accessToken: acct.accessToken,
-    dpopClient: dpop,
+    dpopClient: await getOAuthDpopClient(),
     proofOfHumanUrl: `${env.ZENTITY_URL}/api/auth/oauth2/proof-of-human`,
   });
 
@@ -107,10 +101,16 @@ export function isPohError(r: PohResult | PohError): r is PohError {
 }
 
 /**
- * Returns the JWK thumbprint of the DPoP key stored for the x402 provider.
- * Used to verify that a PoH token's cnf.jkt was bound to OUR key.
+ * What a PoH token presented by the signed-in user must be bound to: the
+ * subject Zentity issued to the x402 client for this user, and the sign-in
+ * DPoP key's thumbprint. Every demo-rp user shares that key, so the subject
+ * is what ties the token to this user rather than to any user of this
+ * deployment. Null without a session or an x402 access token.
  */
-export async function getStoredDpopJkt(): Promise<string | null> {
+export async function getProofOfHumanBinding(): Promise<{
+  jkt: string;
+  subject: string;
+} | null> {
   const auth = await getAuth();
   const session = await auth.api.getSession({ headers: await headers() });
   if (!session?.user?.id) {
@@ -118,7 +118,7 @@ export async function getStoredDpopJkt(): Promise<string | null> {
   }
 
   const acct = await getDb()
-    .select({ accessToken: account.accessToken })
+    .select({ accessToken: account.accessToken, accountId: account.accountId })
     .from(account)
     .where(
       and(
@@ -128,19 +128,9 @@ export async function getStoredDpopJkt(): Promise<string | null> {
     )
     .limit(1)
     .get();
-  if (!acct?.accessToken) {
+  if (!(acct?.accessToken && acct.accountId)) {
     return null;
   }
 
-  const dpopRow = await getDb()
-    .select({ publicJwk: oauthDpopKey.publicJwk })
-    .from(oauthDpopKey)
-    .where(eq(oauthDpopKey.accessToken, acct.accessToken))
-    .limit(1)
-    .get();
-  if (!dpopRow) {
-    return null;
-  }
-
-  return calculateJwkThumbprint(JSON.parse(dpopRow.publicJwk));
+  return { jkt: await getOAuthDpopJkt(), subject: acct.accountId };
 }

@@ -194,6 +194,8 @@ vercel --prod
 
 `.vercelignore` at the repo root trims the parts of `apps/web` not needed by demo-rp (src, public, `.next`, etc.) while keeping `apps/web/vendor/` and `apps/web/patches/`. Vercel's serverless filesystem is read-only outside `/tmp`, so any code that persists generated keys must use `/tmp` when `process.env.VERCEL` is set (see `apps/demo-rp/src/lib/attestation.ts`).
 
+demo-rp binds every Zentity sign-in token to one DPoP key derived from `OAUTH_DPOP_KEY_SEED` (min 32 chars, different from `ZPAY_DPOP_KEY_SEED`). Production requires it, so set it in the demo-rp Vercel project before deploying. Keep it stable: a new seed invalidates every stored sign-in token, and users must sign in again.
+
 ### Railway (Backend Services)
 
 Backend services deploy to Railway using Dockerfiles. Each service has a `railway.toml` for configuration.

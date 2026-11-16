@@ -100,20 +100,6 @@ export const cibaPings = sqliteTable("ciba_ping", {
     .$defaultFn(() => new Date()),
 });
 
-export const oauthDpopKey = sqliteTable("oauth_dpop_key", {
-  id: text("id").primaryKey(),
-  oauthProviderId: text("oauthProviderId").notNull(),
-  accessToken: text("accessToken").notNull().unique(),
-  publicJwk: text("publicJwk").notNull(),
-  privateJwk: text("privateJwk").notNull(),
-  createdAt: integer("createdAt", { mode: "timestamp_ms" })
-    .notNull()
-    .$defaultFn(() => new Date()),
-  updatedAt: integer("updatedAt", { mode: "timestamp_ms" })
-    .notNull()
-    .$defaultFn(() => new Date()),
-});
-
 export const agentRuntime = sqliteTable(
   "agent_runtime",
   {

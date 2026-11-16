@@ -112,6 +112,9 @@ export default defineConfig({
               PORT: demoRpPort,
               ZPAY_URL: zpayBaseURL,
               ZPAY_PAYEE_ID: zpayPayeeId,
+              OAUTH_DPOP_KEY_SEED:
+                process.env.OAUTH_DPOP_KEY_SEED ??
+                "e2e-oauth-dpop-seed-32-chars-min-x",
               // Stable seed so the BFF's DPoP JKT stays constant across
               // restarts and across the prepare/settle pair in a single
               // E2E run.

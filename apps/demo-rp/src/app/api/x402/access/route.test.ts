@@ -11,7 +11,7 @@ const mocks = vi.hoisted(() => ({
   findResource: vi.fn(),
   getMirrorAddress: vi.fn(),
   readOnChainCompliance: vi.fn(),
-  getStoredDpopJkt: vi.fn(),
+  getProofOfHumanBinding: vi.fn(),
   settleViaFacilitator: vi.fn(),
   verifyViaFacilitator: vi.fn(),
   verifyProofOfHumanToken: vi.fn(),
@@ -48,7 +48,7 @@ vi.mock("@/lib/facilitator", () => ({
 }));
 
 vi.mock("@/lib/poh-client", () => ({
-  getStoredDpopJkt: mocks.getStoredDpopJkt,
+  getProofOfHumanBinding: mocks.getProofOfHumanBinding,
 }));
 
 vi.mock("@/lib/x402-server", () => ({
@@ -140,8 +140,13 @@ describe("/api/x402/access POST", () => {
       isValid: true,
       payer: WALLET_A,
     });
+    mocks.getProofOfHumanBinding.mockResolvedValue({
+      jkt: "sign-in-jkt",
+      subject: "user-123",
+    });
     mocks.verifyProofOfHumanToken.mockResolvedValue({
       sub: "user-123",
+      cnf: { jkt: "sign-in-jkt" },
       exp: 1_800_000_000,
       poh: {
         identity: {
@@ -279,5 +284,62 @@ describe("/api/x402/access POST", () => {
         address: WALLET_A,
       },
     });
+  });
+
+  it("refuses a PoH token issued to another user of this deployment", async () => {
+    mocks.findResource.mockReturnValue(
+      makeResource({ requiredTier: 2, requireOnChain: false })
+    );
+    mocks.verifyProofOfHumanToken.mockResolvedValue({
+      sub: "other-user",
+      cnf: { jkt: "sign-in-jkt" },
+      exp: 1_800_000_000,
+      poh: {
+        identity: { verified: true, strength: "cryptographic_chip" },
+        humanity: { proven: true },
+        policy: { version: "v1.0" },
+      },
+    });
+
+    const response = await POST(
+      makeRequest(
+        { resourceId: "resource-1" },
+        { [PAYMENT_SIGNATURE_HEADER]: makePaymentSignatureHeader() }
+      )
+    );
+
+    expect(response.status).toBe(401);
+    await expect(response.json()).resolves.toEqual({
+      error: "poh_subject_mismatch",
+    });
+    expect(mocks.settleViaFacilitator).not.toHaveBeenCalled();
+  });
+
+  it("refuses a PoH token without a DPoP binding", async () => {
+    mocks.findResource.mockReturnValue(
+      makeResource({ requiredTier: 2, requireOnChain: false })
+    );
+    mocks.verifyProofOfHumanToken.mockResolvedValue({
+      sub: "user-123",
+      exp: 1_800_000_000,
+      poh: {
+        identity: { verified: true, strength: "cryptographic_chip" },
+        humanity: { proven: true },
+        policy: { version: "v1.0" },
+      },
+    });
+
+    const response = await POST(
+      makeRequest(
+        { resourceId: "resource-1" },
+        { [PAYMENT_SIGNATURE_HEADER]: makePaymentSignatureHeader() }
+      )
+    );
+
+    expect(response.status).toBe(401);
+    await expect(response.json()).resolves.toEqual({
+      error: "dpop_binding_mismatch",
+    });
+    expect(mocks.settleViaFacilitator).not.toHaveBeenCalled();
   });
 });

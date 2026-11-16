@@ -172,10 +172,7 @@ async function exchangeBootstrapAccessToken(
     throw new Error("Client not registered. Register the demo client first.");
   }
 
-  const dpop = await getOAuthDpopClient(authAccount.accessToken);
-  if (!dpop) {
-    throw new Error("Missing persisted DPoP key for the current OAuth session");
-  }
+  const dpop = await getOAuthDpopClient();
   const tokenUrl = `${env.ZENTITY_URL}/api/auth/oauth2/token`;
 
   const { body, response } = await requestTokenEndpoint(
