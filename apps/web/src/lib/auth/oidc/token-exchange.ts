@@ -52,7 +52,6 @@ import { signJwt } from "@/lib/auth/oidc/jwt-signer";
 import { resolveUserIdFromSub } from "@/lib/auth/oidc/pairwise";
 import { isZentityAccessToken } from "@/lib/auth/oidc/resource-access-token";
 import { getAuthIssuer, joinAuthIssuerPath } from "@/lib/auth/oidc/well-known";
-import { parseStoredStringArray } from "@/lib/db/adapter-compat";
 import { db } from "@/lib/db/connection";
 import { oauthClients } from "@/lib/db/schema/oauth-provider";
 import { logger } from "@/lib/logging/logger";
@@ -79,35 +78,60 @@ const tokenExchangeUserinfoAudience = joinAuthIssuerPath(
   "oauth2/userinfo"
 );
 const TRAILING_SLASHES = /\/+$/;
+// Requests a refresh token, and token exchange never issues one.
+const OFFLINE_ACCESS_SCOPE = "offline_access";
 
-function isLoopbackHostname(hostname: string): boolean {
-  return (
-    hostname === "127.0.0.1" ||
-    hostname === "::1" ||
-    hostname === "[::1]" ||
-    hostname === "localhost"
-  );
+function parseScopeList(value: unknown): string[] {
+  return typeof value === "string"
+    ? [...new Set(value.split(" ").filter(Boolean))]
+    : [];
 }
 
-function isInstalledAgentBootstrapClient(input: {
-  grantTypes: string[];
-  redirectUris: string[];
-}): boolean {
-  return (
-    input.grantTypes.includes(TOKEN_EXCHANGE_GRANT_TYPE) &&
-    input.redirectUris.length > 0 &&
-    input.redirectUris.every((redirectUri) => {
-      try {
-        const parsed = new URL(redirectUri);
-        return (
-          (parsed.protocol === "http:" || parsed.protocol === "https:") &&
-          isLoopbackHostname(parsed.hostname)
+function invalidScope(description: string): APIError {
+  return new APIError("BAD_REQUEST", {
+    error: "invalid_scope",
+    error_description: description,
+  });
+}
+
+/**
+ * The scopes the exchanged token carries, always a subset of the subject
+ * token's. Without a requested scope it keeps the subject's scopes the client
+ * registered, except `offline_access`, which it never issues, and the agent
+ * bootstrap scopes, which it issues only on request.
+ */
+function resolveExchangedScopes(input: {
+  clientScopes: readonly string[] | undefined;
+  requestedScopes: string[];
+  subjectScopes: string[];
+}): string[] {
+  const { clientScopes, requestedScopes, subjectScopes } = input;
+  if (requestedScopes.length > 0) {
+    for (const scope of requestedScopes) {
+      if (scope === OFFLINE_ACCESS_SCOPE) {
+        throw invalidScope(
+          `Requested scope '${scope}' is not available through token exchange`
         );
-      } catch {
-        return false;
       }
-    })
+      if (!subjectScopes.includes(scope)) {
+        throw invalidScope(
+          `Requested scope '${scope}' exceeds subject token scope`
+        );
+      }
+    }
+    return requestedScopes;
+  }
+
+  const inherited = subjectScopes.filter(
+    (scope) =>
+      scope !== OFFLINE_ACCESS_SCOPE &&
+      !AGENT_BOOTSTRAP_SCOPE_SET.has(scope) &&
+      (!clientScopes || clientScopes.includes(scope))
   );
+  if (inherited.length === 0) {
+    throw invalidScope("Subject token has no scope this client can exchange");
+  }
+  return inherited;
 }
 
 function normalizeResourceAudience(value: string): string {
@@ -239,23 +263,12 @@ function isValidTokenExchangeAudience(
   );
 }
 
-function getRequestingClientMetadata(clientId: string) {
-  return db
-    .select({
-      grantTypes: oauthClients.grantTypes,
-      redirectUris: oauthClients.redirectUris,
-    })
-    .from(oauthClients)
-    .where(eq(oauthClients.clientId, clientId))
-    .limit(1)
-    .get();
-}
-
 /**
  * RFC 8693 Token Exchange grant handler: exchanges an access token this AS
  * issued for another access token, with scope attenuation and audience
  * binding. Every exchanged token includes an `act` claim for the delegation
- * chain, and its requested scope must be a subset of the subject token's.
+ * chain, and its scope is a subset of both the subject token's scope and the
+ * scopes the requesting client registered.
  */
 function createTokenExchangeHandler(): OAuthExtensionGrantHandler {
   return (async ({ ctx, provider }: OAuthExtensionGrantHandlerInput) => {
@@ -299,10 +312,13 @@ function createTokenExchangeHandler(): OAuthExtensionGrantHandler {
       });
     }
 
-    // Authenticate the requesting client. Token-exchange clients may be public
-    // (installed agents bootstrapping), so credentials are not required.
+    // Authenticate the requesting client, which must have registered every
+    // scope it requests. Token-exchange clients may be public (installed
+    // agents bootstrapping), so credentials are not required.
+    const requestedScopes = parseScopeList(requestedScope);
     const authenticated = await provider.authenticateClient({
       requireCredentials: false,
+      scopes: requestedScopes,
     });
     const client = authenticated.client;
 
@@ -443,48 +459,11 @@ function createTokenExchangeHandler(): OAuthExtensionGrantHandler {
       });
     }
 
-    // Scope attenuation
-    const subjectScopes: string[] =
-      typeof subjectPayload.scope === "string"
-        ? subjectPayload.scope.split(" ")
-        : [];
-    const requestedScopes =
-      typeof requestedScope === "string"
-        ? requestedScope.split(" ").filter(Boolean)
-        : [];
-    const bootstrapOnlyRequest =
-      requestedScopes.length > 0 &&
-      requestedScopes.every((scope) => AGENT_BOOTSTRAP_SCOPE_SET.has(scope));
-    const requestingClientMetadata = bootstrapOnlyRequest
-      ? await getRequestingClientMetadata(client.clientId)
-      : null;
-    const canSelfBootstrap =
-      bootstrapOnlyRequest &&
-      sourceClientId === client.clientId &&
-      requestingClientMetadata != null &&
-      isInstalledAgentBootstrapClient({
-        grantTypes: parseStoredStringArray(requestingClientMetadata.grantTypes),
-        redirectUris: parseStoredStringArray(
-          requestingClientMetadata.redirectUris
-        ),
-      });
-
-    let targetScopes: string[];
-    if (requestedScope) {
-      if (!canSelfBootstrap) {
-        for (const s of requestedScopes) {
-          if (!subjectScopes.includes(s)) {
-            throw new APIError("BAD_REQUEST", {
-              error: "invalid_scope",
-              error_description: `Requested scope '${s}' exceeds subject token scope`,
-            });
-          }
-        }
-      }
-      targetScopes = requestedScopes;
-    } else {
-      targetScopes = subjectScopes.length > 0 ? [...subjectScopes] : ["openid"];
-    }
+    const targetScopes = resolveExchangedScopes({
+      clientScopes: client.scopes,
+      requestedScopes,
+      subjectScopes: parseScopeList(subjectPayload.scope),
+    });
 
     // Build act claim with nesting (RFC 8693 §4.4)
     const actClaim: OAuthActorClaim = {
@@ -563,11 +542,17 @@ function createTokenExchangeHandler(): OAuthExtensionGrantHandler {
     );
     if (includesBootstrapScope) {
       if (targetScopes.some((scope) => !AGENT_BOOTSTRAP_SCOPE_SET.has(scope))) {
-        throw new APIError("BAD_REQUEST", {
-          error: "invalid_scope",
-          error_description:
-            "Bootstrap token exchanges may only request agent bootstrap scopes",
-        });
+        throw invalidScope(
+          "Bootstrap token exchanges may only request agent bootstrap scopes"
+        );
+      }
+
+      // The user granted these scopes to the client the subject token was
+      // issued to, not to a resource server that received it.
+      if (exchangesAsResourceServer) {
+        throw invalidScope(
+          "Only the client a subject token was issued to may exchange it for agent bootstrap scopes"
+        );
       }
 
       if (targetAudience !== appUrl) {

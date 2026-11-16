@@ -93,8 +93,8 @@ flowchart TD
 
 Registration happens in two steps because the two identities prove different things.
 
-1. The MCP authenticates via OAuth and receives a pairwise user login token.
-2. The MCP exchanges that login token via RFC 8693 for a short-lived DPoP-bound bootstrap token carrying `agent:host.register`, `agent:session.register`, and `agent:session.revoke`.
+1. The MCP authenticates via OAuth and receives a pairwise user login token. The login requests `agent:host.register`, `agent:session.register`, and `agent:session.revoke` along with the MCP's session scopes, and the consent screen shows the three agent scopes as one line.
+2. The MCP exchanges that login token via RFC 8693 for a short-lived DPoP-bound bootstrap token carrying the three agent scopes. Token exchange issues only scopes the login token was granted. The MCP's session token comes from a separate exchange limited to `openid`, `email`, and `proof:identity`, so it cannot be exchanged for the agent scopes.
 3. The MCP ensures its durable host exists by calling `POST /api/auth/agent/host/register` with the bootstrap token.
 4. The MCP signs a short-lived host JWT proving possession of the host private key.
 5. The MCP starts a fresh process keypair and calls `POST /api/auth/agent/register` with the bootstrap token.
@@ -108,10 +108,10 @@ sequenceDiagram
   participant AS as Zentity AS
 
   MCP->>Browser: Open OAuth login
-  Browser->>AS: Authorize client with login scopes
+  Browser->>AS: Authorize client with session and agent bootstrap scopes
   AS-->>MCP: Pairwise user login token
 
-  MCP->>AS: RFC 8693 token exchange for bootstrap scopes
+  MCP->>AS: RFC 8693 exchange of the login token for bootstrap scopes
   AS-->>MCP: DPoP-bound bootstrap token
 
   Note over MCP: Load or create durable host key
@@ -480,13 +480,15 @@ Key points:
 
 RFC 8693 token exchange has a single output in the agent flow: an access token re-bound to the target audience. Only the client the subject token was issued to, or the protected resource it was issued for, may perform the exchange.
 
-The exchanged token keeps the AAP profile of the subject token (`agent`, `task`, `capabilities`, `oversight`, `audit`) and adds `delegation` to project the chain. `sub` and `act.sub` are pairwise for the exchanging client. The exchange does not carry the subject token's `authorization_details`.
+The exchanged token keeps the AAP profile of the subject token (`agent`, `task`, `capabilities`, `oversight`, `audit`) and adds `delegation` to project the chain. `act.sub` is the agent session's pairwise identifier for the exchanging client. The exchange does not carry the subject token's `authorization_details`.
+
+An exchanged JWT names the user by the internal user id in `sub`, not by a pairwise identifier. Audiences outside Zentity that receive exchanged JWTs for the same user therefore see the same `sub`.
 
 ```json
 {
   "iss": "https://app.zentity.xyz/api/auth",
   "aud": "https://mcp.example.com",
-  "sub": "user_pairwise_sub_for_client",
+  "sub": "internal_user_id",
   "act": {
     "sub": "agent_pairwise_sub_for_client"
   },
@@ -616,7 +618,14 @@ The delegated access token carries:
 - `act.sub` for the acting agent session
 - AAP `agent`, `task`, `capabilities`, `oversight`, and `audit`
 
-Tokens issued by token exchange to a non-agent audience outside Zentity are JWTs carrying pairwise `sub`, pairwise `act.sub`, the approved `authorization_details`, and `cnf.jkt`, all rebound for the target audience. For an audience Zentity serves, token exchange returns an opaque token.
+Token exchange to a non-agent audience outside Zentity returns a JWT with these claims:
+
+- `aud` set to the target audience
+- `sub` set to the internal user id
+- `act.sub` set to the agent session's pairwise identifier for the exchanging client
+- `cnf.jkt` binding the DPoP key that signed the exchange request
+
+The JWT does not carry the subject token's `authorization_details`. For an audience Zentity serves, token exchange returns an opaque token.
 
 The full binding chain is:
 
@@ -654,7 +663,7 @@ The document publishes:
 - `approval_methods`
 - `supported_features`
 
-The bootstrap contract implied by the document is narrow: the client first exchanges its login token for a dedicated DPoP-bound bootstrap token, then uses that token for host/session registration and revocation. The raw login token is not the bootstrap credential.
+The bootstrap contract implied by the document is narrow: the client requests the bootstrap scopes at sign-in, exchanges its login token for a dedicated DPoP-bound bootstrap token, then uses that token for host/session registration and revocation. The raw login token is not the bootstrap credential.
 
 The current feature document advertises:
 
@@ -845,7 +854,7 @@ The runtime proof is bound to a specific consent request rather than floating as
 
 Once consent is obtained, the question shifts from "does the human approve?" to "how does the approved action reach the right party with the right identifiers?" Four specs shape the answer.
 
-**Token exchange** (RFC 8693) rebinds the CIBA access token for a different audience. Without it, the agent would present the same token to every relying party, leaking cross-party correlation. Token exchange performs scope attenuation (narrowing what the downstream RP can see), audience rebinding (recomputing pairwise identifiers for the target client), and claim narrowing (dropping agent control-plane claims when issuing for non-agent audiences, leaving `sub`, `act.sub`, the approved `authorization_details`, and `cnf.jkt`). The current deployment does not advertise general delegation-chain support, so multi-hop chain portability is not part of the published contract.
+**Token exchange** (RFC 8693) rebinds the CIBA access token for a different audience. Without it, the agent would present the same token to every relying party, leaking cross-party correlation. Token exchange performs scope attenuation (narrowing what the downstream RP can see) and audience rebinding (setting `aud` to the target and recomputing the agent's pairwise `act.sub` for the exchanging client). The exchanged JWT's `sub` stays the internal user id. The exchanged token keeps the subject token's AAP sections and `cnf.jkt`, but not its `authorization_details`. The current deployment does not advertise general delegation-chain support, so multi-hop chain portability is not part of the published contract.
 
 Token exchange also issues the agent bootstrap token used for host/session registration. That bootstrap token is DPoP-bound and carries only the narrow agent scopes needed for bootstrap and revocation; it is intentionally separate from the login token and from downstream RP-bound tokens.
 
@@ -861,7 +870,7 @@ Two convergence points tie the five concerns together rather than letting them e
 
 The `assertionVerified` flag on the CIBA request row is the first. It is set when the `Agent-Assertion` from the control plane passes verification inside the consent channel. If verification fails, four downstream effects cascade: the AAP profile builder returns nothing (no agent claims enter the token), introspection returns `active: false` for agent consumers, token exchange cannot rebind for non-agent audiences (no `act.sub` to resolve), and the token reverts to a standard CIBA token without agent semantics.
 
-The `authorization_details` payload is the second. It enters at the structured intent layer, drives capability matching in the consent channel, survives into the CIBA access token, and is forward-copied into the exchanged token for the downstream audience. The same structured data flows through four specs without transformation, which is evidence that the specs compose cleanly rather than fighting over data representation.
+The `authorization_details` payload is the second. It enters at the structured intent layer, drives capability matching in the consent channel, and survives into the CIBA access token. Token exchange does not copy it into the exchanged token. The same structured data flows from intent to issued token without transformation, which is evidence that the specs compose cleanly rather than fighting over data representation.
 
 ### Standards map
 

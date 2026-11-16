@@ -81,9 +81,9 @@ async function createAgentClient() {
 }
 
 /**
- * The user signs in to the agent's client, which exchanges that login for a
- * bootstrap token. The login's authentication context is what delegating the
- * agent session rests on.
+ * The user signs in to the agent's client, granting it the bootstrap scopes,
+ * and the client exchanges that login for a bootstrap token. The login's
+ * authentication context is what delegating the agent session rests on.
  */
 async function issueBootstrapToken(
   userId: string,
@@ -98,7 +98,7 @@ async function issueBootstrapToken(
       }),
       clientId: CLIENT_ID,
       expiresAt: new Date(Date.now() + 3_600_000),
-      scopes: JSON.stringify(["openid"]),
+      scopes: JSON.stringify(["openid", ...BOOTSTRAP_SCOPE.split(" ")]),
       token: hashOpaqueAccessToken(loginToken),
       userId,
     })

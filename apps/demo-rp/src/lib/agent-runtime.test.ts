@@ -121,6 +121,8 @@ vi.mock("@/lib/env", () => ({
   },
 }));
 
+import { aetherScenario } from "@/scenarios/aether";
+
 import { prepareAgentAssertionForScenario } from "./agent-runtime";
 
 function createDbMock(state: {
@@ -303,6 +305,33 @@ describe("prepareAgentAssertionForScenario", () => {
         accessToken: "bootstrap-token",
         method: "POST",
       })
+    );
+  });
+
+  it("exchanges the sign-in token only for bootstrap scopes the Aether sign-in grants", async () => {
+    testState.fetchMock.mockResolvedValueOnce(
+      new Response(JSON.stringify({ error: "invalid_scope" }), {
+        headers: { "Content-Type": "application/json" },
+        status: 400,
+      })
+    );
+
+    await expect(
+      prepareAgentAssertionForScenario({
+        bindingMessage: "Aether AI requests purchase: Sony WH-1000XM5",
+        scenarioId: "aether",
+        trustTier: "registered",
+        userId: "user-1",
+      })
+    ).rejects.toThrow("Bootstrap token exchange failed: 400");
+
+    const [, init] = testState.fetchMock.mock.calls[0] ?? [];
+    const body = new URLSearchParams(String(init?.body));
+    expect(body.get("subject_token")).toBe("access-token");
+    const requested = body.get("scope")?.split(" ") ?? [];
+    expect(requested.length).toBeGreaterThan(0);
+    expect(aetherScenario.signInScopes).toEqual(
+      expect.arrayContaining(requested)
     );
   });
 

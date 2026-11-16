@@ -93,6 +93,8 @@ These control resource access with no claim payload.
 | `compliance:read` | Read attestation and compliance status |
 | `identity_verification` | OID4VCI credential issuance |
 
+The consent screen shows `agent:host.register`, `agent:session.register`, and `agent:session.revoke` as one line, "Register and manage this agent on your behalf", and hides `agent:introspect` and `identity_verification`.
+
 ## Delivery rules
 
 | Claim class | id_token | userinfo | access_token |

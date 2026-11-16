@@ -31,7 +31,7 @@ import {
   findMissingIdentityFields,
   HIDDEN_SCOPES,
   isIdentityScope,
-  SCOPE_DESCRIPTIONS,
+  resolveOptionalScopes,
 } from "@/lib/auth/oidc/disclosure/registry";
 import { groupScopes } from "@/lib/auth/oidc/disclosure/scope-display";
 import { getSignedOAuthQuery } from "@/lib/auth/oidc/oauth-post-login";
@@ -130,7 +130,10 @@ export function OAuthConsentClient({
     [scopeParam]
   );
 
-  const optionalSet = useMemo(() => new Set(optionalScopes), [optionalScopes]);
+  const optionalSet = useMemo(
+    () => resolveOptionalScopes(allScopes, optionalScopes),
+    [allScopes, optionalScopes]
+  );
 
   const visible = useMemo(
     () => allScopes.filter((s) => !HIDDEN_SCOPES.has(s)),
@@ -217,9 +220,14 @@ export function OAuthConsentClient({
     vault.vaultState.status,
   ]);
 
-  const toggleOptional = (scope: string) => {
+  const isLineSelected = (scopes: string[]) =>
+    scopes.every((scope) => selectedOptional.includes(scope));
+
+  const toggleOptional = (scopes: string[]) => {
     setSelectedOptional((prev) =>
-      prev.includes(scope) ? prev.filter((s) => s !== scope) : [...prev, scope]
+      scopes.every((scope) => prev.includes(scope))
+        ? prev.filter((s) => !scopes.includes(s))
+        : [...new Set([...prev, ...scopes])]
     );
   };
 
@@ -406,13 +414,13 @@ export function OAuthConsentClient({
                 <p className="font-medium text-sm">{group.label}</p>
               </div>
               <ul className="space-y-1 pl-6">
-                {group.scopes.map((scope) => (
+                {group.lines.map((line) => (
                   <li
                     className="flex items-center gap-2 text-muted-foreground text-sm"
-                    key={scope}
+                    key={line.scopes.join(" ")}
                   >
                     <span className="size-1 rounded-full bg-muted-foreground/40" />
-                    {SCOPE_DESCRIPTIONS[scope] ?? scope}
+                    {line.description}
                   </li>
                 ))}
               </ul>
@@ -438,21 +446,24 @@ export function OAuthConsentClient({
                     <p className="font-medium text-sm">{group.label}</p>
                   </div>
                   <div className="space-y-2 pl-6">
-                    {group.scopes.map((scope) => (
-                      <div className="flex items-center gap-2" key={scope}>
-                        <Checkbox
-                          checked={selectedOptional.includes(scope)}
-                          id={`scope-${scope}`}
-                          onCheckedChange={() => toggleOptional(scope)}
-                        />
-                        <Label
-                          className="cursor-pointer font-normal text-sm"
-                          htmlFor={`scope-${scope}`}
-                        >
-                          {SCOPE_DESCRIPTIONS[scope] ?? scope}
-                        </Label>
-                      </div>
-                    ))}
+                    {group.lines.map((line) => {
+                      const id = `scope-${line.scopes.join("-")}`;
+                      return (
+                        <div className="flex items-center gap-2" key={id}>
+                          <Checkbox
+                            checked={isLineSelected(line.scopes)}
+                            id={id}
+                            onCheckedChange={() => toggleOptional(line.scopes)}
+                          />
+                          <Label
+                            className="cursor-pointer font-normal text-sm"
+                            htmlFor={id}
+                          >
+                            {line.description}
+                          </Label>
+                        </div>
+                      );
+                    })}
                   </div>
                 </div>
               ))}

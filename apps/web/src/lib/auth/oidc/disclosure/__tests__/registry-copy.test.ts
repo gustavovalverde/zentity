@@ -1,6 +1,12 @@
+import { AGENT_BOOTSTRAP_SCOPES } from "@zentity/sdk/agent-contract";
 import { describe, expect, it } from "vitest";
 
-import { HIDDEN_SCOPES, OAUTH_SCOPES, SCOPE_DESCRIPTIONS } from "../registry";
+import {
+  describeScopes,
+  HIDDEN_SCOPES,
+  OAUTH_SCOPES,
+  SCOPE_DESCRIPTIONS,
+} from "../registry";
 
 describe("disclosure registry — copy and visibility", () => {
   describe("scope descriptions", () => {
@@ -64,14 +70,8 @@ describe("disclosure registry — copy and visibility", () => {
       expect(HIDDEN_SCOPES.has("profile")).toBe(true);
     });
 
-    it("includes all operational scopes", () => {
-      const operationalScopes = [
-        "agent:host.register",
-        "agent:session.register",
-        "agent:session.revoke",
-        "agent:introspect",
-        "identity_verification",
-      ];
+    it("includes the machine-facing operational scopes", () => {
+      const operationalScopes = ["agent:introspect", "identity_verification"];
 
       for (const scope of operationalScopes) {
         expect(
@@ -108,6 +108,39 @@ describe("disclosure registry — copy and visibility", () => {
           `user-facing scope "${scope}" should NOT be hidden`
         ).toBe(false);
       }
+    });
+
+    it("shows the agent bootstrap scopes, which a user grants at sign-in", () => {
+      for (const scope of AGENT_BOOTSTRAP_SCOPES) {
+        expect(HIDDEN_SCOPES.has(scope), scope).toBe(false);
+      }
+    });
+  });
+
+  describe("describeScopes", () => {
+    it("gives the agent bootstrap scopes one plain-language line", () => {
+      expect(
+        describeScopes(["email", ...AGENT_BOOTSTRAP_SCOPES, "offline_access"])
+      ).toEqual([
+        { description: "Email address", scopes: ["email"] },
+        {
+          description: "Register and manage this agent on your behalf",
+          scopes: [...AGENT_BOOTSTRAP_SCOPES],
+        },
+        {
+          description: "Access when you're not using the app",
+          scopes: ["offline_access"],
+        },
+      ]);
+    });
+
+    it("gives a single requested bootstrap scope the same line", () => {
+      expect(describeScopes(["agent:session.revoke"])).toEqual([
+        {
+          description: "Register and manage this agent on your behalf",
+          scopes: ["agent:session.revoke"],
+        },
+      ]);
     });
   });
 });

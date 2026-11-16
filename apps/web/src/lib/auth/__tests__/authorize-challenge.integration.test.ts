@@ -334,6 +334,44 @@ describe("Authorization Challenge Endpoint", () => {
       });
     });
 
+    // Signing in to a first-party client grants its scopes without a consent
+    // screen, so only the scopes the client registered may be granted.
+    it.each([
+      [["openid"], 400],
+      [["openid", "agent:host.register"], 200],
+    ])(
+      "grants agent bootstrap scopes only when the client registered them (%j)",
+      async (registeredScopes, expectedStatus) => {
+        await db
+          .update(oauthClients)
+          .set({ scopes: JSON.stringify(registeredScopes) })
+          .where(eq(oauthClients.clientId, TEST_CLIENT_ID))
+          .run();
+        await createUserWithOpaque(TEST_EMAIL);
+        const { authorizationCode } = await completeOpaqueFlow({
+          scope: "openid agent:host.register",
+        });
+
+        const { status, json } = await postTokenWithDpop({
+          grant_type: "authorization_code",
+          client_id: TEST_CLIENT_ID,
+          code: authorizationCode,
+          code_verifier: CODE_VERIFIER,
+        });
+
+        expect(status).toBe(expectedStatus);
+        if (expectedStatus === 200) {
+          expect(json.scope).toBe("openid agent:host.register");
+        } else {
+          expect(json).toMatchObject({
+            error: "invalid_scope",
+            error_description:
+              "client does not allow scope agent:host.register",
+          });
+        }
+      }
+    );
+
     it("applies claims.id_token filtering through the full OPAQUE challenge flow", async () => {
       await createUserWithOpaque(TEST_EMAIL);
       const { authSession, authorizationCode } = await completeOpaqueFlow({

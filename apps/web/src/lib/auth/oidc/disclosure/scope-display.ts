@@ -9,7 +9,12 @@ import type { LucideIcon } from "lucide-react";
 
 import { BadgeCheck, KeyRound, Lock } from "lucide-react";
 
-import { isIdentityScope, isProofScope } from "./registry";
+import {
+  describeScopes,
+  isIdentityScope,
+  isProofScope,
+  type ScopeLine,
+} from "./registry";
 
 const SCOPE_GROUP_LABELS = {
   account: "Account",
@@ -20,7 +25,7 @@ const SCOPE_GROUP_LABELS = {
 interface ScopeGroup {
   icon: LucideIcon;
   label: string;
-  scopes: string[];
+  lines: ScopeLine[];
 }
 
 export function groupScopes(scopes: string[]): ScopeGroup[] {
@@ -43,21 +48,21 @@ export function groupScopes(scopes: string[]): ScopeGroup[] {
     groups.push({
       label: SCOPE_GROUP_LABELS.account,
       icon: KeyRound,
-      scopes: account,
+      lines: describeScopes(account),
     });
   }
   if (proofs.length > 0) {
     groups.push({
       label: SCOPE_GROUP_LABELS.proofs,
       icon: BadgeCheck,
-      scopes: proofs,
+      lines: describeScopes(proofs),
     });
   }
   if (identity.length > 0) {
     groups.push({
       label: SCOPE_GROUP_LABELS.identity,
       icon: Lock,
-      scopes: identity,
+      lines: describeScopes(identity),
     });
   }
   return groups;

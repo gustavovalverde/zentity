@@ -173,6 +173,43 @@ describe("bootstrapRegisteredRuntime", () => {
     expect(result.oauth.accessToken).toBe("fresh-token");
   });
 
+  it("signs in again when the stored login was not granted the bootstrap scopes", async () => {
+    const refreshedOauth = {
+      ...baseOauth,
+      accessToken: "fresh-token",
+    };
+    mockEnsureMcpOAuthSession
+      .mockResolvedValueOnce(baseOauth)
+      .mockResolvedValueOnce(refreshedOauth);
+    mockPrepareBootstrapRegistrationAuth
+      .mockRejectedValueOnce(
+        new Error(
+          `Token exchange failed: 400 {"error":"invalid_scope","error_description":"Requested scope 'agent:host.register' exceeds subject token scope"}`
+        )
+      )
+      .mockResolvedValueOnce(bootstrapOauth);
+
+    const result = await bootstrapRegisteredRuntime(CLAUDE_CODE);
+
+    expect(mockClearMcpOAuthTokens).toHaveBeenCalledTimes(1);
+    expect(mockEnsureMcpOAuthSession).toHaveBeenCalledTimes(2);
+    expect(mockPrepareBootstrapRegistrationAuth).toHaveBeenLastCalledWith(
+      refreshedOauth
+    );
+    expect(result.oauth.accessToken).toBe("fresh-token");
+  });
+
+  it("does not sign in again for other bootstrap exchange failures", async () => {
+    mockPrepareBootstrapRegistrationAuth.mockRejectedValueOnce(
+      new Error("Token exchange failed: 503 unavailable")
+    );
+
+    await expect(bootstrapRegisteredRuntime(CLAUDE_CODE)).rejects.toThrow(
+      "Token exchange failed: 503 unavailable"
+    );
+    expect(mockClearMcpOAuthTokens).not.toHaveBeenCalled();
+  });
+
   it("re-registers the durable host when the cached host id is stale", async () => {
     mockRegisterAgentSession
       .mockRejectedValueOnce(

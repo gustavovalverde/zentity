@@ -145,7 +145,7 @@ PACT separates agent identity into three layers with distinct lifetimes and audi
 
 A host is the persistent installation identity for a client environment. It represents a specific installation on a specific machine, not a user or an application.
 
-**Bootstrap.** The client first exchanges its pairwise login token via RFC 8693 for a short-lived DPoP-bound bootstrap token carrying `agent:host.register`. `POST {host_registration_endpoint}` authenticates with that bootstrap token, not the login token.
+**Bootstrap.** The client requests the bootstrap scopes when the user signs in, then exchanges its pairwise login token via RFC 8693 for a short-lived DPoP-bound bootstrap token carrying `agent:host.register`. The exchange only narrows scopes: the authorization server MUST NOT issue a bootstrap scope the login token was not granted. `POST {host_registration_endpoint}` authenticates with that bootstrap token, not the login token.
 
 **Request:**
 

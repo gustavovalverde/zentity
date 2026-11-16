@@ -301,6 +301,122 @@ describe("OAuthConsentClient identity hardening", () => {
     );
   });
 
+  it("shows the agent bootstrap scopes as one line and grants them on Allow", () => {
+    const { container } = render(
+      <OAuthConsentClient
+        authMode="passkey"
+        clientHostname={null}
+        clientId="client-1"
+        clientMeta={{
+          name: "Local agent",
+          icon: null,
+          uri: null,
+          metadataUrl: null,
+          redirectUris: ["http://127.0.0.1/callback"],
+        }}
+        isLocalApp
+        optionalScopes={[]}
+        scopeParam="openid email agent:host.register agent:session.register agent:session.revoke"
+        securityBadgeInput={null}
+        wallet={null}
+      />
+    );
+
+    expect(
+      screen.getAllByText("Register and manage this agent on your behalf")
+    ).toHaveLength(1);
+    expect(screen.queryByText("Register an agent host")).toBeNull();
+    expect(screen.getAllByRole("listitem")).toHaveLength(2);
+
+    const scopeInput = container.querySelector<HTMLInputElement>(
+      'input[name="scope"]'
+    );
+    expect(scopeInput?.value.split(" ")).toEqual(
+      expect.arrayContaining([
+        "openid",
+        "email",
+        "agent:host.register",
+        "agent:session.register",
+        "agent:session.revoke",
+      ])
+    );
+  });
+
+  it("lets the user leave out optional agent bootstrap scopes with one checkbox", () => {
+    const { container } = render(
+      <OAuthConsentClient
+        authMode="passkey"
+        clientHostname={null}
+        clientId="client-1"
+        clientMeta={{
+          name: "Local agent",
+          icon: null,
+          uri: null,
+          metadataUrl: null,
+          redirectUris: null,
+        }}
+        isLocalApp={false}
+        optionalScopes={["agent:host.register", "agent:session.register"]}
+        scopeParam="openid email agent:host.register agent:session.register"
+        securityBadgeInput={null}
+        wallet={null}
+      />
+    );
+
+    const scopeValue = () =>
+      container
+        .querySelector<HTMLInputElement>('input[name="scope"]')
+        ?.value.split(" ");
+    const checkbox = screen.getByRole("checkbox", {
+      name: "Register and manage this agent on your behalf",
+    });
+    expect(screen.getAllByRole("checkbox")).toHaveLength(1);
+    expect(scopeValue()).not.toContain("agent:host.register");
+
+    fireEvent.click(checkbox);
+    expect(scopeValue()).toEqual(
+      expect.arrayContaining(["agent:host.register", "agent:session.register"])
+    );
+
+    fireEvent.click(checkbox);
+    expect(scopeValue()).not.toContain("agent:host.register");
+    expect(scopeValue()).not.toContain("agent:session.register");
+  });
+
+  it("requires every agent bootstrap scope when the client marks only some optional", () => {
+    const { container } = render(
+      <OAuthConsentClient
+        authMode="passkey"
+        clientHostname={null}
+        clientId="client-1"
+        clientMeta={{
+          name: "Local agent",
+          icon: null,
+          uri: null,
+          metadataUrl: null,
+          redirectUris: null,
+        }}
+        isLocalApp={false}
+        optionalScopes={["agent:session.register"]}
+        scopeParam="openid email agent:host.register agent:session.register"
+        securityBadgeInput={null}
+        wallet={null}
+      />
+    );
+
+    expect(
+      screen.getAllByText("Register and manage this agent on your behalf")
+    ).toHaveLength(1);
+    expect(screen.queryAllByRole("checkbox")).toHaveLength(0);
+    expect(
+      container
+        .querySelector<HTMLInputElement>('input[name="scope"]')
+        ?.value.split(" ")
+    ).toEqual(
+      expect.arrayContaining(["agent:host.register", "agent:session.register"])
+    );
+  });
+
   it("warns about missing profile fields but stages the available subset", async () => {
     authClientMocks.oauth2.consent.mockResolvedValue({
       data: { redirect: true, url: "#oauth-return" },

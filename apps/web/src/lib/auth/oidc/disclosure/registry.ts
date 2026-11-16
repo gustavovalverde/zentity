@@ -13,6 +13,8 @@
  * See docs/(protocols)/disclosure-profile.md for the written spec.
  */
 
+import { AGENT_BOOTSTRAP_SCOPES } from "@zentity/sdk/agent-contract";
+
 type ScopeFamily = "standard" | "proof" | "identity" | "operational";
 type DeliverySurface = "id_token" | "userinfo" | "access_token";
 
@@ -368,13 +370,69 @@ export const HIDDEN_SCOPES = new Set([
   "openid",
   "profile",
   // Operational scopes — machine-facing, never shown on consent screens
-  "agent:host.register",
-  "agent:session.register",
-  "agent:session.revoke",
   "agent:introspect",
   "identity_verification",
   "poh",
 ]);
+
+// The agent bootstrap scopes are granted together, so consent shows them as
+// one line rather than one row per registration endpoint.
+const AGENT_BOOTSTRAP_SCOPE_SET = new Set<string>(AGENT_BOOTSTRAP_SCOPES);
+const AGENT_BOOTSTRAP_DESCRIPTION =
+  "Register and manage this agent on your behalf";
+
+/** One consent line and the scopes it grants. */
+export interface ScopeLine {
+  description: string;
+  scopes: string[];
+}
+
+/**
+ * The consent lines for visible scopes: one per scope, except that the agent
+ * bootstrap scopes share one line.
+ */
+export function describeScopes(scopes: readonly string[]): ScopeLine[] {
+  const lines: ScopeLine[] = [];
+  let agentBootstrapLine: ScopeLine | undefined;
+  for (const scope of scopes) {
+    if (!AGENT_BOOTSTRAP_SCOPE_SET.has(scope)) {
+      lines.push({
+        description: SCOPE_DESCRIPTIONS[scope] ?? scope,
+        scopes: [scope],
+      });
+    } else if (agentBootstrapLine) {
+      agentBootstrapLine.scopes.push(scope);
+    } else {
+      agentBootstrapLine = {
+        description: AGENT_BOOTSTRAP_DESCRIPTION,
+        scopes: [scope],
+      };
+      lines.push(agentBootstrapLine);
+    }
+  }
+  return lines;
+}
+
+/**
+ * The requested scopes a consent screen offers as optional. The agent
+ * bootstrap scopes share one line, so they are optional only when the client
+ * marks every requested one optional; otherwise all of them are required.
+ */
+export function resolveOptionalScopes(
+  requestedScopes: readonly string[],
+  optionalScopes: readonly string[]
+): Set<string> {
+  const optional = new Set(optionalScopes);
+  const bootstrapScopes = requestedScopes.filter((scope) =>
+    AGENT_BOOTSTRAP_SCOPE_SET.has(scope)
+  );
+  if (bootstrapScopes.some((scope) => !optional.has(scope))) {
+    for (const scope of bootstrapScopes) {
+      optional.delete(scope);
+    }
+  }
+  return optional;
+}
 
 // ---------------------------------------------------------------------------
 // Scope-to-claim mappings (derived from entries)
