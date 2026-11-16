@@ -16,7 +16,13 @@ import { auth } from "@/lib/auth/auth-config";
 import { createSessionAuthenticationContext } from "@/lib/auth/auth-context";
 import { REVERIFICATION_REQUIRED } from "@/lib/auth/recovery-factors";
 import { db } from "@/lib/db/connection";
-import { passkeys, sessions, users, verifications } from "@/lib/db/schema/auth";
+import {
+  accounts,
+  passkeys,
+  sessions,
+  users,
+  verifications,
+} from "@/lib/db/schema/auth";
 import { encryptedSecrets, secretWrappers } from "@/lib/db/schema/privacy";
 import { computeSecretBlobRef } from "@/lib/privacy/secrets/storage.server";
 import { secretsRouter } from "@/lib/trpc/routers/secrets";
@@ -221,6 +227,49 @@ async function createVault(userId: string): Promise<string> {
   return rootId;
 }
 
+/** Adds a sign-in account for each provider; returns their ids by provider. */
+async function addAccounts(
+  userId: string,
+  providers: string[]
+): Promise<Record<string, string>> {
+  const now = new Date();
+  const ids = Object.fromEntries(
+    providers.map((providerId) => [providerId, crypto.randomUUID()])
+  );
+  await db
+    .insert(accounts)
+    .values(
+      providers.map((providerId) => ({
+        id: ids[providerId] ?? "",
+        accountId: userId,
+        providerId,
+        userId,
+        createdAt: now,
+        updatedAt: now,
+      }))
+    )
+    .run();
+  return ids;
+}
+
+async function providerIds(userId: string): Promise<string[]> {
+  const rows = await db
+    .select({ providerId: accounts.providerId })
+    .from(accounts)
+    .where(eq(accounts.userId, userId))
+    .all();
+  return rows.map((row) => row.providerId).sort();
+}
+
+async function passkeyCount(userId: string): Promise<number> {
+  const rows = await db
+    .select({ id: passkeys.id })
+    .from(passkeys)
+    .where(eq(passkeys.userId, userId))
+    .all();
+  return rows.length;
+}
+
 async function vaultRootId(userId: string): Promise<string | undefined> {
   const row = await db
     .select({ id: encryptedSecrets.id })
@@ -391,6 +440,42 @@ describe("recovery factor changes on a passkey account", () => {
       expect(mockSendEmail).not.toHaveBeenCalled();
     });
 
+    it("refuses to remove the only passkey, so the rule still holds", async () => {
+      expect(
+        await refusal(
+          await post(
+            "/passkey/delete-passkey",
+            { id: authenticator.passkeyId },
+            session.cookie
+          )
+        )
+      ).toEqual(REFUSED);
+      expect(await passkeyCount(userId)).toBe(1);
+      expect(
+        await refusal(
+          await post(
+            "/change-email",
+            { newEmail: "new@example.com" },
+            session.cookie
+          )
+        )
+      ).toEqual(REFUSED);
+      expect(mockSendEmail).not.toHaveBeenCalled();
+    });
+
+    it("refuses to unlink the password or a wallet", async () => {
+      const ids = await addAccounts(userId, ["eip712", "opaque"]);
+
+      for (const accountId of Object.values(ids)) {
+        expect(
+          await refusal(
+            await post("/unlink-account", { accountId }, session.cookie)
+          )
+        ).toEqual(REFUSED);
+      }
+      expect(await providerIds(userId)).toEqual(["eip712", "opaque"]);
+    });
+
     it("refuses to reset or replace the vault root", async () => {
       const rootId = await createVault(userId);
       const caller = secrets(userId, session);
@@ -462,6 +547,26 @@ describe("recovery factor changes on a passkey account", () => {
       expect(await vaultRootId(userId)).toBeUndefined();
     });
 
+    it("allows a passkey to be removed and the password unlinked", async () => {
+      const ids = await addAccounts(userId, ["eip712", "opaque"]);
+
+      const unlinked = await post(
+        "/unlink-account",
+        { accountId: ids.opaque },
+        session.cookie
+      );
+      expect(unlinked.status).toBe(200);
+      const removed = await post(
+        "/passkey/delete-passkey",
+        { id: authenticator.passkeyId },
+        session.cookie
+      );
+      expect(removed.status).toBe(200);
+
+      expect(await providerIds(userId)).toEqual(["eip712"]);
+      expect(await passkeyCount(userId)).toBe(0);
+    });
+
     it("does not lend the sign-in to an OAuth access token", async () => {
       const rootId = await createVault(userId);
 
@@ -515,6 +620,19 @@ describe("recovery factor changes on a passkey account", () => {
     );
 
     expect(response.status).toBe(200);
+  });
+
+  it("lets a magic-link sign-in remove a lost passkey", async () => {
+    const session = await magicLinkSignIn(email);
+
+    const response = await post(
+      "/passkey/delete-passkey",
+      { id: authenticator.passkeyId },
+      session.cookie
+    );
+
+    expect(response.status).toBe(200);
+    expect(await passkeyCount(userId)).toBe(0);
   });
 
   it("refuses a magic-link sign-in that verified the address itself", async () => {
@@ -773,6 +891,50 @@ describe("recovery factor notices", () => {
 
     expect(notices()).toHaveLength(1);
     expect(mockSendWebPush).toHaveBeenCalledTimes(2);
+  });
+
+  it("tells the user a passkey, the password, and a wallet were removed", async () => {
+    const ids = await addAccounts(userId, [
+      "eip712",
+      "github",
+      "google",
+      "opaque",
+    ]);
+    const { passkeyId } = await new TestAuthenticator().register(userId);
+
+    for (const [path, body] of [
+      ["/unlink-account", { accountId: ids.google }],
+      ["/passkey/delete-passkey", { id: passkeyId }],
+      ["/unlink-account", { accountId: ids.opaque }],
+      ["/unlink-account", { accountId: ids.eip712 }],
+    ] as const) {
+      expect((await post(path, body, session.cookie)).status).toBe(200);
+    }
+
+    expect(notices()).toEqual([
+      { to: [email], text: "A passkey was removed from your Zentity account." },
+      {
+        to: [email],
+        text: "The password was removed from your Zentity account.",
+      },
+      { to: [email], text: "A wallet was removed from your Zentity account." },
+    ]);
+    expect(mockSendWebPush).toHaveBeenCalledTimes(3);
+  });
+
+  it("sends nothing when the passkey to remove belongs to someone else", async () => {
+    const otherUser = await createTestUser();
+    const { passkeyId } = await new TestAuthenticator().register(otherUser);
+
+    const response = await post(
+      "/passkey/delete-passkey",
+      { id: passkeyId },
+      session.cookie
+    );
+
+    expect(response.status).toBe(401);
+    expect(await passkeyCount(otherUser)).toBe(1);
+    expect(mockSendEmail).not.toHaveBeenCalled();
   });
 
   it("tells the user a password was added, then changed", async () => {

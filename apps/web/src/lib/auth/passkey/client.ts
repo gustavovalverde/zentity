@@ -249,7 +249,9 @@ export function renamePasskey(id: string, name: string) {
 }
 
 export function deletePasskey(id: string) {
-  return authClient.passkey.deletePasskey({ id });
+  return withPasskeyConfirmation(() =>
+    authClient.passkey.deletePasskey({ id })
+  );
 }
 
 // The code the server refuses a recovery factor change with until the user

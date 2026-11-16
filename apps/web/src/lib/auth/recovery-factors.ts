@@ -3,7 +3,8 @@
  * address, the OPAQUE password, a wallet, the vault root, and the recovery
  * key. On an account that holds a passkey, binding, replacing, or removing
  * one would let a password or a stolen session turn into lasting control,
- * so every such change asks `checkRecoveryFactorChange` first.
+ * so every such change asks `checkRecoveryFactorChange` first. Removing a
+ * passkey asks too: an account that drops its last passkey leaves the rule.
  *
  * Allowed states (NIST SP 800-63B-4 §4.1.2.1, OWASP ASVS 5 V7.5.1):
  * - `no_passkey`: the account holds no passkey, and keeps today's rules.
@@ -54,6 +55,7 @@ export const REVERIFICATION_REQUIRED_MESSAGE =
 
 export type RecoveryFactorChange =
   | "email"
+  | "passkey"
   | "password"
   | "wallet"
   | "vault_reset"
@@ -247,21 +249,26 @@ export async function checkRecoveryFactorChange(input: {
 
 export type RecoveryFactorNotice =
   | "email_changed"
+  | "passkey_removed"
   | "password_added"
   | "password_changed"
+  | "password_removed"
   | "password_reset"
   | "recovery_key_added"
   | "recovery_key_replaced"
   | "recovery_key_removed"
   | "vault_reset"
-  | "vault_root_replaced";
+  | "vault_root_replaced"
+  | "wallet_removed";
 
 const NOTICE_SUMMARIES: Record<
   Exclude<RecoveryFactorNotice, "email_changed">,
   string
 > = {
+  passkey_removed: "A passkey was removed from your Zentity account.",
   password_added: "A password was added to your Zentity account.",
   password_changed: "The password of your Zentity account was changed.",
+  password_removed: "The password was removed from your Zentity account.",
   password_reset: "The password of your Zentity account was reset.",
   recovery_key_added: "A recovery key was added to your Zentity account.",
   recovery_key_replaced:
@@ -271,6 +278,7 @@ const NOTICE_SUMMARIES: Record<
   vault_reset: "The encryption keys of your Zentity account were reset.",
   vault_root_replaced:
     "New encryption keys were set up for your Zentity account.",
+  wallet_removed: "A wallet was removed from your Zentity account.",
 };
 
 // A notice is useful for a day; a device offline longer than that gets none.
@@ -359,14 +367,15 @@ function reverificationRequired(): APIError {
   });
 }
 
+/** Returns the user whose change was allowed, or null without a session. */
 async function requireReverifiedSession(
   ctx: HookCtx,
   change: RecoveryFactorChange
-): Promise<void> {
+): Promise<string | null> {
   const session = await getSessionFromCtx(ctx);
   if (!session) {
     // The endpoint's own session middleware answers.
-    return;
+    return null;
   }
   const decision = await checkRecoveryFactorChange({
     change,
@@ -376,6 +385,63 @@ async function requireReverifiedSession(
   if (!decision.allowed) {
     throw reverificationRequired();
   }
+  return session.user.id;
+}
+
+/** The notice an allowed endpoint call sends once it succeeds. */
+const pendingNotice = defineRequestState<{
+  notice: RecoveryFactorNotice;
+  userId: string;
+} | null>(() => null);
+
+async function requireReverifiedRemoval(
+  ctx: HookCtx,
+  change: RecoveryFactorChange,
+  notice: RecoveryFactorNotice
+): Promise<void> {
+  const userId = await requireReverifiedSession(ctx, change);
+  if (userId) {
+    await pendingNotice.set({ notice, userId });
+  }
+}
+
+// Unlinking these providers removes a recovery factor; other providers only
+// sign in.
+const UNLINKED_FACTORS: Record<
+  string,
+  { change: RecoveryFactorChange; notice: RecoveryFactorNotice }
+> = {
+  eip712: { change: "wallet", notice: "wallet_removed" },
+  opaque: { change: "password", notice: "password_removed" },
+};
+
+async function beforeUnlinkAccount(ctx: HookCtx) {
+  const session = await getSessionFromCtx(ctx);
+  const accountId =
+    typeof ctx.body?.accountId === "string" ? ctx.body.accountId : null;
+  if (!(session && accountId)) {
+    return;
+  }
+  const account = await db
+    .select({ providerId: accounts.providerId })
+    .from(accounts)
+    .where(
+      and(eq(accounts.id, accountId), eq(accounts.userId, session.user.id))
+    )
+    .get();
+  const factor = account ? UNLINKED_FACTORS[account.providerId] : undefined;
+  if (factor) {
+    await requireReverifiedRemoval(ctx, factor.change, factor.notice);
+  }
+}
+
+async function afterRemoval(ctx: HookCtx) {
+  const pending = await pendingNotice.get();
+  const returned = (ctx.context as { returned?: unknown }).returned;
+  if (!pending || isAPIError(returned)) {
+    return;
+  }
+  await notifyRecoveryFactorChange(pending);
 }
 
 // The endpoint keeps a session-less request at least this long so its
@@ -390,7 +456,8 @@ const SESSIONLESS_VERIFICATION_FLOOR_MS = 500;
 async function beforeSendVerificationEmail(ctx: HookCtx) {
   const startedAt = Date.now();
   if (await getSessionFromCtx(ctx)) {
-    return requireReverifiedSession(ctx, "email");
+    await requireReverifiedSession(ctx, "email");
+    return;
   }
   const email =
     typeof ctx.body?.email === "string" ? ctx.body.email.toLowerCase() : null;
@@ -640,17 +707,27 @@ export function recoveryFactorsPlugin() {
     hooks: {
       before: [
         {
-          matcher: (ctx) => ctx.path === "/change-email",
+          matcher: (ctx) => ctx.path === "/passkey/delete-passkey",
           handler: createAuthMiddleware((ctx) =>
-            requireReverifiedSession(ctx, "email")
+            requireReverifiedRemoval(ctx, "passkey", "passkey_removed")
           ),
+        },
+        {
+          matcher: (ctx) => ctx.path === "/unlink-account",
+          handler: createAuthMiddleware(beforeUnlinkAccount),
+        },
+        {
+          matcher: (ctx) => ctx.path === "/change-email",
+          handler: createAuthMiddleware(async (ctx) => {
+            await requireReverifiedSession(ctx, "email");
+          }),
         },
         {
           matcher: (ctx) =>
             ctx.path?.startsWith("/password/opaque/registration/") ?? false,
-          handler: createAuthMiddleware((ctx) =>
-            requireReverifiedSession(ctx, "password")
-          ),
+          handler: createAuthMiddleware(async (ctx) => {
+            await requireReverifiedSession(ctx, "password");
+          }),
         },
         {
           matcher: (ctx) =>
@@ -671,6 +748,12 @@ export function recoveryFactorsPlugin() {
         },
       ],
       after: [
+        {
+          matcher: (ctx) =>
+            ctx.path === "/passkey/delete-passkey" ||
+            ctx.path === "/unlink-account",
+          handler: createAuthMiddleware(afterRemoval),
+        },
         {
           matcher: (ctx) => ctx.path === "/magic-link/verify",
           handler: createAuthMiddleware(afterMagicLinkVerify),
