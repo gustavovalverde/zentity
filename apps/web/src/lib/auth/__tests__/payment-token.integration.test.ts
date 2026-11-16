@@ -760,6 +760,22 @@ describe("wallet audience outside a CIBA payment", () => {
     expect(await response.json()).toEqual(WALLET_TARGET);
   });
 
+  it("is refused beside another resource in a form-encoded authorization request", async () => {
+    const response = await auth.handler(
+      new Request(`${AUTH_URL}/oauth2/authorize`, {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams([
+          ...Object.entries(authorizeQuery),
+          ["resource", env.MCP_PUBLIC_URL],
+        ]),
+      })
+    );
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual(WALLET_TARGET);
+  });
+
   it("is refused at the pushed authorization request endpoint", async () => {
     expect(await postForm(`${AUTH_URL}/oauth2/par`, authorizeQuery)).toEqual({
       status: 400,

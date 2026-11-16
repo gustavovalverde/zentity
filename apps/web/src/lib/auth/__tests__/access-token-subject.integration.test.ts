@@ -142,6 +142,31 @@ describe("access token subjects", () => {
     });
   });
 
+  it("refuses a form-encoded authorization request for two resources outside Zentity", async () => {
+    const response = await auth.handler(
+      new Request(`${AUTH_URL}/oauth2/authorize`, {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams([
+          ["client_id", CLIENT_ID],
+          ["response_type", "code"],
+          ["redirect_uri", REDIRECT_URI],
+          ["scope", "openid"],
+          ["code_challenge", "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM"],
+          ["code_challenge_method", "S256"],
+          ["resource", "https://other-resource.example"],
+          ["resource", MCP_RESOURCE],
+        ]),
+      })
+    );
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({
+      error: "invalid_target",
+      error_description: "request one resource outside Zentity per token",
+    });
+  });
+
   it("drops Zentity-hosted resources from backchannel requests", async () => {
     const pairwiseSub = await resolveSubForClientId(userId, CLIENT_ID);
     for (const [resource, stored] of [

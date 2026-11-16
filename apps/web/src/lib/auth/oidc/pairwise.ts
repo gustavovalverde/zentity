@@ -1,6 +1,7 @@
 import "server-only";
 
 import { defineRequestState, hasRequestState } from "@better-auth/core/context";
+import { APIError } from "better-auth/api";
 import { makeSignature } from "better-auth/crypto";
 import { eq } from "drizzle-orm";
 
@@ -137,7 +138,10 @@ export function externalAudience(aud: unknown): string | null {
       typeof value === "string" && !isZentityHostedResource(value)
   );
   if (external.length > 1) {
-    throw new Error("An access token names one audience outside Zentity");
+    throw new APIError("BAD_REQUEST", {
+      error: "invalid_target",
+      error_description: "request one resource outside Zentity per token",
+    });
   }
   return external[0] ?? null;
 }

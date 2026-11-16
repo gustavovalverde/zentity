@@ -2011,6 +2011,9 @@ export const auth = betterAuth({
       }
       if (ctx.path === "/oauth2/authorize") {
         const request = authorizeRequestParameters(ctx);
+        if (request === ctx.body) {
+          await readRepeatedFormResources(ctx);
+        }
         redirectCibaInteraction(ctx, request);
         await enforceAuthorizeAcr(ctx, db);
         await beforeAuthorizeVerifyConsentHmac(ctx, request);

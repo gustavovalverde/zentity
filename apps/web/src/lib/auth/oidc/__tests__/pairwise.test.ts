@@ -188,7 +188,13 @@ describe("scopeSubjectToAudience", () => {
         await providerPayload([MCP_AUDIENCE, "https://wallet.example"]),
         issuance
       )
-    ).rejects.toThrow("An access token names one audience outside Zentity");
+    ).rejects.toMatchObject({
+      statusCode: 400,
+      body: {
+        error: "invalid_target",
+        error_description: "request one resource outside Zentity per token",
+      },
+    });
   });
 
   it("refuses a payload issued to another user or client", async () => {
