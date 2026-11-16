@@ -2,6 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 
 import { createClient } from "@libsql/client";
 import { createDpopClient, type DpopClient } from "@zentity/sdk/rp";
+import { makeSignature } from "better-auth/crypto";
 
 const PROBE_REDIRECT_URI = "https://example.com/callback";
 const PROBE_SCOPE = "openid proof:identity identity.name";
@@ -102,6 +103,7 @@ interface ProbeState {
   code: string;
   codeVerifier: string;
   sessionId: string;
+  sessionToken: string;
   userId: string;
 }
 
@@ -163,7 +165,7 @@ async function seedProbeState(
     {
       args: [
         state.sessionId,
-        randomUUID(),
+        state.sessionToken,
         state.userId,
         state.authContextId,
         now + 3_600_000,
@@ -226,6 +228,104 @@ async function seedProbeState(
   ]);
 }
 
+const PROBE_NAME = {
+  family_name: "Lovelace",
+  given_name: "Ada",
+  name: "Ada Lovelace",
+};
+
+/** The browser cookie for the seeded session, signed as Better Auth signs it. */
+async function sessionCookie(state: ProbeState): Promise<string> {
+  const secret = process.env.BETTER_AUTH_SECRET;
+  if (!secret) {
+    throw new Error("BETTER_AUTH_SECRET is required to approve as the user");
+  }
+  const signature = await makeSignature(state.sessionToken, secret);
+  return `better-auth.session_token=${encodeURIComponent(`${state.sessionToken}.${signature}`)}`;
+}
+
+async function postAsUser(
+  url: string,
+  cookie: string,
+  origin: string,
+  body: Record<string, unknown>
+): Promise<Record<string, unknown>> {
+  const response = await fetch(url, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Cookie: cookie,
+      Origin: origin,
+    },
+    body: JSON.stringify(body),
+  });
+  const text = await response.text();
+  console.log(
+    JSON.stringify(
+      { stage: new URL(url).pathname, status: response.status },
+      null,
+      2
+    )
+  );
+  if (!response.ok) {
+    throw new Error(`POST ${url} failed: ${response.status} ${text}`);
+  }
+  return text ? (JSON.parse(text) as Record<string, unknown>) : {};
+}
+
+/**
+ * Does what the approval page does for a user without a passkey: stages the
+ * released name for the request, then approves it with the session.
+ */
+async function approveAsUser(
+  state: ProbeState,
+  authServer: string,
+  interactionUrl: string
+): Promise<void> {
+  const authReqId = new URL(interactionUrl).searchParams.get("authReqId");
+  if (!authReqId) {
+    throw new Error(`No authReqId in the approval URL: ${interactionUrl}`);
+  }
+  const database = createDatabaseClient();
+  const { rows } = await database.execute({
+    args: [sha256Base64Url(authReqId)],
+    sql: "select id, scope from ciba_request where auth_req_id = ?",
+  });
+  const requestId = rows[0]?.id;
+  const scope = rows[0]?.scope;
+  if (typeof requestId !== "string" || typeof scope !== "string") {
+    throw new Error("The MCP server's CIBA request was not stored");
+  }
+  const scopes = scope
+    .split(" ")
+    .filter((value) => value.startsWith("identity."));
+
+  const origin = new URL(authServer).origin;
+  const cookie = await sessionCookie(state);
+  const { intent_token: intentToken } = await postAsUser(
+    `${origin}/api/ciba/identity/intent`,
+    cookie,
+    origin,
+    { request_id: requestId, scopes }
+  );
+  await postAsUser(`${origin}/api/ciba/identity/stage`, cookie, origin, {
+    identity: PROBE_NAME,
+    intent_token: intentToken,
+    request_id: requestId,
+    scopes,
+  });
+  await postAsUser(
+    `${normalizeUrl(authServer)}/ciba/decision`,
+    cookie,
+    origin,
+    {
+      channel: "page",
+      decision: "approved",
+      request_id: requestId,
+    }
+  );
+}
+
 async function cleanupProbeState(state: ProbeState): Promise<void> {
   const database = createDatabaseClient();
 
@@ -233,6 +333,10 @@ async function cleanupProbeState(state: ProbeState): Promise<void> {
     {
       args: [sha256Base64Url(state.code)],
       sql: "delete from verification where identifier = ?",
+    },
+    {
+      args: [state.userId],
+      sql: "delete from ciba_approval where user_id = ?",
     },
     {
       args: [state.userId],
@@ -255,8 +359,8 @@ async function cleanupProbeState(state: ProbeState): Promise<void> {
       sql: "delete from session where id = ?",
     },
     {
-      args: [state.authContextId],
-      sql: "delete from authentication_context where id = ?",
+      args: [state.userId],
+      sql: "delete from authentication_context where user_id = ?",
     },
     {
       args: [state.userId],
@@ -351,6 +455,7 @@ async function main(): Promise<void> {
     code: randomUUID(),
     codeVerifier: `${randomUUID()}${randomUUID()}`,
     sessionId: randomUUID(),
+    sessionToken: randomUUID(),
     userId: randomUUID(),
   };
   const dpop = await createDpopClient();
@@ -441,11 +546,37 @@ async function main(): Promise<void> {
       "my_profile",
       { fields: ["name"] }
     );
+    const interaction = profile.json.result?.structuredContent?.interaction as
+      | { url?: string }
+      | undefined;
     if (
-      profile.json.result?.structuredContent?.status !== "needs_user_action"
+      profile.json.result?.structuredContent?.status !== "needs_user_action" ||
+      !interaction?.url
     ) {
       throw new Error(
         "Expected my_profile to start a CIBA approval for the MCP client"
+      );
+    }
+
+    await approveAsUser(state, authServer, interaction.url);
+
+    const released = await callTool(
+      mcpEndpoint,
+      accessToken,
+      dpop,
+      4,
+      "my_profile",
+      { fields: ["name"] }
+    );
+    const releasedContent = released.json.result?.structuredContent as
+      | { profile?: { name?: { full?: string } }; status?: string }
+      | undefined;
+    if (
+      releasedContent?.status !== "complete" ||
+      releasedContent.profile?.name?.full !== PROBE_NAME.name
+    ) {
+      throw new Error(
+        "Expected my_profile to return the name the user released"
       );
     }
   } finally {
