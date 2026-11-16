@@ -111,23 +111,30 @@ PAR is optional: a client may push its authorization request to the PAR endpoint
 
 ### First-Party Challenge (headless, no redirect)
 
-For first-party CLI clients (e.g., the MCP server) that authenticate directly without browser redirects. Implements `draft-ietf-oauth-first-party-apps`.
+A first-party native or command-line app signs the user in without a browser redirect: it posts the user's identifier and credentials to the Authorization Challenge Endpoint, receives an authorization code, and redeems it at the token endpoint. Zentity implements `draft-ietf-oauth-first-party-apps-04` with the `@better-auth/first-party-apps` plugin, which owns the protocol framing, and its own credential methods in `src/lib/auth/oidc/first-party-apps.ts`.
 
-The AS resolves the user's credentials and selects the best CLI-compatible challenge: OPAQUE (password) > Sign-In with Ethereum (wallet) > `redirect_to_web` (passkey-only fallback). Only clients with the `firstParty` flag can use this endpoint.
+**Client requirements**: an administrator registers the client and sets both `first_party` and `skip_consent` on it. Dynamic registration cannot set either, so a registrant cannot declare itself first-party. Any other client gets 400 `unauthorized_client`. A confidential client authenticates on every request, as at the token endpoint.
+
+**Request rules**:
+
+- The initial request is `application/x-www-form-urlencoded` and carries `client_id`, `response_type=code`, `login_hint` (an email or wallet address), `scope`, and PKCE (`code_challenge`, `code_challenge_method=S256`). It may also carry `resource`, `claims`, `acr_values`, and, for wallets, `chain_id`.
+- Later requests carry the `auth_session` and the answer to the current challenge, form-encoded or JSON.
+- Every request carries a DPoP proof from the same key. The first proof binds the `auth_session` and the code to that key.
+- No request carries a `redirect_uri`. The code is bound to none, so the token request omits it too.
 
 #### OPAQUE flow (3 rounds)
 
 ```mermaid
 sequenceDiagram
   autonumber
-  participant Client as CLI / MCP Client
+  participant Client as CLI / native app
   participant AS as Zentity AS
 
-  Client->>AS: POST /oauth2/authorize-challenge<br/>(identifier, client_id, scope, code_challenge, DPoP proof)
-  AS-->>Client: 401 { challenge_type: "opaque", auth_session, server_public_key }
+  Client->>AS: POST /oauth2/authorize-challenge (form)<br/>(client_id, response_type, login_hint, scope, code_challenge, DPoP proof)
+  AS-->>Client: 403 { error: "insufficient_authorization", challenge_type: "opaque", auth_session, server_public_key }
 
   Client->>AS: POST /oauth2/authorize-challenge<br/>(auth_session, opaque_login_request, DPoP proof)
-  AS-->>Client: { opaque_login_response }
+  AS-->>Client: 403 { error: "insufficient_authorization", challenge_type: "opaque", auth_session, opaque_login_response }
 
   Client->>AS: POST /oauth2/authorize-challenge<br/>(auth_session, opaque_finish_request, DPoP proof)
   AS-->>Client: 200 { authorization_code }
@@ -141,28 +148,52 @@ sequenceDiagram
 ```mermaid
 sequenceDiagram
   autonumber
-  participant Client as CLI / MCP Client
+  participant Client as CLI / native app
   participant AS as Zentity AS
 
-  Client->>AS: POST /oauth2/authorize-challenge<br/>(identifier, client_id, scope, DPoP proof)
-  AS-->>Client: 401 { challenge_type: "siwe", auth_session, message }
+  Client->>AS: POST /oauth2/authorize-challenge (form)<br/>(client_id, response_type, login_hint=0x..., scope, code_challenge, chain_id, DPoP proof)
+  AS-->>Client: 403 { error: "insufficient_authorization", challenge_type: "siwe", auth_session, message }
 
   Client->>AS: POST /oauth2/authorize-challenge<br/>(auth_session, siwe_signature, DPoP proof)
   AS-->>Client: 200 { authorization_code }
 
-  Client->>AS: POST /oauth2/token (code, DPoP proof)
+  Client->>AS: POST /oauth2/token (code, code_verifier, DPoP proof)
   AS-->>Client: { access_token, id_token, token_type: "DPoP", auth_session }
 ```
 
-**Credential resolution**: The AS queries registered credentials and selects OPAQUE > Sign-In with Ethereum > `redirect_to_web`. Unknown users receive a timing-safe OPAQUE challenge (indistinguishable from real). Passkey-only users receive `redirect_to_web` with an `auth_session` and no authorization request. A client that receives `redirect_to_web` must start its own browser authorization code flow with PKCE and a redirect URI it controls. The SDK's installed client (`createInstalledClientAuth`) signs in through that browser flow directly: it uses a loopback `redirect_uri` and pushes the request through PAR when discovery advertises a PAR endpoint.
+**Credential resolution**: OPAQUE comes first, then Sign-In with Ethereum, then `redirect_to_web`. The hint decides which method can answer:
 
-**DPoP binding**: The DPoP key thumbprint (`jkt`) is bound to the `auth_session` at creation and enforced on all subsequent rounds. Key mismatch returns `invalid_session`. The issued authorization code carries the same thumbprint as `dpop_jkt`, so the token endpoint redeems it only with a DPoP proof from that key and returns `invalid_dpop_proof` otherwise.
+- A wallet address always gets a Sign-In with Ethereum challenge, even for a user who also has a password. An unknown address gets a challenge with the same fields, and no signature completes it. Without `chain_id`, the message names chain 1 whether or not the address is registered, so the challenge never reveals an account.
+- An email gets an OPAQUE challenge. An unknown email gets the same challenge, backed by a dummy registration record, so it takes as long as a real one and fails at the last round.
+- An email whose account has no OPAQUE password, such as a passkey-only or wallet-only account, gets 403 `redirect_to_web`. The response never contains the account's wallet address, although it does show that the email has an account.
 
-**Wallet message**: `message` is an EIP-4361 message that the AS builds. Its domain and URI are the app origin from `NEXT_PUBLIC_APP_URL`, its statement is `Sign in to Zentity from a first-party app.`, and its Request ID is the challenge session's id. The client signs it with EIP-191 `personal_sign` (the SDK's `WalletAuthorizationStrategy.signMessage`), and the AS verifies the signature as an ECDSA signature from the wallet's own key (EOA). The message's nonce is single-use and expires with the message, five minutes after it is issued. A signature over an expired or already redeemed message returns 401 `access_denied`, and concurrent finish rounds for one message yield at most one authorization code. The browser sign-in and sign-up messages carry different statements and no Request ID, so a signature made for one of them is refused here, and a first-party signature is refused by the browser endpoints.
+A client that receives `redirect_to_web` starts its own browser authorization code flow with PKCE and a redirect URI it controls. The SDK's installed client (`createInstalledClientAuth`) signs in through that browser flow directly: it uses a loopback `redirect_uri` and pushes the request through PAR when discovery advertises a PAR endpoint.
 
-**Step-up re-authentication**: When a CIBA token exchange fails due to `acr_values` mismatch, first-party clients receive HTTP 403 with `{ error: "insufficient_authorization", auth_session }` instead of 400 `interaction_required`. The client re-enters the challenge endpoint with the `auth_session` to re-authenticate at a higher assurance level, then exchanges the resulting code for upgraded tokens.
+**Responses** (draft §5.2):
 
-**Rate limiting**: 10 requests/minute per IP. Exceeded returns 429.
+| Condition | Status | `error` |
+| --- | --- | --- |
+| Code issued | 200 | none, body `{ authorization_code }` |
+| Next challenge | 403 | `insufficient_authorization`, with `auth_session`, `challenge_type`, and the challenge fields |
+| Wrong credential | 400 | `authentication_failed`, with `auth_session` and a fresh challenge |
+| The sign-in worked, but the code waits for a higher assurance tier | 403 | `insufficient_authorization`, with `auth_session` and no `challenge_type` |
+| The browser must take over | 403 | `redirect_to_web` |
+| Unknown, expired, or ended `auth_session` | 400 | `invalid_session` |
+| Missing proof, or a proof from another key | 400 | `invalid_dpop_proof` |
+
+Every response carries `Cache-Control: no-store`. Only an HMAC of each `auth_session` is stored, and the token response returns a new `auth_session` that replaces the one the rounds used.
+
+**Wallet message**: `message` is an EIP-4361 message that the AS builds. Its domain and URI are the app origin from `NEXT_PUBLIC_APP_URL`, its statement is `Sign in to Zentity from a first-party app.`, and its Request ID is a random value kept with the message in the `auth_session`'s method state, which the plugin encrypts. The client signs it with EIP-191 `personal_sign` (the SDK's `WalletAuthorizationStrategy.signMessage`), and the AS verifies the signature as an ECDSA signature from the wallet's own key (EOA). The message's nonce is single-use and expires with the message, five minutes after it is issued. A wrong signature, or one over an expired message, gets 400 `authentication_failed` with a new message. Each request claims the `auth_session` for one response, so concurrent finish rounds with the same signature yield at most one authorization code, and the others get 400 `invalid_session`. The browser sign-in and sign-up messages carry different statements and no Request ID, so a signature made for one of them is refused here, and a first-party signature is refused by the browser endpoints.
+
+**Two-factor authentication**: a user with two-factor enabled gets `redirect_to_web` after their password or signature verifies, and no code. The check runs only after a credential verified, so the earlier responses do not reveal enrollment.
+
+**Assurance tiers**: when the request's `acr_values` ask for a higher tier than the user holds, the verified sign-in creates a session but no code, and the endpoint answers 403 `insufficient_authorization` without `challenge_type`. The client presents the same `auth_session` again once the user's tier has risen, for example after identity verification in the browser. The retry issues the code on the session from that sign-in and asks for no credential.
+
+**Sessions**: each sign-in creates a session that lasts 24 hours and records an `authentication_contexts` row with `sourceKind` `authorize_challenge_opaque` or `authorize_challenge_eip712`, which supplies the ID token's `amr`. The provider treats tokens whose session has ended as inactive, so the session lifetime also bounds the tokens.
+
+**Step-up at the token endpoint**: when a CIBA token poll fails the request's `acr_values`, Zentity calls the plugin's `challengeFirstPartyStepUp` for the CIBA request's client. A confidential first-party client gets HTTP 403 `{ error: "insufficient_authorization", auth_session }`, bound to the poll's DPoP key. The client presents that `auth_session` with a new PKCE challenge at the challenge endpoint, signs the user in again, and redeems the code for tokens once the tier requirement is met. The CIBA grant has no session or DPoP binding of its own, so a public client gets 400 `interaction_required`. A CIBA request with `authorization_details`, such as a payment approval, also gets `interaction_required`, because an authorization code cannot carry them.
+
+**Abuse limits**: 10 requests per minute per IP, three failed responses per `auth_session` before `redirect_to_web`, and ten failed responses per account and method in 15 minutes. A locked account answers `authentication_failed` even for a correct credential, so a guesser cannot tell the lock from a wrong guess. The per-IP limit uses Better Auth's rate limiter, which keeps its counters in memory on each instance; the other limits live in the database. Each challenge request deletes `auth_session` rows past their expiry and failure counters whose 15-minute window has passed, so abandoned flows do not build up.
 
 ### Headless (CIBA)
 
@@ -235,7 +266,7 @@ CIBA also supports **ping mode** for clients that can receive callbacks instead 
 
 Ping mode eliminates polling overhead and reduces latency between approval and token acquisition.
 
-**`acr_values` enforcement**: CIBA requests can include `acr_values` to require a minimum assurance tier. Enforcement happens at two points: (1) at approval time, the user cannot approve if their tier is insufficient, and (2) at token exchange, as a safety net if the tier decreased between approval and polling. For first-party clients, the token exchange safety net returns HTTP 403 + `auth_session` (enabling step-up via the Authorization Challenge Endpoint). Non-first-party clients receive 400 `interaction_required`.
+**`acr_values` enforcement**: CIBA requests can include `acr_values` to require a minimum assurance tier. Enforcement happens at two points: (1) at approval time, the user cannot approve if their tier is insufficient, and (2) at token exchange, as a safety net if the tier decreased between approval and polling. For a confidential first-party client and a request without `authorization_details`, the token exchange safety net returns HTTP 403 + `auth_session` (enabling step-up via the Authorization Challenge Endpoint). Every other client receives 400 `interaction_required`.
 
 ### Grant types
 
@@ -393,7 +424,7 @@ All clients register via RFC 7591 Dynamic Client Registration. CIBA clients regi
 }
 ```
 
-Optional metadata fields: `optionalScopes` (scopes selectable but not required at consent), `backchannel_client_notification_endpoint` (CIBA ping mode callback URL), `backchannel_logout_uri` (OIDC Back-Channel Logout endpoint), `subject_type` (`"pairwise"` default for the human `sub`, `"public"` available), and `agent_subject_type` (`"pairwise"` default for `act.sub`/`agent.id`, `"public"` available independently of the user setting). Clients with the `firstParty` flag can use the Authorization Challenge Endpoint: headless authentication without redirects, and step-up `auth_session` tokens on authorization failure.
+Optional metadata fields: `optionalScopes` (scopes selectable but not required at consent), `backchannel_client_notification_endpoint` (CIBA ping mode callback URL), `backchannel_logout_uri` (OIDC Back-Channel Logout endpoint), `subject_type` (`"pairwise"` default for the human `sub`, `"public"` available), and `agent_subject_type` (`"pairwise"` default for `act.sub`/`agent.id`, `"public"` available independently of the user setting). Clients an administrator marks `first_party` and `skip_consent` can use the Authorization Challenge Endpoint: headless authentication without redirects, and step-up `auth_session` tokens on authorization failure. Registration cannot set either field.
 
 **`software_statement` validation:** If a `software_statement` is present in the DCR request, it must be a syntactically valid JWT (three base64url-encoded parts with a parseable JSON payload). Malformed statements return HTTP 400. The JSON payload is parsed with duplicate-key rejection before the issuer is read. The signature is not verified (no trusted SSA issuers configured), but strict structural validation prevents garbage data or parser-ambiguous issuer metadata from being accepted.
 
@@ -774,7 +805,7 @@ Zentity supports OIDC Back-Channel Logout for notifying RPs when a user session 
 
 **Delivery:** The OAuth provider sends logout tokens itself whenever a session ends (sign-out or session deletion), and only to clients that hold access or refresh tokens for that session. Identity revocation does not send logout tokens; relying parties learn about it from validity notices. The user's sign-out completes regardless of delivery success.
 
-**CIBA revocation:** ending a session sets all pending CIBA requests for the user to `rejected`. This prevents agents from polling for tokens after the user has logged out.
+**CIBA revocation:** ending a session sets all pending CIBA requests for the user to `denied`. This prevents agents from polling for tokens after the user has logged out. Sessions the Authorization Challenge Endpoint deletes for its own flow, after a failed code issuance or too many wrong answers, are not logouts and leave pending requests alone.
 
 **Discovery fields:** `backchannel_logout_supported: true`, `backchannel_logout_session_supported: true`, `end_session_endpoint`.
 

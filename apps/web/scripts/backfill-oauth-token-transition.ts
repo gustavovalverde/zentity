@@ -1,9 +1,9 @@
 #!/usr/bin/env tsx
 
 /**
- * One-time transition for the move to the OAuth provider's JWT revocation and
- * per-token `accessTokenClaims`. Every step is idempotent, and the script
- * applies them in one transaction.
+ * One-time transition for the move to the OAuth provider's JWT revocation,
+ * per-token `accessTokenClaims`, and the first-party-apps plugin. Every step
+ * is idempotent, and the script applies them in one transaction.
  *
  * 1. Moves the timestamp defaults that #298 and #338 changed from
  *    `datetime('now')` to an ISO 8601 timestamp, and recreates the two partial
@@ -19,15 +19,18 @@
  *    would emit, where an earlier `pnpm db:push` (#321) dropped it. drizzle
  *    names every schema column in an insert, so until the column exists the
  *    new release cannot store an access token.
- * 3. Marks every JWT access token in `revoked_token` that may still be
+ * 3. Creates `first_party_auth_session` and `first_party_failure_budget` with
+ *    the DDL `pnpm db:push` would emit, so the Authorization Challenge Endpoint
+ *    and the CIBA token step-up work as soon as the new release serves traffic.
+ * 4. Marks every JWT access token in `revoked_token` that may still be
  *    unexpired as revoked in the provider's verification store. Earlier
  *    releases recorded JWT revocations only in `revoked_token`, which no check
  *    reads any more, so without a marker such a token is accepted until `exp`.
- * 4. Copies Zentity's `exchange_claims` into `access_token_claims` for opaque
+ * 5. Copies Zentity's `exchange_claims` into `access_token_claims` for opaque
  *    exchanged tokens, so chained exchanges keep the parent's delegation depth
  *    and agent claims, and bootstrap tokens keep `zentity_token_use`. Skipped
  *    once `pnpm db:push` has dropped the column.
- * 5. Decodes `access_token_claims` rows written while drizzle's json mode
+ * 6. Decodes `access_token_claims` rows written while drizzle's json mode
  *    encoded the adapter's JSON a second time.
  *
  * Rollout order:
@@ -37,18 +40,20 @@
  *   c. Once the new release serves all traffic, run this script again. It
  *      covers revocations and exchanged tokens the previous release wrote
  *      after step a.
- *   d. Run `pnpm db:push` once. It drops `oauth_access_token.exchange_claims`
- *      and the `reason`, `actor_sub`, and `audience` columns of
- *      `revoked_token`, which the previous release reads or writes, so it must
- *      not run before step c. When they hold rows, it asks to confirm the
- *      data loss; `--force` confirms it without a terminal. drizzle-kit exits
- *      0 even when SQLite rejects a statement and rolls the push back, so
- *      check its output for an error.
+ *   d. Run `pnpm db:push` once. It drops `auth_challenge_session`,
+ *      `oauth_access_token.exchange_claims`, and the `reason`, `actor_sub`,
+ *      and `audience` columns of `revoked_token`, which the previous release
+ *      reads or writes, so it must not run before step c. When they hold
+ *      rows, it asks to confirm the data loss; `--force` confirms it without
+ *      a terminal. drizzle-kit exits 0 even when SQLite rejects a statement
+ *      and rolls the push back, so check its output for an error.
  *
- * Because step a moves the defaults and adds the column, `pnpm db:push` needs
- * no second run. The previous release already writes ISO timestamps to these
- * columns next to `datetime('now')` ones, so step a changes only the format of
- * the rows it leaves to a default.
+ * Because step a creates the new tables and columns and moves the defaults,
+ * `pnpm db:push` asks no rename questions and needs no second run. The previous
+ * release already writes ISO timestamps to these columns next to
+ * `datetime('now')` ones, so step a changes only the format of the rows it
+ * leaves to a default. In-flight `auth_challenge_session` handles (10-minute
+ * lifetime) stop working at step b.
  *
  *   TURSO_DATABASE_URL=... TURSO_AUTH_TOKEN=... pnpm exec tsx scripts/backfill-oauth-token-transition.ts
  */
@@ -96,6 +101,48 @@ const HUMANITY_CREDENTIAL_UNIQUE_INDEXES = [
   "CREATE UNIQUE INDEX `humanity_credentials_active_subject_unique` ON `humanity_credentials` (`provider`,`provider_subject_hash`) WHERE revoked_at is null",
   "DROP INDEX IF EXISTS `humanity_credentials_active_user_provider_unique`",
   "CREATE UNIQUE INDEX `humanity_credentials_active_user_provider_unique` ON `humanity_credentials` (`user_id`,`provider`) WHERE revoked_at is null",
+];
+
+// `drizzle-kit export` output for these two tables in oauth-provider.ts, with
+// IF NOT EXISTS added. It must stay identical to that schema, or the later
+// `pnpm db:push` rebuilds the tables.
+const FIRST_PARTY_APPS_DDL = [
+  `CREATE TABLE IF NOT EXISTS \`first_party_auth_session\` (
+	\`id\` text PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))) NOT NULL,
+	\`auth_session\` text NOT NULL,
+	\`client_id\` text NOT NULL,
+	\`user_id\` text,
+	\`session_id\` text,
+	\`owns_session\` integer DEFAULT false NOT NULL,
+	\`dpop_jkt\` text,
+	\`state\` text NOT NULL,
+	\`method\` text,
+	\`method_state\` text,
+	\`request\` text NOT NULL,
+	\`ceiling\` text,
+	\`amr\` text,
+	\`failures\` integer DEFAULT 0 NOT NULL,
+	\`attempts\` integer DEFAULT 0 NOT NULL,
+	\`expires_at\` integer NOT NULL,
+	\`created_at\` integer NOT NULL,
+	\`updated_at\` integer NOT NULL,
+	FOREIGN KEY (\`client_id\`) REFERENCES \`oauth_client\`(\`client_id\`) ON UPDATE no action ON DELETE cascade,
+	FOREIGN KEY (\`user_id\`) REFERENCES \`user\`(\`id\`) ON UPDATE no action ON DELETE cascade,
+	FOREIGN KEY (\`session_id\`) REFERENCES \`session\`(\`id\`) ON UPDATE no action ON DELETE cascade
+)`,
+  "CREATE UNIQUE INDEX IF NOT EXISTS `first_party_auth_session_auth_session_unique` ON `first_party_auth_session` (`auth_session`)",
+  "CREATE INDEX IF NOT EXISTS `first_party_auth_session_client_id_idx` ON `first_party_auth_session` (`client_id`)",
+  "CREATE INDEX IF NOT EXISTS `first_party_auth_session_user_id_idx` ON `first_party_auth_session` (`user_id`)",
+  "CREATE INDEX IF NOT EXISTS `first_party_auth_session_session_id_idx` ON `first_party_auth_session` (`session_id`)",
+  "CREATE INDEX IF NOT EXISTS `first_party_auth_session_expires_at_idx` ON `first_party_auth_session` (`expires_at`)",
+  `CREATE TABLE IF NOT EXISTS \`first_party_failure_budget\` (
+	\`id\` text PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))) NOT NULL,
+	\`key\` text NOT NULL,
+	\`failures\` integer NOT NULL,
+	\`reset_at\` integer NOT NULL
+)`,
+  "CREATE UNIQUE INDEX IF NOT EXISTS `first_party_failure_budget_key_unique` ON `first_party_failure_budget` (`key`)",
+  "CREATE INDEX IF NOT EXISTS `first_party_failure_budget_reset_at_idx` ON `first_party_failure_budget` (`reset_at`)",
 ];
 
 // `drizzle-kit push` output for this column in oauth-provider.ts.
@@ -152,6 +199,7 @@ async function main(): Promise<void> {
     ...timestampDefaults,
     ...HUMANITY_CREDENTIAL_UNIQUE_INDEXES,
     ...(addAccessTokenAuthContext ? [ACCESS_TOKEN_AUTH_CONTEXT_DDL] : []),
+    ...FIRST_PARTY_APPS_DDL,
   ];
 
   const statements: InStatement[] = [

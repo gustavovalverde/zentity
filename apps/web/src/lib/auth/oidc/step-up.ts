@@ -6,30 +6,23 @@
  * - CIBA enforcement: token-exchange safety net (approval-time checks run in
  *   the CIBA approval decision, `oidc/ciba.ts`)
  *
- * For first-party clients (FPA), the CIBA token exchange safety net returns
- * HTTP 403 + auth_session so the client can re-authenticate via the
- * Authorization Challenge Endpoint instead of requiring a browser redirect.
+ * For first-party clients, the CIBA token exchange safety net can answer
+ * HTTP 403 + auth_session through the first-party-apps plugin, so the client
+ * continues at the Authorization Challenge Endpoint instead of the browser.
  */
 import type { AccountTier } from "@zentity/sdk/protocol";
 import type { LibSQLDatabase } from "drizzle-orm/libsql";
 
-import { randomBytes } from "node:crypto";
-
+import { challengeFirstPartyStepUp } from "@better-auth/first-party-apps";
 import { getIssuer } from "@better-auth/oauth-provider";
 import { APIError, getSessionFromCtx } from "better-auth/api";
 import { eq } from "drizzle-orm";
 
 import { getAccountAssurance } from "@/lib/assurance/posture";
-import {
-  oauthProviderApi,
-  oauthProviderOptions,
-} from "@/lib/auth/oidc/oauth-provider";
+import { oauthProviderOptions } from "@/lib/auth/oidc/oauth-provider";
 import { authorizeRequestParameters } from "@/lib/auth/oidc/oauth-request";
 import { parseStoredStringArray } from "@/lib/db/adapter-compat";
-import {
-  authChallengeSessions,
-  oauthClients,
-} from "@/lib/db/schema/oauth-provider";
+import { oauthClients } from "@/lib/db/schema/oauth-provider";
 
 // ---------------------------------------------------------------------------
 // Pure helpers
@@ -39,7 +32,6 @@ const ACR_TIER_PATTERN = /^urn:zentity:assurance:tier-(\d)$/;
 const WHITESPACE = /\s+/;
 const IMPLICIT_RESPONSE_TYPE = /\b(token|id_token)\b/;
 const PAR_URI_PREFIX = "urn:ietf:params:oauth:request_uri:";
-const SESSION_LIFETIME_MS = 10 * 60 * 1000;
 const PUSHED_ACR_PREFIX = "zentity:par-acr:";
 // Outlives the request_uri and the signed query that carries it through
 // sign-in, so every visit to the authorize endpoint finds the request.
@@ -348,10 +340,16 @@ export async function enforceAuthorizeAcr(ctx: any, db: LibSQLDatabase<any>) {
  */
 export interface CibaStepUpRecord {
   acrValues: string | null;
+  authorizationDetails: string | null;
+  clientId: string;
   resources: string | null;
   scope: string;
   status: string;
   userId: string;
+}
+
+function hasAuthorizationDetails(stored: string | null): boolean {
+  return Boolean(stored) && stored !== "[]";
 }
 
 /**
@@ -359,14 +357,13 @@ export interface CibaStepUpRecord {
  * request the /oauth2/token before-hook loaded. The user's tier can drop
  * between approval and the poll.
  *
- * For first-party clients: returns 403 + auth_session (FPA step-up path).
- * For other clients: returns 400 interaction_required (standard behavior).
+ * A first-party client that can continue at the Authorization Challenge
+ * Endpoint gets 403 insufficient_authorization with an auth_session from the
+ * first-party-apps plugin. Every other refusal is 400 interaction_required.
  */
 export async function enforceCibaTokenAcr(
   // biome-ignore lint/suspicious/noExplicitAny: middleware context is untyped
   ctx: any,
-  // biome-ignore lint/suspicious/noExplicitAny: drizzle schema generic
-  db: LibSQLDatabase<any>,
   record: CibaStepUpRecord
 ) {
   const acrValues = parseStoredStringArray(record.acrValues);
@@ -377,59 +374,36 @@ export async function enforceCibaTokenAcr(
   const assurance = await getAccountAssurance(record.userId, {
     isAuthenticated: true,
   });
-  const satisfied = findSatisfiedAcr(acrValues, assurance.tier);
+  if (findSatisfiedAcr(acrValues, assurance.tier)) {
+    return;
+  }
   const requested = acrValues.join(" ");
+  const description = `User assurance is tier-${assurance.tier}, does not satisfy acr_values: ${requested}`;
 
-  if (!satisfied) {
-    const clientId =
-      typeof ctx.body?.client_id === "string" ? ctx.body.client_id : undefined;
-
-    if (clientId) {
-      const client = await db
-        .select({ firstParty: oauthClients.firstParty })
-        .from(oauthClients)
-        .where(eq(oauthClients.clientId, clientId))
-        .get();
-
-      if (client?.firstParty) {
-        const authSession = randomBytes(32).toString("base64url");
-        // The poll is refused here, so the token endpoint never verifies
-        // this proof. The provider API verifies it, nonce included, before
-        // its key binds the auth_session.
-        const dpopJkt = (await oauthProviderApi(ctx).verifyDpopProof())?.jkt;
-
-        await db.insert(authChallengeSessions).values({
-          authSession,
-          clientId,
-          userId: record.userId,
-          scope: record.scope,
-          resource: parseStoredStringArray(record.resources)[0] ?? null,
-          // The authorization challenge reads the space-separated form.
-          acrValues: requested,
-          dpopJkt: dpopJkt ?? null,
-          state: "pending",
-          expiresAt: new Date(Date.now() + SESSION_LIFETIME_MS),
-        });
-
-        // The client re-authenticates at the authorization challenge with
-        // the same key, so it gets the nonce verifyDpopProof set for its next
-        // proof. A before-hook error reaches the client with its own headers
-        // only.
-        throw new APIError(
-          "FORBIDDEN",
-          {
-            error: "insufficient_authorization",
-            auth_session: authSession,
-            error_description: `User assurance is tier-${assurance.tier}, does not satisfy acr_values: ${requested}`,
-          },
-          ctx.responseHeaders
-        );
-      }
-    }
-
-    throw new APIError("BAD_REQUEST", {
-      error: "interaction_required",
-      error_description: `User assurance is tier-${assurance.tier}, does not satisfy acr_values: ${requested}`,
+  // An authorization code cannot carry authorization_details, so a payment
+  // approval cannot continue through the challenge endpoint.
+  if (!hasAuthorizationDetails(record.authorizationDetails)) {
+    const resources = parseStoredStringArray(record.resources);
+    // The grant belongs to the CIBA request's client, and the plugin refuses
+    // a poll that authenticates as another. A CIBA grant has no session of
+    // its own and no DPoP binding until its tokens are issued, so the plugin
+    // offers the step-up only to a confidential client.
+    await challengeFirstPartyStepUp(ctx, {
+      clientId: record.clientId,
+      userId: record.userId,
+      sessionId: null,
+      dpopJkt: null,
+      request: {
+        scope: record.scope,
+        ...(resources.length > 0 ? { resource: resources } : {}),
+        acr_values: requested,
+      },
+      description,
     });
   }
+
+  throw new APIError("BAD_REQUEST", {
+    error: "interaction_required",
+    error_description: description,
+  });
 }

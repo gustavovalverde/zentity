@@ -12,7 +12,7 @@ import { sessions } from "@/lib/db/schema/auth";
 import { cibaRequests } from "@/lib/db/schema/ciba";
 import { identityBundles } from "@/lib/db/schema/identity";
 import {
-  authChallengeSessions,
+  firstPartyAuthSessions,
   oauthClients,
 } from "@/lib/db/schema/oauth-provider";
 import {
@@ -25,6 +25,8 @@ import { postTokenWithDpop } from "@/test-utils/dpop-test-utils";
 const CIBA_GRANT_TYPE = "urn:openid:params:grant-type:ciba";
 const TEST_CLIENT_ID = "step-up-ciba-test";
 const FPA_CLIENT_ID = "step-up-ciba-fpa-test";
+const FPA_CLIENT_SECRET = "step-up-ciba-fpa-secret";
+const PUBLIC_FPA_CLIENT_ID = "step-up-ciba-public-fpa-test";
 const POLL_CLIENT_ID = "step-up-ciba-poll-test";
 const DECISION_URL = "http://localhost:3000/api/auth/ciba/decision";
 const BC_AUTHORIZE_URL = "http://localhost:3000/api/auth/oauth2/bc-authorize";
@@ -48,16 +50,29 @@ async function createTestClient() {
     .run();
 }
 
-async function createFirstPartyClient() {
+/**
+ * A first-party client that can continue at the Authorization Challenge
+ * Endpoint: confidential, with the authorization_code grant and skip_consent.
+ */
+async function createFirstPartyClient(
+  clientId = FPA_CLIENT_ID,
+  overrides: Partial<typeof oauthClients.$inferInsert> = {}
+) {
   await db
     .insert(oauthClients)
     .values({
-      clientId: FPA_CLIENT_ID,
+      clientId,
+      clientSecret: crypto
+        .createHash("sha256")
+        .update(FPA_CLIENT_SECRET)
+        .digest("base64url"),
       name: "Step-Up CIBA FPA Test",
       redirectUris: JSON.stringify(["http://localhost/callback"]),
-      grantTypes: JSON.stringify([CIBA_GRANT_TYPE]),
-      tokenEndpointAuthMethod: "none",
+      grantTypes: JSON.stringify([CIBA_GRANT_TYPE, "authorization_code"]),
+      tokenEndpointAuthMethod: "client_secret_post",
       firstParty: true,
+      skipConsent: true,
+      ...overrides,
     })
     .run();
 }
@@ -461,6 +476,7 @@ describe("CIBA step-up: first-party client (FPA) path", () => {
       grant_type: CIBA_GRANT_TYPE,
       auth_req_id: authReqId,
       client_id: FPA_CLIENT_ID,
+      client_secret: FPA_CLIENT_SECRET,
     });
 
     expect(status).toBe(403);
@@ -468,16 +484,94 @@ describe("CIBA step-up: first-party client (FPA) path", () => {
     expect(json.auth_session).toBeTypeOf("string");
     expect(json.error_description).toContain("tier-0");
 
-    // The authorization challenge reads the session's acr_values with
-    // findSatisfiedAcr, which expects the space-separated parameter form.
-    const session = await db
-      .select({ acrValues: authChallengeSessions.acrValues })
-      .from(authChallengeSessions)
-      .where(eq(authChallengeSessions.authSession, json.auth_session as string))
-      .get();
-    expect(session?.acrValues).toBe(
-      "urn:zentity:assurance:tier-3 urn:zentity:assurance:tier-2"
+    // The step-up row waits for the user to sign in again, and the code it
+    // leads to asks for the same acr_values in the parameter form.
+    const rows = await db.select().from(firstPartyAuthSessions).all();
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({
+      clientId: FPA_CLIENT_ID,
+      userId,
+      state: "pending",
+      sessionId: null,
+      dpopJkt: expect.any(String),
+    });
+    expect(JSON.parse(rows[0]?.request ?? "{}")).toMatchObject({
+      scope: "openid",
+      acr_values: "urn:zentity:assurance:tier-3 urn:zentity:assurance:tier-2",
+    });
+  });
+
+  it("refuses a poll that authenticates as another first-party client", async () => {
+    await createFirstPartyClient("step-up-ciba-other-fpa");
+    const authReqId = await insertCibaRequest({
+      clientId: FPA_CLIENT_ID,
+      userId,
+      status: "approved",
+      acrValues: storedAcr("urn:zentity:assurance:tier-2"),
+    });
+
+    const { status, json } = await postTokenWithDpop({
+      grant_type: CIBA_GRANT_TYPE,
+      auth_req_id: authReqId,
+      client_id: "step-up-ciba-other-fpa",
+      client_secret: FPA_CLIENT_SECRET,
+    });
+
+    expect(status).toBe(400);
+    expect(json.error).toBe("invalid_client");
+    expect(json.auth_session).toBeUndefined();
+    expect(await db.select().from(firstPartyAuthSessions).all()).toHaveLength(
+      0
     );
+  });
+
+  it("a public first-party client gets interaction_required, since the CIBA grant has no session or DPoP binding", async () => {
+    await createFirstPartyClient(PUBLIC_FPA_CLIENT_ID, {
+      clientSecret: null,
+      tokenEndpointAuthMethod: "none",
+    });
+    const authReqId = await insertCibaRequest({
+      clientId: PUBLIC_FPA_CLIENT_ID,
+      userId,
+      status: "approved",
+      acrValues: storedAcr("urn:zentity:assurance:tier-2"),
+    });
+
+    const { status, json } = await postTokenWithDpop({
+      grant_type: CIBA_GRANT_TYPE,
+      auth_req_id: authReqId,
+      client_id: PUBLIC_FPA_CLIENT_ID,
+    });
+
+    expect(status).toBe(400);
+    expect(json.error).toBe("interaction_required");
+    expect(json.auth_session).toBeUndefined();
+  });
+
+  it("a payment approval gets interaction_required, since a code cannot carry authorization_details", async () => {
+    const authReqId = await insertCibaRequest({
+      clientId: FPA_CLIENT_ID,
+      userId,
+      status: "approved",
+      acrValues: storedAcr("urn:zentity:assurance:tier-2"),
+      authorizationDetails: JSON.stringify([
+        {
+          type: "payment_authorization",
+          amount: { value: "1", currency: "USD" },
+        },
+      ]),
+    });
+
+    const { status, json } = await postTokenWithDpop({
+      grant_type: CIBA_GRANT_TYPE,
+      auth_req_id: authReqId,
+      client_id: FPA_CLIENT_ID,
+      client_secret: FPA_CLIENT_SECRET,
+    });
+
+    expect(status).toBe(400);
+    expect(json.error).toBe("interaction_required");
+    expect(json.auth_session).toBeUndefined();
   });
 
   it("non-FPA client with unsatisfied acr_values still returns 400 interaction_required", async () => {
@@ -512,6 +606,7 @@ describe("CIBA step-up: first-party client (FPA) path", () => {
       grant_type: CIBA_GRANT_TYPE,
       auth_req_id: authReqId,
       client_id: FPA_CLIENT_ID,
+      client_secret: FPA_CLIENT_SECRET,
     });
 
     expect(status).toBe(200);

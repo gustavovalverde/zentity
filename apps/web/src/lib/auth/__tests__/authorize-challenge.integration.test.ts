@@ -1,7 +1,6 @@
 import crypto from "node:crypto";
 
 import { client, ready, server } from "@serenity-kit/opaque";
-import { makeSignature } from "better-auth/crypto";
 import { eq } from "drizzle-orm";
 import { decodeJwt } from "jose";
 import { privateKeyToAccount } from "viem/accounts";
@@ -10,24 +9,25 @@ import { beforeEach, describe, expect, it } from "vitest";
 
 import { env } from "@/env";
 import { auth } from "@/lib/auth/auth-config";
-import { createAuthenticationContext } from "@/lib/auth/auth-context";
-import { fpaLimiter } from "@/lib/auth/oidc/authorize-challenge";
 import { db } from "@/lib/db/connection";
 import {
   accounts,
+  authenticationContexts,
   sessions,
+  users,
   verifications,
   walletAddresses,
 } from "@/lib/db/schema/auth";
+import { cibaRequests } from "@/lib/db/schema/ciba";
 import { identityBundles } from "@/lib/db/schema/identity";
 import {
-  authChallengeSessions,
+  firstPartyAuthSessions,
+  firstPartyFailureBudgets,
   oauthClients,
 } from "@/lib/db/schema/oauth-provider";
 import {
   createTestCibaRequest,
   createTestUser,
-  findPushedAuthorizationQueries,
   resetDatabase,
 } from "@/test-utils/db-test-utils";
 import {
@@ -39,97 +39,57 @@ import {
 
 const CHALLENGE_URL =
   "http://localhost:3000/api/auth/oauth2/authorize-challenge";
+const TOKEN_URL = "http://localhost:3000/api/auth/oauth2/token";
 const TEST_CLIENT_ID = "fpa-test-client";
-const THIRD_PARTY_CLIENT_ID = "third-party-client";
 const TEST_PASSWORD = "correct-horse-battery-staple";
 const TEST_EMAIL = "alice@example.com";
-const TEST_WALLET_KEY =
-  "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80";
-const TEST_WALLET = privateKeyToAccount(TEST_WALLET_KEY);
+const TEST_WALLET = privateKeyToAccount(
+  "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80"
+);
+const UNKNOWN_WALLET = privateKeyToAccount(
+  "0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d"
+);
+const TIER_1 = "urn:zentity:assurance:tier-1";
+// RFC 7636 example: code_verifier → code_challenge (S256)
+const CODE_VERIFIER = "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk";
+const CODE_CHALLENGE = "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM";
 
-async function createTestClient() {
+type Json = Record<string, unknown>;
+
+async function createClient(
+  clientId: string,
+  overrides: Partial<typeof oauthClients.$inferInsert> = {}
+) {
   await db
     .insert(oauthClients)
     .values({
-      clientId: TEST_CLIENT_ID,
-      name: "FPA Test Client",
+      clientId,
+      name: clientId,
       redirectUris: JSON.stringify(["http://localhost/callback"]),
       grantTypes: JSON.stringify(["authorization_code"]),
       tokenEndpointAuthMethod: "none",
       firstParty: true,
+      skipConsent: true,
+      ...overrides,
     })
     .run();
 }
 
-async function createThirdPartyClient() {
-  await db
-    .insert(oauthClients)
-    .values({
-      clientId: THIRD_PARTY_CLIENT_ID,
-      name: "Third-Party Client",
-      redirectUris: JSON.stringify(["http://localhost/callback"]),
-      grantTypes: JSON.stringify(["authorization_code"]),
-      tokenEndpointAuthMethod: "none",
-      firstParty: false,
-    })
-    .run();
-}
-
-async function createUserWithWallet(
-  address: string,
-  chainId = 1
-): Promise<string> {
-  const email = `${address.slice(2, 10).toLowerCase()}@wallet.zentity.app`;
-  const userId = await createTestUser({ email });
-
-  await db
-    .insert(accounts)
-    .values({
-      id: crypto.randomUUID(),
-      accountId: userId,
-      providerId: "eip712",
-      userId,
-      createdAt: new Date(),
-      updatedAt: new Date(),
-    })
-    .run();
-
-  await db
-    .insert(walletAddresses)
-    .values({
-      userId,
-      address,
-      chainId,
-      isPrimary: true,
-      createdAt: new Date().toISOString(),
-    })
-    .run();
-
-  return userId;
-}
-
-async function createUserWithOpaque(
-  email: string
-): Promise<{ userId: string; registrationRecord: string }> {
+async function createUserWithOpaque(email: string): Promise<string> {
   await ready;
   const userId = await createTestUser({ email });
-
-  // Register OPAQUE credentials
   const { registrationRequest, clientRegistrationState } =
     client.startRegistration({ password: TEST_PASSWORD });
-
   const { registrationResponse } = server.createRegistrationResponse({
     serverSetup: env.OPAQUE_SERVER_SETUP,
     userIdentifier: userId,
     registrationRequest,
   });
-
   const { registrationRecord } = client.finishRegistration({
     clientRegistrationState,
     registrationResponse,
     password: TEST_PASSWORD,
   });
-
   await db
     .insert(accounts)
     .values({
@@ -142,503 +102,550 @@ async function createUserWithOpaque(
       updatedAt: new Date(),
     })
     .run();
-
-  return { userId, registrationRecord };
+  return userId;
 }
 
-async function callChallenge(
-  body: Record<string, unknown>,
-  headers?: Record<string, string>
-): Promise<{ status: number; json: Record<string, unknown> }> {
+async function addWallet(userId: string, address: string, chainId = 1) {
+  await db
+    .insert(accounts)
+    .values({
+      id: crypto.randomUUID(),
+      accountId: userId,
+      providerId: "eip712",
+      userId,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    })
+    .run();
+  await db
+    .insert(walletAddresses)
+    .values({
+      userId,
+      address,
+      chainId,
+      isPrimary: true,
+      createdAt: new Date().toISOString(),
+    })
+    .run();
+}
+
+async function createWalletUser(address: string): Promise<string> {
+  const userId = await createTestUser({
+    email: `${address.slice(2, 10).toLowerCase()}@wallet.zentity.app`,
+  });
+  await addWallet(userId, address);
+  return userId;
+}
+
+/**
+ * Posts to the challenge endpoint with a proof from `key`, form-encoded
+ * unless `json` is set. `key: null` sends no DPoP header.
+ */
+async function challenge(
+  key: DpopKeyPair | null,
+  body: Record<string, string>,
+  options: { json?: boolean; proof?: string } = {}
+): Promise<{ headers: Headers; json: Json; status: number }> {
+  const headers: Record<string, string> = {
+    "Content-Type": options.json
+      ? "application/json"
+      : "application/x-www-form-urlencoded",
+  };
+  const proof =
+    options.proof ??
+    (key ? await buildDpopProof(key, "POST", CHALLENGE_URL) : undefined);
+  if (proof) {
+    headers.DPoP = proof;
+  }
   const response = await auth.handler(
     new Request(CHALLENGE_URL, {
       method: "POST",
-      headers: { "Content-Type": "application/json", ...headers },
-      body: JSON.stringify(body),
+      headers,
+      body: options.json
+        ? JSON.stringify(body)
+        : new URLSearchParams(body).toString(),
     })
   );
-  const json = (await response.json()) as Record<string, unknown>;
-  return { status: response.status, json };
+  return {
+    headers: response.headers,
+    json: (await response.json()) as Json,
+    status: response.status,
+  };
 }
 
-// RFC 7636 example: code_verifier → code_challenge (S256)
-const CODE_VERIFIER = "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk";
-const CODE_CHALLENGE = "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM";
-async function countPushedRequests() {
-  return (await findPushedAuthorizationQueries()).length;
+function initialRequest(overrides: Record<string, string> = {}) {
+  return {
+    client_id: TEST_CLIENT_ID,
+    response_type: "code",
+    scope: "openid",
+    code_challenge: CODE_CHALLENGE,
+    code_challenge_method: "S256",
+    login_hint: TEST_EMAIL,
+    ...overrides,
+  };
 }
 
-async function completeOpaqueFlow(
-  initialRequestOverrides: Record<string, unknown> = {},
-  dpopKeyPair?: DpopKeyPair
-): Promise<{
-  authSession: string;
-  authorizationCode: string;
-}> {
+/** Rounds 2 and 3 of an OPAQUE sign-in on an `auth_session`. */
+async function answerOpaque(
+  key: DpopKeyPair,
+  authSession: string,
+  extra: Record<string, string> = {}
+) {
   await ready;
-  const dpopHeaders = async () =>
-    dpopKeyPair
-      ? { DPoP: await buildDpopProof(dpopKeyPair, "POST", CHALLENGE_URL) }
-      : undefined;
-  const round1 = await callChallenge(
-    {
-      client_id: TEST_CLIENT_ID,
-      response_type: "code",
-      scope: "openid",
-      code_challenge: CODE_CHALLENGE,
-      code_challenge_method: "S256",
-      identifier: TEST_EMAIL,
-      ...initialRequestOverrides,
-    },
-    await dpopHeaders()
-  );
-  const authSession = round1.json.auth_session as string;
-
   const { clientLoginState, startLoginRequest } = client.startLogin({
     password: TEST_PASSWORD,
   });
-
-  const round2 = await callChallenge(
-    { auth_session: authSession, opaque_login_request: startLoginRequest },
-    await dpopHeaders()
+  const round2 = await challenge(
+    key,
+    {
+      ...extra,
+      auth_session: authSession,
+      opaque_login_request: startLoginRequest,
+    },
+    { json: true }
   );
-
-  const loginResult = client.finishLogin({
+  if (
+    !(
+      round2.status === 403 &&
+      round2.json.challenge_type === "opaque" &&
+      typeof round2.json.opaque_login_response === "string"
+    )
+  ) {
+    throw new Error(`OPAQUE round 2 failed: ${JSON.stringify(round2.json)}`);
+  }
+  const login = client.finishLogin({
     clientLoginState,
     loginResponse: round2.json.opaque_login_response as string,
     password: TEST_PASSWORD,
   });
-
-  const round3 = await callChallenge(
+  if (!login) {
+    throw new Error("OPAQUE login did not finish");
+  }
+  return challenge(
+    key,
     {
+      ...extra,
       auth_session: authSession,
-      opaque_finish_request: loginResult?.finishLoginRequest,
+      opaque_finish_request: login.finishLoginRequest,
     },
-    await dpopHeaders()
+    { json: true }
   );
+}
 
-  return {
-    authSession,
-    authorizationCode: round3.json.authorization_code as string,
-  };
+async function signInWithOpaque(
+  key: DpopKeyPair,
+  overrides: Record<string, string> = {}
+) {
+  const round1 = await challenge(key, initialRequest(overrides));
+  const authSession = round1.json.auth_session;
+  if (typeof authSession !== "string") {
+    throw new Error(`OPAQUE round 1 failed: ${JSON.stringify(round1.json)}`);
+  }
+  return { authSession, round3: await answerOpaque(key, authSession) };
+}
+
+/** Signs a Sign-In with Ethereum challenge's message with EIP-191. */
+function signChallenge(
+  account: typeof TEST_WALLET,
+  challengeBody: Json
+): Promise<string> {
+  return account.signMessage({ message: challengeBody.message as string });
+}
+
+function redeem(
+  key: DpopKeyPair,
+  code: string,
+  clientAuth: Record<string, string> = { client_id: TEST_CLIENT_ID }
+) {
+  return postTokenWithDpop(
+    {
+      ...clientAuth,
+      grant_type: "authorization_code",
+      code,
+      code_verifier: CODE_VERIFIER,
+    },
+    key
+  );
+}
+
+async function seedTier1(userId: string) {
+  await db
+    .insert(identityBundles)
+    .values({
+      userId,
+      fheKeyId: "test-fhe-key",
+      fheStatus: "complete",
+      validityStatus: "verified",
+    })
+    .run();
+}
+
+function countRows() {
+  return db.select().from(firstPartyAuthSessions).all();
 }
 
 describe("Authorization Challenge Endpoint", () => {
+  let key: DpopKeyPair;
+
   beforeEach(async () => {
     await resetDatabase();
-    await createTestClient();
-    fpaLimiter.reset();
+    await createClient(TEST_CLIENT_ID);
+    key = await createTestDpopKeyPair();
   });
 
-  describe("Round 1: Initial request", () => {
-    it("returns insufficient_authorization with OPAQUE challenge for user with password", async () => {
+  describe("initial request", () => {
+    it("answers an OPAQUE user's email with an OPAQUE challenge", async () => {
       await createUserWithOpaque(TEST_EMAIL);
 
-      const { status, json } = await callChallenge({
-        client_id: TEST_CLIENT_ID,
-        response_type: "code",
-        scope: "openid",
-        code_challenge: CODE_CHALLENGE,
-        code_challenge_method: "S256",
-        identifier: TEST_EMAIL,
-      });
+      const { headers, json, status } = await challenge(key, initialRequest());
 
-      expect(status).toBe(401);
-      expect(json.error).toBe("insufficient_authorization");
-      expect(json.challenge_type).toBe("opaque");
-      expect(json.auth_session).toBeTypeOf("string");
-      expect(json.server_public_key).toBeTypeOf("string");
+      expect(status).toBe(403);
+      expect(headers.get("cache-control")).toContain("no-store");
+      expect(json).toMatchObject({
+        error: "insufficient_authorization",
+        challenge_type: "opaque",
+        auth_session: expect.any(String),
+        server_public_key: expect.any(String),
+      });
     });
 
-    it("returns redirect_to_web without a pushed request for passkey-only user", async () => {
+    it("gives an unknown email the same OPAQUE challenge", async () => {
+      const { json, status } = await challenge(
+        key,
+        initialRequest({ login_hint: "nobody@example.com" })
+      );
+
+      expect(status).toBe(403);
+      expect(Object.keys(json).sort()).toEqual(
+        ["auth_session", "challenge_type", "error", "server_public_key"].sort()
+      );
+      expect(json.challenge_type).toBe("opaque");
+    });
+
+    it("sends a passkey-only user to the browser and keeps no auth_session", async () => {
       await createTestUser({ email: TEST_EMAIL });
 
-      const { status, json } = await callChallenge({
-        client_id: TEST_CLIENT_ID,
-        response_type: "code",
-        scope: "openid",
-        code_challenge: CODE_CHALLENGE,
-        code_challenge_method: "S256",
-        identifier: TEST_EMAIL,
+      const { json, status } = await challenge(key, initialRequest());
+
+      expect(status).toBe(403);
+      expect(json.error).toBe("redirect_to_web");
+      expect(json.auth_session).toBeUndefined();
+      expect(await countRows()).toHaveLength(0);
+    });
+
+    it("never reveals a wallet-only user's address for an email hint", async () => {
+      await createWalletUser(TEST_WALLET.address);
+      const email = `${TEST_WALLET.address.slice(2, 10).toLowerCase()}@wallet.zentity.app`;
+
+      const { json, status } = await challenge(
+        key,
+        initialRequest({ login_hint: email })
+      );
+
+      expect(status).toBe(403);
+      expect(json.error).toBe("redirect_to_web");
+      expect(JSON.stringify(json).toLowerCase()).not.toContain(
+        TEST_WALLET.address.slice(2).toLowerCase()
+      );
+    });
+
+    it("answers a wallet address with Sign-In with Ethereum even when the user has a password", async () => {
+      const userId = await createUserWithOpaque(TEST_EMAIL);
+      await addWallet(userId, TEST_WALLET.address);
+
+      const { json, status } = await challenge(
+        key,
+        initialRequest({ login_hint: TEST_WALLET.address })
+      );
+
+      expect(status).toBe(403);
+      expect(json).toMatchObject({
+        challenge_type: "siwe",
+        message: expect.any(String),
+      });
+      expect(json).not.toHaveProperty("typed_data");
+    });
+
+    it("gives an unknown address the same Sign-In with Ethereum challenge as a registered one", async () => {
+      const userId = await createTestUser({ email: TEST_EMAIL });
+      await addWallet(userId, TEST_WALLET.address, 137);
+
+      const known = await challenge(
+        key,
+        initialRequest({ login_hint: TEST_WALLET.address })
+      );
+      const unknown = await challenge(
+        key,
+        initialRequest({ login_hint: UNKNOWN_WALLET.address })
+      );
+
+      expect(unknown.status).toBe(known.status);
+      expect(Object.keys(unknown.json).sort()).toEqual(
+        Object.keys(known.json).sort()
+      );
+      expect(unknown.json.challenge_type).toBe("siwe");
+      const knownMessage = parseSiweMessage(known.json.message as string);
+      const unknownMessage = parseSiweMessage(unknown.json.message as string);
+      expect(unknownMessage).toMatchObject({
+        chainId: knownMessage.chainId,
+        domain: knownMessage.domain,
+        statement: knownMessage.statement,
+        uri: knownMessage.uri,
+      });
+      expect(knownMessage.chainId).toBe(1);
+    });
+
+    it("reads a form-encoded chain_id as a number", async () => {
+      await createWalletUser(TEST_WALLET.address);
+
+      const { json } = await challenge(
+        key,
+        initialRequest({ login_hint: TEST_WALLET.address, chain_id: "5" })
+      );
+
+      expect(parseSiweMessage(json.message as string).chainId).toBe(5);
+    });
+
+    it("requires form encoding", async () => {
+      await createUserWithOpaque(TEST_EMAIL);
+
+      const { json, status } = await challenge(key, initialRequest(), {
+        json: true,
       });
 
       expect(status).toBe(400);
-      expect(json.error).toBe("redirect_to_web");
-      expect(json.auth_session).toBeTypeOf("string");
-      expect(json).not.toHaveProperty("request_uri");
-      expect(await countPushedRequests()).toBe(0);
+      expect(json.error).toBe("invalid_request");
     });
 
-    it("returns insufficient_authorization for unknown user (timing-safe)", async () => {
-      const { status, json } = await callChallenge({
-        client_id: TEST_CLIENT_ID,
-        response_type: "code",
-        scope: "openid",
-        code_challenge: CODE_CHALLENGE,
-        code_challenge_method: "S256",
-        identifier: "nonexistent@example.com",
-      });
+    it("requires a DPoP proof", async () => {
+      await createUserWithOpaque(TEST_EMAIL);
 
-      // Unknown users look identical to OPAQUE users — timing-safe
-      expect(status).toBe(401);
-      expect(json.error).toBe("insufficient_authorization");
-      expect(json.challenge_type).toBe("opaque");
-      expect(json.server_public_key).toBeTypeOf("string");
+      const { json, status } = await challenge(null, initialRequest());
+
+      expect(status).toBe(400);
+      expect(json.error).toBe("invalid_dpop_proof");
+      expect(await countRows()).toHaveLength(0);
     });
 
-    it("rejects unknown client_id", async () => {
-      const { status, json } = await callChallenge({
-        client_id: "unknown-client",
-        response_type: "code",
-        scope: "openid",
-        code_challenge: CODE_CHALLENGE,
-        code_challenge_method: "S256",
-        identifier: TEST_EMAIL,
-      });
+    it("refuses a redirect_uri, because challenge codes are headless", async () => {
+      const { json, status } = await challenge(
+        key,
+        initialRequest({ redirect_uri: "http://localhost/callback" })
+      );
+
+      expect(status).toBe(400);
+      expect(json.error).toBe("invalid_request");
+    });
+
+    it("refuses an unknown client", async () => {
+      const { json, status } = await challenge(
+        key,
+        initialRequest({ client_id: "unknown-client" })
+      );
 
       expect(status).toBe(400);
       expect(json.error).toBe("invalid_client");
     });
-  });
 
-  describe("Full 3-round OPAQUE flow", () => {
-    it("completes OPAQUE challenge and returns authorization_code", async () => {
-      await createUserWithOpaque(TEST_EMAIL);
-      const { authorizationCode } = await completeOpaqueFlow();
-
-      expect(authorizationCode).toBeTypeOf("string");
-      expect(authorizationCode.length).toBe(32);
-    });
-  });
-
-  describe("Token exchange", () => {
-    it("exchanges authorization code for tokens with auth_session in response", async () => {
-      await createUserWithOpaque(TEST_EMAIL);
-      const { authSession, authorizationCode } = await completeOpaqueFlow();
-
-      const { status, json } = await postTokenWithDpop({
-        grant_type: "authorization_code",
-        client_id: TEST_CLIENT_ID,
-        code: authorizationCode,
-        code_verifier: CODE_VERIFIER,
+    it("refuses a confidential client that sends no credentials", async () => {
+      await createClient("fpa-confidential", {
+        clientSecret: crypto
+          .createHash("sha256")
+          .update("secret")
+          .digest("base64url"),
+        tokenEndpointAuthMethod: "client_secret_post",
       });
 
-      expect({ status, json }).toMatchObject({
-        status: 200,
-        json: {
-          access_token: expect.any(String),
-          token_type: "DPoP",
-          auth_session: authSession,
-        },
-      });
+      const { json, status } = await challenge(
+        key,
+        initialRequest({ client_id: "fpa-confidential" })
+      );
+
+      expect(status).toBe(400);
+      expect(json.error).toBe("invalid_client");
     });
 
-    // Signing in to a first-party client grants its scopes without a consent
-    // screen, so only the scopes the client registered may be granted.
     it.each([
-      [["openid"], 400],
-      [["openid", "agent:host.register"], 200],
+      ["not first-party", { firstParty: false }],
+      ["first-party without skip_consent", { skipConsent: false }],
     ])(
-      "grants agent bootstrap scopes only when the client registered them (%j)",
-      async (registeredScopes, expectedStatus) => {
-        await db
-          .update(oauthClients)
-          .set({ scopes: JSON.stringify(registeredScopes) })
-          .where(eq(oauthClients.clientId, TEST_CLIENT_ID))
-          .run();
+      "refuses a client that is %s with unauthorized_client",
+      async (_, overrides) => {
+        await createClient("other-client", overrides);
         await createUserWithOpaque(TEST_EMAIL);
-        const { authorizationCode } = await completeOpaqueFlow({
-          scope: "openid agent:host.register",
-        });
 
-        const { status, json } = await postTokenWithDpop({
-          grant_type: "authorization_code",
-          client_id: TEST_CLIENT_ID,
-          code: authorizationCode,
-          code_verifier: CODE_VERIFIER,
-        });
+        const { json, status } = await challenge(
+          key,
+          initialRequest({ client_id: "other-client" })
+        );
 
-        expect(status).toBe(expectedStatus);
-        if (expectedStatus === 200) {
-          expect(json.scope).toBe("openid agent:host.register");
-        } else {
-          expect(json).toMatchObject({
-            error: "invalid_scope",
-            error_description:
-              "client does not allow scope agent:host.register",
-          });
-        }
+        expect(status).toBe(400);
+        expect(json.error).toBe("unauthorized_client");
+        expect(await countRows()).toHaveLength(0);
       }
     );
-
-    it("applies claims.id_token filtering through the full OPAQUE challenge flow", async () => {
-      await createUserWithOpaque(TEST_EMAIL);
-      const { authSession, authorizationCode } = await completeOpaqueFlow({
-        claims: JSON.stringify({
-          id_token: {
-            acr: null,
-          },
-        }),
-      });
-
-      const { status, json } = await postTokenWithDpop({
-        grant_type: "authorization_code",
-        client_id: TEST_CLIENT_ID,
-        code: authorizationCode,
-        code_verifier: CODE_VERIFIER,
-      });
-
-      expect(status).toBe(200);
-      expect(json.auth_session).toBe(authSession);
-      expect(json.id_token).toEqual(expect.any(String));
-
-      const claims = decodeJwt(json.id_token as string);
-      // The code records the tier as acr and the OPAQUE login's amr.
-      expect(claims.acr).toBe("urn:zentity:assurance:tier-0");
-      expect(claims.amr).toEqual(["pwd"]);
-      expect(claims.acr_eidas).toBeUndefined();
-      const assurance = claims.zentity_assurance as Record<string, unknown>;
-      expect(assurance.acr).toBe("urn:zentity:assurance:tier-0");
-    });
-
-    it("rejects token exchange without code_verifier (PKCE required)", async () => {
-      await createUserWithOpaque(TEST_EMAIL);
-      const { authorizationCode } = await completeOpaqueFlow();
-
-      const { status, json } = await postTokenWithDpop({
-        grant_type: "authorization_code",
-        client_id: TEST_CLIENT_ID,
-        code: authorizationCode,
-      });
-
-      expect(status).toBeGreaterThanOrEqual(400);
-      expect(json.error).toBeDefined();
-    });
-
-    it("rejects replay of already-exchanged authorization code", async () => {
-      await createUserWithOpaque(TEST_EMAIL);
-      const { authorizationCode } = await completeOpaqueFlow();
-
-      // First exchange succeeds
-      const first = await postTokenWithDpop({
-        grant_type: "authorization_code",
-        client_id: TEST_CLIENT_ID,
-        code: authorizationCode,
-        code_verifier: CODE_VERIFIER,
-      });
-      expect(first.status).toBe(200);
-
-      // Replay with a fresh DPoP key should fail (code consumed)
-      const replay = await postTokenWithDpop({
-        grant_type: "authorization_code",
-        client_id: TEST_CLIENT_ID,
-        code: authorizationCode,
-        code_verifier: CODE_VERIFIER,
-      });
-      expect(replay.status).toBeGreaterThanOrEqual(400);
-      expect(replay.json.error).toBeDefined();
-    });
   });
 
-  describe("Session validation", () => {
-    it("rejects expired auth_session", async () => {
-      const { status, json } = await callChallenge({
-        auth_session: "nonexistent-session",
-        opaque_login_request: "dGVzdA",
-      });
+  describe("OPAQUE sign-in", () => {
+    it("issues a DPoP-bound code in three rounds and rotates the auth_session at the token endpoint", async () => {
+      const userId = await createUserWithOpaque(TEST_EMAIL);
 
-      expect(status).toBe(400);
-      expect(json.error).toBe("invalid_session");
-    });
-
-    it("rejects double-completion of auth_session", async () => {
-      await ready;
-      await createUserWithOpaque(TEST_EMAIL);
-
-      // Complete a full flow
-      const round1 = await callChallenge({
-        client_id: TEST_CLIENT_ID,
-        response_type: "code",
-        scope: "openid",
-        code_challenge: CODE_CHALLENGE,
-        code_challenge_method: "S256",
-        identifier: TEST_EMAIL,
-      });
-      const authSession = round1.json.auth_session as string;
-
-      const { clientLoginState, startLoginRequest } = client.startLogin({
-        password: TEST_PASSWORD,
-      });
-
-      const round2 = await callChallenge({
-        auth_session: authSession,
-        opaque_login_request: startLoginRequest,
-      });
-
-      const loginResult = client.finishLogin({
-        clientLoginState,
-        loginResponse: round2.json.opaque_login_response as string,
-        password: TEST_PASSWORD,
-      });
-
-      // First completion succeeds
-      const round3 = await callChallenge({
-        auth_session: authSession,
-        opaque_finish_request: loginResult?.finishLoginRequest,
+      const { authSession, round3 } = await signInWithOpaque(key, {
+        claims: JSON.stringify({ id_token: { acr: null } }),
       });
       expect(round3.status).toBe(200);
+      const code = round3.json.authorization_code as string;
+      expect(code).toEqual(expect.any(String));
 
-      // Second attempt fails (session is code_issued)
-      const retry = await callChallenge({
-        auth_session: authSession,
-        opaque_finish_request: loginResult?.finishLoginRequest,
-      });
-      expect(retry.status).toBe(400);
-      expect(retry.json.error).toBe("invalid_session");
+      const token = await redeem(key, code);
+      expect(token.status).toBe(200);
+      expect(token.json.token_type).toBe("DPoP");
+      expect(token.json.auth_session).toEqual(expect.any(String));
+      expect(token.json.auth_session).not.toBe(authSession);
+
+      const claims = decodeJwt(token.json.id_token as string);
+      expect(claims.acr).toBe("urn:zentity:assurance:tier-0");
+      expect(claims.amr).toEqual(["pwd"]);
+
+      const contexts = await db
+        .select({ sourceKind: authenticationContexts.sourceKind })
+        .from(authenticationContexts)
+        .where(eq(authenticationContexts.userId, userId))
+        .all();
+      expect(contexts).toEqual([{ sourceKind: "authorize_challenge_opaque" }]);
     });
-  });
 
-  describe("First-party enforcement", () => {
-    it("returns redirect_to_web for non-first-party client regardless of credentials", async () => {
-      await createThirdPartyClient();
+    // A first-party client signs the user in without a consent screen, so it
+    // may be granted only the scopes it registered.
+    it("refuses a scope the client did not register before it starts a challenge", async () => {
+      await db
+        .update(oauthClients)
+        .set({ scopes: JSON.stringify(["openid"]) })
+        .where(eq(oauthClients.clientId, TEST_CLIENT_ID))
+        .run();
       await createUserWithOpaque(TEST_EMAIL);
 
-      const { status, json } = await callChallenge({
-        client_id: THIRD_PARTY_CLIENT_ID,
-        response_type: "code",
-        scope: "openid",
-        code_challenge: CODE_CHALLENGE,
-        code_challenge_method: "S256",
-        identifier: TEST_EMAIL,
-      });
+      const { json, status } = await challenge(
+        key,
+        initialRequest({ scope: "openid agent:host.register" })
+      );
 
       expect(status).toBe(400);
-      expect(json.error).toBe("redirect_to_web");
-      expect(json.auth_session).toBeTypeOf("string");
-    });
-  });
-
-  describe("Rate limiting", () => {
-    it("returns 429 after exceeding 10 requests per minute from same IP", async () => {
-      const ip = "192.168.1.100";
-      const headers = { "X-Forwarded-For": ip };
-
-      // First 10 requests succeed (may return 400 for invalid body, but not 429)
-      for (let i = 0; i < 10; i++) {
-        const { status } = await callChallenge(
-          {
-            client_id: TEST_CLIENT_ID,
-            response_type: "code",
-            scope: "openid",
-            identifier: TEST_EMAIL,
-          },
-          headers
-        );
-        expect(status).not.toBe(429);
-      }
-
-      // 11th request should be rate-limited
-      const { status, json } = await callChallenge(
-        {
-          client_id: TEST_CLIENT_ID,
-          response_type: "code",
-          scope: "openid",
-          identifier: TEST_EMAIL,
-        },
-        headers
-      );
-      expect(status).toBe(429);
-      expect(json.error).toBe("too_many_requests");
+      expect(json).toMatchObject({
+        error: "invalid_scope",
+        error_description: "client does not allow scope agent:host.register",
+      });
+      expect(await countRows()).toHaveLength(0);
     });
 
-    it("rate limits are per-IP (different IPs are independent)", async () => {
-      // Exhaust rate limit for IP A
-      for (let i = 0; i < 11; i++) {
-        await callChallenge(
-          {
-            client_id: TEST_CLIENT_ID,
-            response_type: "code",
-            scope: "openid",
-            identifier: TEST_EMAIL,
-          },
-          { "X-Forwarded-For": "10.0.0.1" }
-        );
-      }
-
-      // IP B should still work
-      const { status } = await callChallenge(
-        {
-          client_id: TEST_CLIENT_ID,
-          response_type: "code",
-          scope: "openid",
-          identifier: TEST_EMAIL,
-        },
-        { "X-Forwarded-For": "10.0.0.2" }
-      );
-      expect(status).not.toBe(429);
-    });
-  });
-
-  describe("DPoP key binding", () => {
-    it("rejects DPoP key switch between round 1 and round 2", async () => {
+    it("grants agent bootstrap scopes the client registered", async () => {
+      await db
+        .update(oauthClients)
+        .set({ scopes: JSON.stringify(["openid", "agent:host.register"]) })
+        .where(eq(oauthClients.clientId, TEST_CLIENT_ID))
+        .run();
       await createUserWithOpaque(TEST_EMAIL);
 
-      const keyPair1 = await createTestDpopKeyPair();
-      const dpopProof1 = await buildDpopProof(keyPair1, "POST", CHALLENGE_URL);
+      const { round3 } = await signInWithOpaque(key, {
+        scope: "openid agent:host.register",
+      });
+      const token = await redeem(key, round3.json.authorization_code as string);
 
-      const round1 = await callChallenge(
-        {
-          client_id: TEST_CLIENT_ID,
-          response_type: "code",
-          scope: "openid",
-          code_challenge: CODE_CHALLENGE,
-          code_challenge_method: "S256",
-          identifier: TEST_EMAIL,
-        },
-        { DPoP: dpopProof1 }
+      expect(token.status).toBe(200);
+      expect(token.json.scope).toBe("openid agent:host.register");
+    });
+
+    it("refuses a redemption without a proof or with another key", async () => {
+      await createUserWithOpaque(TEST_EMAIL);
+      const { round3 } = await signInWithOpaque(key);
+      const body = new URLSearchParams({
+        grant_type: "authorization_code",
+        client_id: TEST_CLIENT_ID,
+        code: round3.json.authorization_code as string,
+        code_verifier: CODE_VERIFIER,
+      });
+
+      const withoutProof = await auth.handler(
+        new Request(TOKEN_URL, {
+          method: "POST",
+          headers: { "Content-Type": "application/x-www-form-urlencoded" },
+          body,
+        })
       );
-      expect(round1.status).toBe(401);
+      expect(withoutProof.status).toBe(400);
+      expect(await withoutProof.json()).toMatchObject({
+        error: "invalid_dpop_proof",
+      });
+
+      const otherKey = await redeem(
+        await createTestDpopKeyPair(),
+        round3.json.authorization_code as string
+      );
+      expect(otherKey.status).toBe(400);
+      expect(otherKey.json.error).toBe("invalid_dpop_proof");
+    });
+
+    it("requires the auth_session's key on every round", async () => {
+      await createUserWithOpaque(TEST_EMAIL);
+      const round1 = await challenge(key, initialRequest());
       const authSession = round1.json.auth_session as string;
+      const { startLoginRequest } = client.startLogin({
+        password: TEST_PASSWORD,
+      });
+      const request = {
+        auth_session: authSession,
+        opaque_login_request: startLoginRequest,
+      };
 
-      // Round 2 with a DIFFERENT DPoP key
-      const keyPair2 = await createTestDpopKeyPair();
-      const dpopProof2 = await buildDpopProof(keyPair2, "POST", CHALLENGE_URL);
+      const otherKey = await challenge(await createTestDpopKeyPair(), request, {
+        json: true,
+      });
+      expect(otherKey.status).toBe(400);
+      expect(otherKey.json.error).toBe("invalid_dpop_proof");
 
+      const noProof = await challenge(null, request, { json: true });
+      expect(noProof.status).toBe(400);
+      expect(noProof.json.error).toBe("invalid_dpop_proof");
+
+      // The refused rounds changed nothing, so the bound key still continues.
+      const bound = await challenge(key, request, { json: true });
+      expect(bound.status).toBe(403);
+      expect(bound.json.opaque_login_response).toEqual(expect.any(String));
+    });
+
+    it("refuses a replayed proof on the next round", async () => {
+      await createUserWithOpaque(TEST_EMAIL);
+      const proof = await buildDpopProof(key, "POST", CHALLENGE_URL);
+      const round1 = await challenge(key, initialRequest(), { proof });
       const { startLoginRequest } = client.startLogin({
         password: TEST_PASSWORD,
       });
 
-      const round2 = await callChallenge(
-        { auth_session: authSession, opaque_login_request: startLoginRequest },
-        { DPoP: dpopProof2 }
+      const round2 = await challenge(
+        key,
+        {
+          auth_session: round1.json.auth_session as string,
+          opaque_login_request: startLoginRequest,
+        },
+        { json: true, proof }
       );
-      expect(round2.status).toBe(400);
-      expect(round2.json.error).toBe("invalid_session");
-      expect(round2.json.error_description).toBe("DPoP key mismatch");
-    });
 
-    const initialRequest = {
-      client_id: TEST_CLIENT_ID,
-      response_type: "code",
-      scope: "openid",
-      code_challenge: CODE_CHALLENGE,
-      code_challenge_method: "S256",
-      identifier: TEST_EMAIL,
-    };
+      expect(round2.status).toBe(400);
+      expect(round2.json.error).toBe("invalid_dpop_proof");
+    });
 
     it("refuses a DPoP header whose signature does not verify", async () => {
       await createUserWithOpaque(TEST_EMAIL);
-      // The header names the victim's key; the attacker signs with another.
       const victim = await createTestDpopKeyPair();
-      const attacker = await createTestDpopKeyPair();
-      const genuine = await buildDpopProof(attacker, "POST", CHALLENGE_URL);
-      const [, payload, signature] = genuine.split(".");
+      const [, payload, signature] = (
+        await buildDpopProof(key, "POST", CHALLENGE_URL)
+      ).split(".");
       const header = Buffer.from(
         JSON.stringify({ alg: "ES256", typ: "dpop+jwt", jwk: victim.jwk })
       ).toString("base64url");
 
-      const { status, json } = await callChallenge(initialRequest, {
-        DPoP: `${header}.${payload}.${signature}`,
+      const { json, status } = await challenge(key, initialRequest(), {
+        proof: `${header}.${payload}.${signature}`,
       });
 
       expect(status).toBe(400);
@@ -646,120 +653,161 @@ describe("Authorization Challenge Endpoint", () => {
       expect(json.auth_session).toBeUndefined();
     });
 
-    it("refuses an unsigned DPoP header", async () => {
+    it("answers a wrong credential with authentication_failed and ends the auth_session at the third", async () => {
       await createUserWithOpaque(TEST_EMAIL);
-      const keyPair = await createTestDpopKeyPair();
-      const encode = (value: unknown) =>
-        Buffer.from(JSON.stringify(value)).toString("base64url");
-      const unsigned = `${encode({ alg: "none", typ: "dpop+jwt", jwk: keyPair.jwk })}.${encode(
-        {
-          htm: "POST",
-          htu: CHALLENGE_URL,
-          jti: crypto.randomUUID(),
-          iat: Math.floor(Date.now() / 1000),
+      const round1 = await challenge(key, initialRequest());
+      const authSession = round1.json.auth_session as string;
+
+      for (const attempt of [1, 2, 3]) {
+        const { startLoginRequest } = client.startLogin({
+          password: TEST_PASSWORD,
+        });
+        await challenge(
+          key,
+          {
+            auth_session: authSession,
+            opaque_login_request: startLoginRequest,
+          },
+          { json: true }
+        );
+        const finish = await challenge(
+          key,
+          {
+            auth_session: authSession,
+            opaque_finish_request: crypto.randomBytes(64).toString("base64url"),
+          },
+          { json: true }
+        );
+        if (attempt < 3) {
+          expect(finish).toMatchObject({
+            status: 400,
+            json: {
+              error: "authentication_failed",
+              auth_session: authSession,
+              challenge_type: "opaque",
+              server_public_key: expect.any(String),
+            },
+          });
+        } else {
+          expect(finish.status).toBe(403);
+          expect(finish.json.error).toBe("redirect_to_web");
+          expect(finish.json.auth_session).toBeUndefined();
         }
-      )}.`;
+      }
 
-      const { status, json } = await callChallenge(initialRequest, {
-        DPoP: unsigned,
-      });
-
-      expect(status).toBe(400);
-      expect(json.error).toBe("invalid_dpop_proof");
+      const ended = await challenge(
+        key,
+        { auth_session: authSession },
+        {
+          json: true,
+        }
+      );
+      expect(ended.status).toBe(400);
+      expect(ended.json.error).toBe("invalid_session");
     });
 
-    it("refuses a replayed DPoP proof on the next round", async () => {
+    it("issues no second code for a replayed final round", async () => {
       await createUserWithOpaque(TEST_EMAIL);
-      const keyPair = await createTestDpopKeyPair();
-      const proof = await buildDpopProof(keyPair, "POST", CHALLENGE_URL);
-
-      const round1 = await callChallenge(initialRequest, { DPoP: proof });
-      expect(round1.status).toBe(401);
-
-      const { startLoginRequest } = client.startLogin({
+      await ready;
+      const round1 = await challenge(key, initialRequest());
+      const authSession = round1.json.auth_session as string;
+      const { clientLoginState, startLoginRequest } = client.startLogin({
         password: TEST_PASSWORD,
       });
-      const round2 = await callChallenge(
-        {
-          auth_session: round1.json.auth_session as string,
-          opaque_login_request: startLoginRequest,
-        },
-        { DPoP: proof }
+      const round2 = await challenge(
+        key,
+        { auth_session: authSession, opaque_login_request: startLoginRequest },
+        { json: true }
       );
-      expect(round2.status).toBe(400);
-      expect(round2.json.error).toBe("invalid_dpop_proof");
-    });
-  });
-
-  describe("Authorization code DPoP binding", () => {
-    const TOKEN_URL = "http://localhost:3000/api/auth/oauth2/token";
-
-    async function issueBoundCode() {
-      await createUserWithOpaque(TEST_EMAIL);
-      const sessionKey = await createTestDpopKeyPair();
-      const { authorizationCode } = await completeOpaqueFlow({}, sessionKey);
-      return {
-        sessionKey,
-        tokenRequest: {
-          grant_type: "authorization_code",
-          client_id: TEST_CLIENT_ID,
-          code: authorizationCode,
-          code_verifier: CODE_VERIFIER,
-        },
+      const login = client.finishLogin({
+        clientLoginState,
+        loginResponse: round2.json.opaque_login_response as string,
+        password: TEST_PASSWORD,
+      });
+      const finish = {
+        auth_session: authSession,
+        opaque_finish_request: login?.finishLoginRequest ?? "",
       };
-    }
 
-    it("rejects redemption without a DPoP proof", async () => {
-      const { tokenRequest } = await issueBoundCode();
+      expect((await challenge(key, finish, { json: true })).status).toBe(200);
+      const replay = await challenge(key, finish, { json: true });
 
-      const response = await auth.handler(
-        new Request(TOKEN_URL, {
-          method: "POST",
-          headers: { "Content-Type": "application/x-www-form-urlencoded" },
-          body: new URLSearchParams(tokenRequest),
-        })
-      );
+      expect(replay.status).toBe(400);
+      expect(replay.json.authorization_code).toBeUndefined();
+    });
 
-      expect(response.status).toBe(400);
-      expect(await response.json()).toMatchObject({
-        error: "invalid_dpop_proof",
+    it("sends a user with two-factor enabled to the browser after the password", async () => {
+      const userId = await createUserWithOpaque(TEST_EMAIL);
+      await db
+        .update(users)
+        .set({ twoFactorEnabled: true })
+        .where(eq(users.id, userId))
+        .run();
+
+      const { round3 } = await signInWithOpaque(key);
+
+      expect(round3.status).toBe(403);
+      expect(round3.json.error).toBe("redirect_to_web");
+      expect(round3.json.authorization_code).toBeUndefined();
+      expect(
+        await db
+          .select()
+          .from(sessions)
+          .where(eq(sessions.userId, userId))
+          .all()
+      ).toHaveLength(0);
+    });
+
+    it("keeps the user's pending CIBA requests when the code cannot be issued after sign-in", async () => {
+      const userId = await createUserWithOpaque(TEST_EMAIL);
+      const { requestId } = await createTestCibaRequest({
+        clientId: TEST_CLIENT_ID,
+        userId,
       });
-    });
+      const { code_challenge, code_challenge_method, ...withoutPkce } =
+        initialRequest();
+      const round1 = await challenge(key, withoutPkce);
+      expect(round1.json.challenge_type).toBe("opaque");
 
-    it("rejects redemption with a proof from another key", async () => {
-      const { tokenRequest } = await issueBoundCode();
-
-      const { status, json } = await postTokenWithDpop(tokenRequest);
-
-      expect(status).toBe(400);
-      expect(json.error).toBe("invalid_dpop_proof");
-    });
-
-    it("issues a token bound to the auth_session key", async () => {
-      const { sessionKey, tokenRequest } = await issueBoundCode();
-
-      const { status, json } = await postTokenWithDpop(
-        tokenRequest,
-        sessionKey
+      const round3 = await answerOpaque(
+        key,
+        round1.json.auth_session as string
       );
 
-      expect(status).toBe(200);
-      expect(json.token_type).toBe("DPoP");
+      expect(round3.status).toBe(400);
+      expect(round3.json.authorization_code).toBeUndefined();
+      expect(
+        await db
+          .select()
+          .from(sessions)
+          .where(eq(sessions.userId, userId))
+          .all()
+      ).toHaveLength(0);
+      expect(
+        await db
+          .select()
+          .from(authenticationContexts)
+          .where(eq(authenticationContexts.userId, userId))
+          .all()
+      ).toHaveLength(0);
+      const pending = await db
+        .select({ status: cibaRequests.status })
+        .from(cibaRequests)
+        .where(eq(cibaRequests.id, requestId))
+        .get();
+      expect(pending?.status).toBe("pending");
     });
   });
 
-  describe("SIWE wallet challenge flow", () => {
-    async function startWalletRound1(identifier: string = TEST_WALLET.address) {
-      const round1 = await callChallenge({
-        client_id: TEST_CLIENT_ID,
-        response_type: "code",
-        scope: "openid",
-        code_challenge: CODE_CHALLENGE,
-        code_challenge_method: "S256",
-        identifier,
-      });
-      if (round1.status !== 401) {
-        throw new Error(`Expected a wallet challenge, got ${round1.status}`);
+  describe("Sign-In with Ethereum", () => {
+    /** Round 1 of a wallet sign-in for `address` on a new auth_session. */
+    async function startWallet(address: string = TEST_WALLET.address) {
+      const round1 = await challenge(
+        key,
+        initialRequest({ login_hint: address })
+      );
+      if (round1.json.challenge_type !== "siwe") {
+        throw new Error(`Expected a wallet challenge: ${round1.status}`);
       }
       return {
         authSession: round1.json.auth_session as string,
@@ -767,89 +815,98 @@ describe("Authorization Challenge Endpoint", () => {
       };
     }
 
-    async function startWalletChallenge() {
-      await createUserWithWallet(TEST_WALLET.address);
-      const { authSession, message } = await startWalletRound1();
-      return {
-        authSession,
-        message,
-        signature: await TEST_WALLET.signMessage({ message }),
-      };
-    }
-
-    it("returns a siwe challenge for wallet user (by email)", async () => {
-      await createUserWithWallet(TEST_WALLET.address);
-
-      const { status, json } = await callChallenge({
-        client_id: TEST_CLIENT_ID,
-        response_type: "code",
-        scope: "openid",
-        identifier: `${TEST_WALLET.address.slice(2, 10).toLowerCase()}@wallet.zentity.app`,
-      });
-
-      expect(status).toBe(401);
-      expect(json.error).toBe("insufficient_authorization");
-      expect(json.challenge_type).toBe("siwe");
-      expect(json.auth_session).toBeTypeOf("string");
-      expect(json.message).toBeTypeOf("string");
-      expect(json).not.toHaveProperty("typed_data");
-    });
-
-    it("names the app origin and binds the message to its auth_session", async () => {
-      await createUserWithWallet(TEST_WALLET.address);
-      const { authSession, message } = await startWalletRound1();
+    it("names the app origin in the message and keeps the auth_session out of it", async () => {
+      await createWalletUser(TEST_WALLET.address);
+      const { authSession, message } = await startWallet();
       const appUrl = new URL(env.NEXT_PUBLIC_APP_URL);
-      const session = await db
-        .select({ id: authChallengeSessions.id })
-        .from(authChallengeSessions)
-        .where(eq(authChallengeSessions.authSession, authSession))
-        .get();
 
       expect(parseSiweMessage(message)).toMatchObject({
         address: TEST_WALLET.address,
         chainId: 1,
         domain: appUrl.host,
-        requestId: session?.id,
+        requestId: expect.any(String),
         statement: "Sign in to Zentity from a first-party app.",
         uri: appUrl.origin,
       });
+      expect(message).not.toContain(authSession);
     });
 
-    it("completes the 2-round flow with an EIP-191 signature", async () => {
-      const { authSession, signature } = await startWalletChallenge();
+    it("issues a code in two rounds for an EIP-191 signature and redeems it for DPoP-bound tokens", async () => {
+      const userId = await createWalletUser(TEST_WALLET.address);
+      const round1 = await challenge(
+        key,
+        initialRequest({ login_hint: TEST_WALLET.address })
+      );
+      const authSession = round1.json.auth_session as string;
 
-      const round2 = await callChallenge({
-        auth_session: authSession,
-        siwe_signature: signature,
-      });
+      const round2 = await challenge(
+        key,
+        {
+          auth_session: authSession,
+          siwe_signature: await signChallenge(TEST_WALLET, round1.json),
+        },
+        { json: true }
+      );
       expect(round2.status).toBe(200);
-      expect(round2.json.authorization_code).toBeTypeOf("string");
-      expect((round2.json.authorization_code as string).length).toBe(32);
+
+      const token = await redeem(key, round2.json.authorization_code as string);
+      expect(token.status).toBe(200);
+      expect(token.json.auth_session).toEqual(expect.any(String));
+      expect(decodeJwt(token.json.id_token as string).amr).toEqual([
+        "pop",
+        "hwk",
+      ]);
+      const contexts = await db
+        .select({ sourceKind: authenticationContexts.sourceKind })
+        .from(authenticationContexts)
+        .where(eq(authenticationContexts.userId, userId))
+        .all();
+      expect(contexts).toEqual([{ sourceKind: "authorize_challenge_eip712" }]);
     });
 
-    it("exchanges the wallet authorization code for tokens", async () => {
-      const { authSession, signature } = await startWalletChallenge();
+    it("answers a wrong signature with a new message", async () => {
+      await createWalletUser(TEST_WALLET.address);
+      const round1 = await challenge(
+        key,
+        initialRequest({ login_hint: TEST_WALLET.address })
+      );
 
-      const round2 = await callChallenge({
-        auth_session: authSession,
-        siwe_signature: signature,
-      });
-      const authorizationCode = round2.json.authorization_code as string;
+      const round2 = await challenge(
+        key,
+        {
+          auth_session: round1.json.auth_session as string,
+          siwe_signature: await signChallenge(UNKNOWN_WALLET, round1.json),
+        },
+        { json: true }
+      );
 
-      const { status, json } = await postTokenWithDpop({
-        grant_type: "authorization_code",
-        client_id: TEST_CLIENT_ID,
-        code: authorizationCode,
-        code_verifier: CODE_VERIFIER,
-      });
-
-      expect(status).toBe(200);
-      expect(json.access_token).toBeTypeOf("string");
-      expect(json.auth_session).toBe(authSession);
+      expect(round2.status).toBe(400);
+      expect(round2.json.error).toBe("authentication_failed");
+      expect(round2.json.message).toEqual(expect.any(String));
+      expect(round2.json.message).not.toBe(round1.json.message);
     });
 
-    it("rejects a correctly signed challenge whose nonce has expired", async () => {
-      const { authSession, message, signature } = await startWalletChallenge();
+    it("answers a malformed signature with authentication_failed", async () => {
+      await createWalletUser(TEST_WALLET.address);
+      const { authSession } = await startWallet();
+
+      const round2 = await challenge(
+        key,
+        {
+          auth_session: authSession,
+          siwe_signature: `0x${"00".repeat(65)}`,
+        },
+        { json: true }
+      );
+
+      expect(round2.status).toBe(400);
+      expect(round2.json.error).toBe("authentication_failed");
+    });
+
+    it("refuses a signature over a message whose nonce has expired", async () => {
+      await createWalletUser(TEST_WALLET.address);
+      const { authSession, message } = await startWallet();
+      const signature = await TEST_WALLET.signMessage({ message });
       await db
         .update(verifications)
         .set({ expiresAt: new Date(Date.now() - 1000) })
@@ -861,56 +918,40 @@ describe("Authorization Challenge Endpoint", () => {
         )
         .run();
 
-      const round2 = await callChallenge({
-        auth_session: authSession,
-        siwe_signature: signature,
-      });
-      expect(round2.status).toBe(401);
-      expect(round2.json.error).toBe("access_denied");
-    });
-
-    it("issues one code when the same signed challenge is finished concurrently", async () => {
-      const { authSession, signature } = await startWalletChallenge();
-
-      const results = await Promise.all(
-        Array.from({ length: 4 }, () =>
-          callChallenge({
-            auth_session: authSession,
-            siwe_signature: signature,
-          })
-        )
+      const round2 = await challenge(
+        key,
+        { auth_session: authSession, siwe_signature: signature },
+        { json: true }
       );
-      expect(results.filter((r) => r.status === 200)).toHaveLength(1);
+
+      expect(round2.status).toBe(400);
+      expect(round2.json.error).toBe("authentication_failed");
+      expect(round2.json.authorization_code).toBeUndefined();
     });
 
-    it("rejects an invalid signature", async () => {
-      await createUserWithWallet(TEST_WALLET.address);
-      const { authSession } = await startWalletRound1();
+    it("refuses the signature of another auth_session's challenge", async () => {
+      await createWalletUser(TEST_WALLET.address);
+      const first = await startWallet();
+      const second = await startWallet();
 
-      const round2 = await callChallenge({
-        auth_session: authSession,
-        siwe_signature:
-          "0x0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
-      });
-      expect(round2.status).toBe(401);
-      expect(round2.json.error).toBe("access_denied");
+      const round2 = await challenge(
+        key,
+        {
+          auth_session: second.authSession,
+          siwe_signature: await TEST_WALLET.signMessage({
+            message: first.message,
+          }),
+        },
+        { json: true }
+      );
+
+      expect(round2.status).toBe(400);
+      expect(round2.json.error).toBe("authentication_failed");
     });
 
-    it("rejects the signature of another auth_session's challenge", async () => {
-      const first = await startWalletChallenge();
-      const second = await startWalletRound1();
-
-      const round2 = await callChallenge({
-        auth_session: second.authSession,
-        siwe_signature: first.signature,
-      });
-      expect(round2.status).toBe(401);
-      expect(round2.json.error).toBe("access_denied");
-    });
-
-    it("does not accept a browser sign-in signature", async () => {
-      await createUserWithWallet(TEST_WALLET.address);
-      const { authSession } = await startWalletRound1();
+    it("refuses a browser sign-in signature", async () => {
+      await createWalletUser(TEST_WALLET.address);
+      const { authSession } = await startWallet();
       const signIn = await auth.handler(
         new Request("http://localhost:3000/api/auth/sign-in/siwe/challenge", {
           method: "POST",
@@ -919,489 +960,398 @@ describe("Authorization Challenge Endpoint", () => {
         })
       );
       const { message } = (await signIn.json()) as { message: string };
-      const signature = await TEST_WALLET.signMessage({ message });
 
-      const round2 = await callChallenge({
-        auth_session: authSession,
-        siwe_signature: signature,
-      });
-      expect(round2.status).toBe(401);
-      expect(round2.json.error).toBe("access_denied");
+      const round2 = await challenge(
+        key,
+        {
+          auth_session: authSession,
+          siwe_signature: await TEST_WALLET.signMessage({ message }),
+        },
+        { json: true }
+      );
+
+      expect(round2.status).toBe(400);
+      expect(round2.json.error).toBe("authentication_failed");
     });
 
     it("is not accepted by browser sign-in", async () => {
-      const { message, signature } = await startWalletChallenge();
+      await createWalletUser(TEST_WALLET.address);
+      const { message } = await startWallet();
 
       const response = await auth.handler(
         new Request("http://localhost:3000/api/auth/sign-in/siwe/complete", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ message, signature }),
+          body: JSON.stringify({
+            message,
+            signature: await TEST_WALLET.signMessage({ message }),
+          }),
         })
       );
+
       expect(response.status).toBe(401);
       expect(response.headers.get("set-cookie")).toBeNull();
     });
 
-    it("re-enters a step-up session with a wallet challenge", async () => {
-      const userId = await createUserWithWallet(TEST_WALLET.address);
-      const authSession = crypto.randomUUID();
+    it("issues one code when the same signed challenge is finished concurrently", async () => {
+      await createWalletUser(TEST_WALLET.address);
+      const round1 = await challenge(
+        key,
+        initialRequest({ login_hint: TEST_WALLET.address })
+      );
+      const answer = {
+        auth_session: round1.json.auth_session as string,
+        siwe_signature: await signChallenge(TEST_WALLET, round1.json),
+      };
+
+      const results = await Promise.all(
+        Array.from({ length: 4 }, () => challenge(key, answer, { json: true }))
+      );
+
+      expect(results.filter((r) => r.status === 200)).toHaveLength(1);
+      expect(
+        results.filter((r) => typeof r.json.authorization_code === "string")
+      ).toHaveLength(1);
+    });
+
+    it("refuses a signed challenge once its auth_session has expired", async () => {
+      await createWalletUser(TEST_WALLET.address);
+      const round1 = await challenge(
+        key,
+        initialRequest({ login_hint: TEST_WALLET.address })
+      );
+      const signature = await signChallenge(TEST_WALLET, round1.json);
       await db
-        .insert(authChallengeSessions)
-        .values({
-          authSession,
-          clientId: TEST_CLIENT_ID,
-          userId,
-          scope: "openid",
-          state: "pending",
-          expiresAt: new Date(Date.now() + 600_000),
-        })
+        .update(firstPartyAuthSessions)
+        .set({ expiresAt: new Date(Date.now() - 1000) })
         .run();
 
-      const reEntry = await callChallenge({
-        auth_session: authSession,
-        code_challenge: CODE_CHALLENGE,
-        code_challenge_method: "S256",
-      });
-      expect(reEntry.status).toBe(401);
-      expect(reEntry.json.challenge_type).toBe("siwe");
+      const round2 = await challenge(
+        key,
+        {
+          auth_session: round1.json.auth_session as string,
+          siwe_signature: signature,
+        },
+        { json: true }
+      );
 
-      const round2 = await callChallenge({
-        auth_session: authSession,
-        siwe_signature: await TEST_WALLET.signMessage({
-          message: reEntry.json.message as string,
-        }),
-      });
-      expect(round2.status).toBe(200);
-      expect(round2.json.authorization_code).toBeTypeOf("string");
+      expect(round2.status).toBe(400);
+      expect(round2.json.error).toBe("invalid_session");
+      expect(round2.json.authorization_code).toBeUndefined();
+    });
+
+    it("never signs in an unknown address, even with its own valid signature", async () => {
+      const round1 = await challenge(
+        key,
+        initialRequest({ login_hint: UNKNOWN_WALLET.address })
+      );
+
+      const round2 = await challenge(
+        key,
+        {
+          auth_session: round1.json.auth_session as string,
+          siwe_signature: await signChallenge(UNKNOWN_WALLET, round1.json),
+        },
+        { json: true }
+      );
+
+      expect(round2.status).toBe(400);
+      expect(round2.json.error).toBe("authentication_failed");
+    });
+
+    it("locks the account's native sign-in after ten failures across auth_sessions", async () => {
+      await createWalletUser(TEST_WALLET.address);
+      const wrongSignature = (challengeBody: Json) =>
+        signChallenge(UNKNOWN_WALLET, challengeBody);
+      let failures = 0;
+      while (failures < 10) {
+        const round1 = await challenge(
+          key,
+          initialRequest({ login_hint: TEST_WALLET.address })
+        );
+        let current = round1.json;
+        for (let attempt = 0; attempt < 3 && failures < 10; attempt++) {
+          const answer = await challenge(
+            key,
+            {
+              auth_session: round1.json.auth_session as string,
+              siwe_signature: await wrongSignature(current),
+            },
+            { json: true }
+          );
+          failures++;
+          current = answer.json;
+        }
+      }
+
+      const round1 = await challenge(
+        key,
+        initialRequest({ login_hint: TEST_WALLET.address })
+      );
+      const correct = await challenge(
+        key,
+        {
+          auth_session: round1.json.auth_session as string,
+          siwe_signature: await signChallenge(TEST_WALLET, round1.json),
+        },
+        { json: true }
+      );
+
+      expect(correct.status).toBe(400);
+      expect(correct.json.error).toBe("authentication_failed");
     });
   });
 
-  describe("Step-up re-authentication (Phase 4)", () => {
-    const CIBA_GRANT_TYPE = "urn:openid:params:grant-type:ciba";
-    const FPA_CIBA_CLIENT_ID = "fpa-ciba-step-up";
-
-    async function createFpaCibaClient() {
+  describe("cleanup", () => {
+    it("deletes expired auth_session rows and failure budgets on the next request", async () => {
+      const past = new Date(Date.now() - 1000);
+      const future = new Date(Date.now() + 60_000);
+      const authSessionRow = (handle: string, expiresAt: Date) => ({
+        authSession: handle,
+        clientId: TEST_CLIENT_ID,
+        state: "pending" as const,
+        request: "{}",
+        expiresAt,
+        createdAt: past,
+        updatedAt: past,
+      });
       await db
-        .insert(oauthClients)
-        .values({
-          clientId: FPA_CIBA_CLIENT_ID,
-          name: "FPA CIBA Step-Up Client",
-          redirectUris: JSON.stringify(["http://localhost/callback"]),
-          grantTypes: JSON.stringify([CIBA_GRANT_TYPE, "authorization_code"]),
-          tokenEndpointAuthMethod: "none",
-          firstParty: true,
-        })
+        .insert(firstPartyAuthSessions)
+        .values([
+          authSessionRow("expired", past),
+          authSessionRow("live", future),
+        ])
         .run();
-    }
-
-    async function seedTier1(userId: string) {
       await db
-        .insert(identityBundles)
-        .values({
-          userId,
-          fheKeyId: "test-fhe-key",
-          fheStatus: "complete",
-          validityStatus: "verified",
-        })
-        .run();
-    }
-
-    it("step-up re-entry with auth_session returns OPAQUE challenge", async () => {
-      const { userId } = await createUserWithOpaque(TEST_EMAIL);
-
-      // Create a step-up session (simulating what enforceCibaTokenAcr produces)
-      const authSession = crypto.randomUUID();
-      await db
-        .insert(authChallengeSessions)
-        .values({
-          authSession,
-          clientId: TEST_CLIENT_ID,
-          userId,
-          scope: "openid",
-          acrValues: "urn:zentity:assurance:tier-1",
-          state: "pending",
-          expiresAt: new Date(Date.now() + 600_000),
-        })
+        .insert(firstPartyFailureBudgets)
+        .values([
+          { key: "expired", failures: 3, resetAt: past },
+          { key: "live", failures: 3, resetAt: future },
+        ])
         .run();
 
-      const { status, json } = await callChallenge({
+      await challenge(
+        key,
+        initialRequest({ login_hint: "nobody@example.com" })
+      );
+
+      const handles = (await countRows()).map((row) => row.authSession);
+      expect(handles).toContain("live");
+      expect(handles).not.toContain("expired");
+      const budgets = await db
+        .select({ key: firstPartyFailureBudgets.key })
+        .from(firstPartyFailureBudgets)
+        .all();
+      expect(budgets).toEqual([{ key: "live" }]);
+    });
+  });
+
+  describe("assurance tier policy", () => {
+    it("keeps the sign-in while the tier is short and issues on that session once it rises", async () => {
+      const userId = await createUserWithOpaque(TEST_EMAIL);
+
+      const { authSession, round3 } = await signInWithOpaque(key, {
+        acr_values: TIER_1,
+      });
+      expect(round3.status).toBe(403);
+      expect(round3.json).toMatchObject({
+        error: "insufficient_authorization",
         auth_session: authSession,
       });
+      expect(round3.json.challenge_type).toBeUndefined();
+      expect(round3.json.error_description).toContain("tier-0");
 
-      expect(status).toBe(401);
-      expect(json.error).toBe("insufficient_authorization");
-      expect(json.challenge_type).toBe("opaque");
-      expect(json.server_public_key).toBeTypeOf("string");
-      expect(json.auth_session).toBe(authSession);
+      const stillShort = await challenge(
+        key,
+        { auth_session: authSession },
+        { json: true }
+      );
+      expect(stillShort.status).toBe(403);
+      expect(stillShort.json.challenge_type).toBeUndefined();
+
+      await seedTier1(userId);
+      const retry = await challenge(
+        key,
+        { auth_session: authSession },
+        { json: true }
+      );
+      expect(retry.status).toBe(200);
+
+      const token = await redeem(key, retry.json.authorization_code as string);
+      expect(token.status).toBe(200);
+      expect(decodeJwt(token.json.id_token as string).acr).toBe(TIER_1);
+      // The retry reused the session the password created and asserted no
+      // new sign-in.
+      expect(
+        await db
+          .select()
+          .from(sessions)
+          .where(eq(sessions.userId, userId))
+          .all()
+      ).toHaveLength(1);
+      expect(
+        await db
+          .select()
+          .from(authenticationContexts)
+          .where(eq(authenticationContexts.userId, userId))
+          .all()
+      ).toHaveLength(1);
+    });
+  });
+
+  describe("step-up from a CIBA token poll", () => {
+    const CIBA_GRANT_TYPE = "urn:openid:params:grant-type:ciba";
+    const AGENT_ID = "fpa-ciba-agent";
+    const AGENT_SECRET = "fpa-ciba-agent-secret";
+    const agentAuth = { client_id: AGENT_ID, client_secret: AGENT_SECRET };
+
+    beforeEach(async () => {
+      await createClient(AGENT_ID, {
+        clientSecret: crypto
+          .createHash("sha256")
+          .update(AGENT_SECRET)
+          .digest("base64url"),
+        grantTypes: JSON.stringify([CIBA_GRANT_TYPE, "authorization_code"]),
+        tokenEndpointAuthMethod: "client_secret_post",
+      });
     });
 
-    it("step-up re-entry rejects sessions with challengeType already set", async () => {
-      await createUserWithOpaque(TEST_EMAIL);
-
-      // Start a normal challenge (which sets challengeType)
-      const round1 = await callChallenge({
-        client_id: TEST_CLIENT_ID,
-        response_type: "code",
-        scope: "openid",
-        code_challenge: CODE_CHALLENGE,
-        code_challenge_method: "S256",
-        identifier: TEST_EMAIL,
-      });
-
-      // Try to re-enter with just auth_session (no round-specific fields)
-      const { status, json } = await callChallenge({
-        auth_session: round1.json.auth_session as string,
-      });
-
-      expect(status).toBe(400);
-      expect(json.error).toBe("invalid_session");
-    });
-
-    it("full CIBA step-up → re-challenge → tokens flow", async () => {
-      const { userId } = await createUserWithOpaque(TEST_EMAIL);
-      await createFpaCibaClient();
-
-      // 1. CIBA token exchange → 403 + auth_session (tier-0 vs tier-1 required)
+    it("signs the user in again on the poll's key and issues a code once the tier rises", async () => {
+      const userId = await createUserWithOpaque(TEST_EMAIL);
       const { authReqId } = await createTestCibaRequest({
-        clientId: FPA_CIBA_CLIENT_ID,
+        clientId: AGENT_ID,
         userId,
         status: "approved",
-        acrValues: "urn:zentity:assurance:tier-1",
+        acrValues: JSON.stringify([TIER_1]),
       });
 
-      const tokenResult = await postTokenWithDpop({
-        grant_type: CIBA_GRANT_TYPE,
-        auth_req_id: authReqId,
-        client_id: FPA_CIBA_CLIENT_ID,
-      });
-
-      expect(tokenResult.status).toBe(403);
-      expect(tokenResult.json.error).toBe("insufficient_authorization");
-      const stepUpAuthSession = tokenResult.json.auth_session as string;
-      expect(stepUpAuthSession).toBeTypeOf("string");
-
-      // 2. Upgrade user tier (simulate identity verification completion)
-      await seedTier1(userId);
-
-      // 3. Re-enter challenge endpoint with auth_session + PKCE + same DPoP key
-      const dpopProof = await buildDpopProof(
-        tokenResult.dpopKeyPair,
-        "POST",
-        CHALLENGE_URL
-      );
-      const dpopHeaders = { DPoP: dpopProof };
-
-      const reEntry = await callChallenge(
+      const poll = await postTokenWithDpop(
         {
-          auth_session: stepUpAuthSession,
+          ...agentAuth,
+          grant_type: CIBA_GRANT_TYPE,
+          auth_req_id: authReqId,
+        },
+        key
+      );
+      expect(poll.status).toBe(403);
+      expect(poll.json.error).toBe("insufficient_authorization");
+      const authSession = poll.json.auth_session as string;
+
+      const start = await challenge(
+        key,
+        {
+          ...agentAuth,
+          auth_session: authSession,
           code_challenge: CODE_CHALLENGE,
           code_challenge_method: "S256",
         },
-        dpopHeaders
+        { json: true }
       );
-      expect(reEntry.status).toBe(401);
-      expect(reEntry.json.challenge_type).toBe("opaque");
-      expect(reEntry.json.server_public_key).toBeTypeOf("string");
+      expect(start.status).toBe(403);
+      expect(start.json.challenge_type).toBe("opaque");
 
-      // 4. Complete OPAQUE authentication (with DPoP continuity)
-      await ready;
-      const { clientLoginState, startLoginRequest } = client.startLogin({
-        password: TEST_PASSWORD,
-      });
+      const signedIn = await answerOpaque(key, authSession, agentAuth);
+      expect(signedIn.status).toBe(403);
+      expect(signedIn.json.error).toBe("insufficient_authorization");
 
-      const dpopProof2 = await buildDpopProof(
-        tokenResult.dpopKeyPair,
-        "POST",
-        CHALLENGE_URL
+      await seedTier1(userId);
+      const retry = await challenge(
+        key,
+        { ...agentAuth, auth_session: authSession },
+        { json: true }
       );
-      const round2 = await callChallenge(
-        {
-          auth_session: stepUpAuthSession,
-          opaque_login_request: startLoginRequest,
-        },
-        { DPoP: dpopProof2 }
+      expect(retry.status).toBe(200);
+
+      const token = await redeem(
+        key,
+        retry.json.authorization_code as string,
+        agentAuth
       );
-      expect(round2.json.opaque_login_response).toBeTypeOf("string");
-
-      const loginResult = client.finishLogin({
-        clientLoginState,
-        loginResponse: round2.json.opaque_login_response as string,
-        password: TEST_PASSWORD,
-      });
-
-      const dpopProof3 = await buildDpopProof(
-        tokenResult.dpopKeyPair,
-        "POST",
-        CHALLENGE_URL
-      );
-      const round3 = await callChallenge(
-        {
-          auth_session: stepUpAuthSession,
-          opaque_finish_request: loginResult?.finishLoginRequest,
-        },
-        { DPoP: dpopProof3 }
-      );
-      expect(round3.status).toBe(200);
-      const authCode = round3.json.authorization_code as string;
-      expect(authCode).toBeTypeOf("string");
-
-      // 5. Exchange auth code for tokens (PKCE code_verifier required)
-      const { status, json } = await postTokenWithDpop(
-        {
-          grant_type: "authorization_code",
-          client_id: FPA_CIBA_CLIENT_ID,
-          code: authCode,
-          code_verifier: CODE_VERIFIER,
-        },
-        tokenResult.dpopKeyPair
-      );
-
-      expect(status).toBe(200);
-      expect(json.access_token).toBeTypeOf("string");
-      expect(json.auth_session).toBe(stepUpAuthSession);
-
-      // Verify the id_token reflects the upgraded tier (in the namespaced claim)
-      if (json.id_token) {
-        const claims = decodeJwt(json.id_token as string);
-        const assurance = claims.zentity_assurance as Record<string, unknown>;
-        expect(assurance.acr).toBe("urn:zentity:assurance:tier-1");
-      }
+      expect(token.status).toBe(200);
+      expect(token.json.token_type).toBe("DPoP");
     });
 
-    it("step-up DPoP key consistency is enforced", async () => {
-      const { userId } = await createUserWithOpaque(TEST_EMAIL);
-      await createFpaCibaClient();
-
+    it("signs a wallet user in again with Sign-In with Ethereum on the poll's key", async () => {
+      const userId = await createWalletUser(TEST_WALLET.address);
       const { authReqId } = await createTestCibaRequest({
-        clientId: FPA_CIBA_CLIENT_ID,
+        clientId: AGENT_ID,
         userId,
         status: "approved",
-        acrValues: "urn:zentity:assurance:tier-1",
+        acrValues: JSON.stringify([TIER_1]),
       });
-
-      // Token request with DPoP key A → 403 + auth_session
-      const tokenResult = await postTokenWithDpop({
-        grant_type: CIBA_GRANT_TYPE,
-        auth_req_id: authReqId,
-        client_id: FPA_CIBA_CLIENT_ID,
-      });
-      expect(tokenResult.status).toBe(403);
-      const stepUpAuthSession = tokenResult.json.auth_session as string;
-
-      // Re-enter challenge with DPoP key B → DPoP mismatch
-      const keyPairB = await createTestDpopKeyPair();
-      const dpopProofB = await buildDpopProof(keyPairB, "POST", CHALLENGE_URL);
-
-      const reEntry = await callChallenge(
-        { auth_session: stepUpAuthSession },
-        { DPoP: dpopProofB }
-      );
-
-      expect(reEntry.status).toBe(400);
-      expect(reEntry.json.error).toBe("invalid_session");
-      expect(reEntry.json.error_description).toBe("DPoP key mismatch");
-    });
-
-    it("rejects code issuance when acr_values not satisfied after OPAQUE auth", async () => {
-      const { userId } = await createUserWithOpaque(TEST_EMAIL);
-      await createFpaCibaClient();
-
-      // Step-up session requiring tier-1 (user is tier-0)
-      const authSession = crypto.randomUUID();
-      await db
-        .insert(authChallengeSessions)
-        .values({
-          authSession,
-          clientId: FPA_CIBA_CLIENT_ID,
-          userId,
-          scope: "openid",
-          acrValues: "urn:zentity:assurance:tier-1",
-          state: "pending",
-          expiresAt: new Date(Date.now() + 600_000),
-        })
-        .run();
-
-      // Step-up re-entry → OPAQUE challenge
-      await ready;
-      const reEntry = await callChallenge({ auth_session: authSession });
-      expect(reEntry.status).toBe(401);
-      expect(reEntry.json.challenge_type).toBe("opaque");
-
-      // Complete OPAQUE auth (tier still 0 — no identity verification)
-      const { clientLoginState, startLoginRequest } = client.startLogin({
-        password: TEST_PASSWORD,
-      });
-      const round2 = await callChallenge({
-        auth_session: authSession,
-        opaque_login_request: startLoginRequest,
-      });
-      const loginResult = client.finishLogin({
-        clientLoginState,
-        loginResponse: round2.json.opaque_login_response as string,
-        password: TEST_PASSWORD,
-      });
-      const round3 = await callChallenge({
-        auth_session: authSession,
-        opaque_finish_request: loginResult?.finishLoginRequest,
-      });
-
-      // Auth succeeded but ACR not satisfied → 403 (NOT 200)
-      expect(round3.status).toBe(403);
-      expect(round3.json.error).toBe("insufficient_authorization");
-      expect(round3.json.auth_session).toBe(authSession);
-      expect(round3.json.authorization_code).toBeUndefined();
-    });
-
-    it("issues code after tier upgrade via ACR re-check on auth_session", async () => {
-      const { userId } = await createUserWithOpaque(TEST_EMAIL);
-      await createFpaCibaClient();
-
-      // Step-up session requiring tier-1 (user is tier-0)
-      const authSession = crypto.randomUUID();
-      await db
-        .insert(authChallengeSessions)
-        .values({
-          authSession,
-          clientId: FPA_CIBA_CLIENT_ID,
-          userId,
-          scope: "openid",
-          acrValues: "urn:zentity:assurance:tier-1",
-          state: "pending",
-          expiresAt: new Date(Date.now() + 600_000),
-        })
-        .run();
-
-      // Complete auth (tier still 0)
-      await ready;
-      const reEntry = await callChallenge({
-        auth_session: authSession,
-        code_challenge: CODE_CHALLENGE,
-        code_challenge_method: "S256",
-      });
-      expect(reEntry.json.challenge_type).toBe("opaque");
-
-      const { clientLoginState, startLoginRequest } = client.startLogin({
-        password: TEST_PASSWORD,
-      });
-      const round2 = await callChallenge({
-        auth_session: authSession,
-        opaque_login_request: startLoginRequest,
-      });
-      const loginResult = client.finishLogin({
-        clientLoginState,
-        loginResponse: round2.json.opaque_login_response as string,
-        password: TEST_PASSWORD,
-      });
-      const round3 = await callChallenge({
-        auth_session: authSession,
-        opaque_finish_request: loginResult?.finishLoginRequest,
-      });
-      expect(round3.status).toBe(403);
-
-      // Upgrade tier
-      await seedTier1(userId);
-
-      // Re-send auth_session → ACR re-check → code issued
-      const recheck = await callChallenge({ auth_session: authSession });
-      expect(recheck.status).toBe(200);
-      expect(recheck.json.authorization_code).toBeTypeOf("string");
-      expect((recheck.json.authorization_code as string).length).toBe(32);
-    });
-
-    it("reuses the authentication stored for the user's browser session", async () => {
-      const userId = await createTestUser({ email: TEST_EMAIL });
-      const authSession = crypto.randomUUID();
-      const browserSessionId = crypto.randomUUID();
-      const authContext = await createAuthenticationContext({
-        userId,
-        loginMethod: "passkey",
-        authenticatedAt: new Date(),
-        sourceKind: "better_auth",
-        sourceSessionId: browserSessionId,
-        referenceType: "session",
-        referenceId: browserSessionId,
-      });
-
-      const browserSessionToken = crypto.randomUUID();
-      await db
-        .insert(sessions)
-        .values({
-          id: browserSessionId,
-          userId,
-          token: browserSessionToken,
-          authContextId: authContext.id,
-          expiresAt: new Date(Date.now() + 3_600_000),
-          createdAt: new Date(),
-          updatedAt: new Date(),
-        })
-        .run();
-      const signature = await makeSignature(
-        browserSessionToken,
-        env.BETTER_AUTH_SECRET
-      );
-
-      await db
-        .insert(authChallengeSessions)
-        .values({
-          authSession,
-          clientId: TEST_CLIENT_ID,
-          userId,
-          scope: "openid",
-          challengeType: "redirect_to_web",
-          state: "authenticated",
-          expiresAt: new Date(Date.now() + 600_000),
-        })
-        .run();
-
-      const { status, json } = await callChallenge(
-        { auth_session: authSession },
+      const poll = await postTokenWithDpop(
         {
-          cookie: `better-auth.session_token=${browserSessionToken}.${signature}`,
-        }
+          ...agentAuth,
+          grant_type: CIBA_GRANT_TYPE,
+          auth_req_id: authReqId,
+        },
+        key
       );
+      expect(poll.status).toBe(403);
+      const authSession = poll.json.auth_session as string;
 
-      expect(status).toBe(200);
-      expect(json.authorization_code).toBeTypeOf("string");
-      const issued = await db
-        .select({
-          resolvedAuthContextId: authChallengeSessions.resolvedAuthContextId,
-        })
-        .from(authChallengeSessions)
-        .where(eq(authChallengeSessions.authSession, authSession))
-        .get();
-      expect(issued?.resolvedAuthContextId).toBe(authContext.id);
+      const start = await challenge(
+        key,
+        {
+          ...agentAuth,
+          auth_session: authSession,
+          code_challenge: CODE_CHALLENGE,
+          code_challenge_method: "S256",
+        },
+        { json: true }
+      );
+      expect(start.status).toBe(403);
+      expect(start.json.challenge_type).toBe("siwe");
+
+      const signedIn = await challenge(
+        key,
+        {
+          ...agentAuth,
+          auth_session: authSession,
+          siwe_signature: await signChallenge(TEST_WALLET, start.json),
+        },
+        { json: true }
+      );
+      expect(signedIn.status).toBe(403);
+      expect(signedIn.json.error).toBe("insufficient_authorization");
+      expect(signedIn.json.challenge_type).toBeUndefined();
+
+      await seedTier1(userId);
+      const retry = await challenge(
+        key,
+        { ...agentAuth, auth_session: authSession },
+        { json: true }
+      );
+      expect(retry.status).toBe(200);
+      expect(retry.json.authorization_code).toEqual(expect.any(String));
     });
 
-    it("step-up re-entry returns redirect_to_web without a pushed request for passkey-only user", async () => {
-      const userId = await createTestUser({ email: TEST_EMAIL });
-
-      // Step-up session (passkey-only user has no OPAQUE or wallet accounts)
-      const authSession = crypto.randomUUID();
-      await db
-        .insert(authChallengeSessions)
-        .values({
-          authSession,
-          clientId: TEST_CLIENT_ID,
-          userId,
-          scope: "openid",
-          acrValues: "urn:zentity:assurance:tier-1",
-          state: "pending",
-          expiresAt: new Date(Date.now() + 600_000),
-        })
-        .run();
-
-      const { status, json } = await callChallenge({
-        auth_session: authSession,
-        code_challenge: CODE_CHALLENGE,
-        code_challenge_method: "S256",
+    it("refuses a follow-up from another key before it starts a challenge", async () => {
+      const userId = await createUserWithOpaque(TEST_EMAIL);
+      const { authReqId } = await createTestCibaRequest({
+        clientId: AGENT_ID,
+        userId,
+        status: "approved",
+        acrValues: JSON.stringify([TIER_1]),
       });
+      const poll = await postTokenWithDpop(
+        {
+          ...agentAuth,
+          grant_type: CIBA_GRANT_TYPE,
+          auth_req_id: authReqId,
+        },
+        key
+      );
+
+      const { json, status } = await challenge(
+        await createTestDpopKeyPair(),
+        { ...agentAuth, auth_session: poll.json.auth_session as string },
+        { json: true }
+      );
 
       expect(status).toBe(400);
-      expect(json.error).toBe("redirect_to_web");
-      expect(json.auth_session).toBe(authSession);
-      expect(json).not.toHaveProperty("request_uri");
-      expect(await countPushedRequests()).toBe(0);
+      expect(json.error).toBe("invalid_dpop_proof");
+      expect(json.server_public_key).toBeUndefined();
     });
   });
 });

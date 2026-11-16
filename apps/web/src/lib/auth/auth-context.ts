@@ -10,13 +10,16 @@ import type {
   NewAuthenticationContext,
 } from "@/lib/db/schema/auth";
 
-import { desc, eq } from "drizzle-orm";
+import { and, desc, eq, notExists } from "drizzle-orm";
 
 import { loginMethodToAmr } from "@/lib/assurance/oidc-claims";
 import { deriveAuthStrength, isValidLoginMethod } from "@/lib/assurance/tier";
 import { db } from "@/lib/db/connection";
+import { agentSessions } from "@/lib/db/schema/agent";
 import { authenticationContexts, sessions } from "@/lib/db/schema/auth";
 import { cibaRequests } from "@/lib/db/schema/ciba";
+import { oauthRefreshTokens } from "@/lib/db/schema/oauth-provider";
+import { credentialBindingCommitments } from "@/lib/db/schema/privacy";
 
 export const AUTHENTICATION_CONTEXT_CLAIM = "zentity_auth_context_id";
 
@@ -346,4 +349,42 @@ export function resolveAuthenticationContext(input: {
     return getAuthenticationStateByUserId(input.userId);
   }
   return Promise.resolve(null);
+}
+
+/**
+ * Deletes an authentication context that no session, token, agent session,
+ * CIBA request, or credential binding refers to. A context that something
+ * still refers to stays, since those references outlive the session that
+ * created it.
+ */
+export async function deleteUnreferencedAuthenticationContext(
+  authContextId: string
+): Promise<void> {
+  const unreferenced = (
+    rows:
+      | typeof sessions
+      | typeof oauthRefreshTokens
+      | typeof agentSessions
+      | typeof cibaRequests
+      | typeof credentialBindingCommitments
+  ) =>
+    notExists(
+      db
+        .select({ id: rows.id })
+        .from(rows)
+        .where(eq(rows.authContextId, authContextId))
+    );
+  await db
+    .delete(authenticationContexts)
+    .where(
+      and(
+        eq(authenticationContexts.id, authContextId),
+        unreferenced(sessions),
+        unreferenced(oauthRefreshTokens),
+        unreferenced(agentSessions),
+        unreferenced(cibaRequests),
+        unreferenced(credentialBindingCommitments)
+      )
+    )
+    .run();
 }

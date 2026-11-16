@@ -32,7 +32,8 @@ import {
   identityVerifications,
 } from "@/lib/db/schema/identity";
 import {
-  authChallengeSessions,
+  firstPartyAuthSessions,
+  firstPartyFailureBudgets,
   haipVpSessions,
   oauthAccessTokens,
   oauthClients,
@@ -97,7 +98,8 @@ export async function resetDatabase(): Promise<void> {
     await tx.delete(revokedTokens).run();
     await tx.delete(usedIntentJtis).run();
     await tx.delete(pushSubscriptions).run();
-    await tx.delete(authChallengeSessions).run();
+    await tx.delete(firstPartyAuthSessions).run();
+    await tx.delete(firstPartyFailureBudgets).run();
     await tx.delete(cibaRequests).run();
     await tx.delete(haipVpSessions).run();
     // OAuth tables (delete children before parents)

@@ -10,7 +10,7 @@ import {
   uniqueIndex,
 } from "drizzle-orm/sqlite-core";
 
-import { authenticationContexts, defaultId, users } from "./auth";
+import { authenticationContexts, defaultId, sessions, users } from "./auth";
 
 export const oauthClients = sqliteTable(
   "oauth_client",
@@ -431,11 +431,19 @@ export type HaipVpSession = typeof haipVpSessions.$inferSelect;
 export type NewHaipVpSession = typeof haipVpSessions.$inferInsert;
 
 // ---------------------------------------------------------------------------
-// First-party app auth challenge sessions (OPAQUE / EIP-712)
+// First-party apps (Authorization Challenge Endpoint)
 // ---------------------------------------------------------------------------
 
-export const authChallengeSessions = sqliteTable(
-  "auth_challenge_session",
+/**
+ * The `@better-auth/first-party-apps` models. `first_party_auth_session` holds
+ * one `auth_session`: only an HMAC of the handle is stored, and the method
+ * state (OPAQUE login state, Sign-In with Ethereum message) is encrypted by
+ * the plugin. The adapter writes the `string[]` field `amr` as a JSON array.
+ * Every challenge request deletes the rows of both models whose `expires_at`
+ * or `reset_at` has passed (`deleteExpiredFirstPartyRows`).
+ */
+export const firstPartyAuthSessions = sqliteTable(
+  "first_party_auth_session",
   {
     id: text("id").primaryKey().default(defaultId),
     authSession: text("auth_session").notNull().unique(),
@@ -445,38 +453,43 @@ export const authChallengeSessions = sqliteTable(
     userId: text("user_id").references(() => users.id, {
       onDelete: "cascade",
     }),
-    dpopJkt: text("dpop_jkt"),
-    scope: text("scope").notNull(),
-    claims: text("claims"),
-    resource: text("resource"),
-    codeChallenge: text("code_challenge"),
-    codeChallengeMethod: text("code_challenge_method"),
-    state: text("state", {
-      enum: ["pending", "authenticated", "code_issued"],
-    })
-      .notNull()
-      .default("pending"),
-    challengeType: text("challenge_type", {
-      enum: ["opaque", "eip712", "redirect_to_web"],
+    sessionId: text("session_id").references(() => sessions.id, {
+      onDelete: "cascade",
     }),
-    resolvedAuthContextId: text("resolved_auth_context_id").references(
-      () => authenticationContexts.id,
-      { onDelete: "set null" }
-    ),
-    acrValues: text("acr_values"),
-    opaqueServerState: text("opaque_server_state"),
-    authorizationCode: text("authorization_code").unique(),
-    expiresAt: integer("expires_at", { mode: "timestamp_ms" }).notNull(),
-    createdAt: integer("created_at", { mode: "timestamp_ms" })
+    ownsSession: integer("owns_session", { mode: "boolean" })
       .notNull()
-      .default(sql`(unixepoch() * 1000)`),
+      .default(false),
+    dpopJkt: text("dpop_jkt"),
+    state: text("state", { enum: ["pending", "authenticated"] }).notNull(),
+    method: text("method"),
+    methodState: text("method_state"),
+    request: text("request").notNull(),
+    ceiling: text("ceiling"),
+    amr: text("amr"),
+    failures: integer("failures").notNull().default(0),
+    attempts: integer("attempts").notNull().default(0),
+    expiresAt: integer("expires_at", { mode: "timestamp_ms" }).notNull(),
+    createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+    updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
   },
   (table) => [
-    index("auth_challenge_client_id_idx").on(table.clientId),
-    index("auth_challenge_user_id_idx").on(table.userId),
-    index("auth_challenge_expires_at_idx").on(table.expiresAt),
+    index("first_party_auth_session_client_id_idx").on(table.clientId),
+    index("first_party_auth_session_user_id_idx").on(table.userId),
+    index("first_party_auth_session_session_id_idx").on(table.sessionId),
+    index("first_party_auth_session_expires_at_idx").on(table.expiresAt),
   ]
 );
 
-export type AuthChallengeSession = typeof authChallengeSessions.$inferSelect;
-export type NewAuthChallengeSession = typeof authChallengeSessions.$inferInsert;
+/** Failed credential responses per account and method, keyed by an HMAC. */
+export const firstPartyFailureBudgets = sqliteTable(
+  "first_party_failure_budget",
+  {
+    id: text("id").primaryKey().default(defaultId),
+    key: text("key").notNull().unique(),
+    failures: integer("failures").notNull(),
+    resetAt: integer("reset_at", { mode: "timestamp_ms" }).notNull(),
+  },
+  (table) => [
+    index("first_party_failure_budget_reset_at_idx").on(table.resetAt),
+  ]
+);

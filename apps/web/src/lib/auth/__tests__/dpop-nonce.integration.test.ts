@@ -1,6 +1,5 @@
 import crypto from "node:crypto";
 
-import { DPOP_NONCE_HEADER } from "@better-auth/core/oauth2";
 import { client, ready, server } from "@serenity-kit/opaque";
 import { AGENT_HOST_REGISTER_SCOPE } from "@zentity/sdk/agent-contract";
 import { encodeEd25519DidKeyFromJwk } from "@zentity/sdk/protocol";
@@ -22,7 +21,6 @@ import { GET as trpcGet } from "@/app/api/trpc/[trpc]/route";
 import { env } from "@/env";
 import { AGENT_BOOTSTRAP_TOKEN_USE } from "@/lib/agents/session";
 import { auth } from "@/lib/auth/auth-config";
-import { fpaLimiter } from "@/lib/auth/oidc/authorize-challenge";
 import { mintOpaqueAccessToken } from "@/lib/auth/oidc/haip/opaque-access-token";
 import { TOKEN_EXCHANGE_GRANT_TYPE } from "@/lib/auth/oidc/token-exchange";
 import { db } from "@/lib/db/connection";
@@ -61,6 +59,7 @@ const CODE_CLIENT_ID = "nonce-code-client";
 const CIBA_CLIENT_ID = "nonce-ciba-client";
 const EXCHANGE_CLIENT_ID = "nonce-exchange-client";
 const FPA_CLIENT_ID = "nonce-fpa-client";
+const FPA_CLIENT_SECRET = "nonce-fpa-client-secret";
 const WALLET_CLIENT_ID = "nonce-wallet-client";
 const PRE_AUTHORIZED_GRANT_TYPE =
   "urn:ietf:params:oauth:grant-type:pre-authorized_code";
@@ -182,16 +181,24 @@ function resourceSender(
     );
 }
 
+/**
+ * A challenge-endpoint request whose proof carries the nonce the sender is
+ * given. The initial request must be form-encoded; follow-ups may be JSON.
+ */
 function challengeSender(
   keyPair: DpopKeyPair,
-  body: Record<string, unknown>
+  body: Record<string, string>,
+  encoding: "form" | "json" = "json"
 ): NonceSender {
   return async (nonce) =>
     auth.handler(
       new Request(CHALLENGE_URL, {
         method: "POST",
         headers: {
-          "Content-Type": "application/json",
+          "Content-Type":
+            encoding === "form"
+              ? "application/x-www-form-urlencoded"
+              : "application/json",
           DPoP: await buildDpopProof(
             keyPair,
             "POST",
@@ -202,7 +209,10 @@ function challengeSender(
             }
           ),
         },
-        body: JSON.stringify(body),
+        body:
+          encoding === "form"
+            ? new URLSearchParams(body).toString()
+            : JSON.stringify(body),
       })
     );
 }
@@ -225,7 +235,6 @@ describe("server-provided DPoP nonces", () => {
 
   beforeEach(async () => {
     await resetDatabase();
-    fpaLimiter.reset();
     userId = await createTestUser({ email: TEST_EMAIL });
     ({
       sessionId,
@@ -242,8 +251,12 @@ describe("server-provided DPoP nonces", () => {
         subjectType: "pairwise",
       }
     );
+    // Confidential, so a CIBA poll can continue at the challenge endpoint.
     await insertClient(FPA_CLIENT_ID, ["authorization_code", CIBA_GRANT_TYPE], {
+      clientSecret: sha256(FPA_CLIENT_SECRET),
       firstParty: true,
+      skipConsent: true,
+      tokenEndpointAuthMethod: "client_secret_post",
     });
     await insertClient(WALLET_CLIENT_ID, [PRE_AUTHORIZED_GRANT_TYPE], {
       skipConsent: true,
@@ -440,6 +453,7 @@ describe("server-provided DPoP nonces", () => {
             grant_type: CIBA_GRANT_TYPE,
             auth_req_id: authReqId,
             client_id: FPA_CLIENT_ID,
+            client_secret: FPA_CLIENT_SECRET,
           });
         },
       });
@@ -458,6 +472,7 @@ describe("server-provided DPoP nonces", () => {
         grant_type: CIBA_GRANT_TYPE,
         auth_req_id: authReqId,
         client_id: FPA_CLIENT_ID,
+        client_secret: FPA_CLIENT_SECRET,
       })(await currentNonceFromServer(keyPair));
       const stepUpNonce = await readAcceptedDpopNonce(
         stepUp,
@@ -467,10 +482,11 @@ describe("server-provided DPoP nonces", () => {
         auth_session: string;
       };
 
-      const reentry = await challengeSender(keyPair, { auth_session })(
-        stepUpNonce
-      );
-      expect(await isInsufficientAuthorization(401)(reentry)).toBe(true);
+      const reentry = await challengeSender(keyPair, {
+        auth_session,
+        client_secret: FPA_CLIENT_SECRET,
+      })(stepUpNonce);
+      expect(await isInsufficientAuthorization(403)(reentry)).toBe(true);
     });
   });
 
@@ -575,11 +591,12 @@ describe("server-provided DPoP nonces", () => {
   describe("authorization challenge endpoint", () => {
     const initialRequest = {
       client_id: FPA_CLIENT_ID,
+      client_secret: FPA_CLIENT_SECRET,
       response_type: "code",
       scope: "openid",
       code_challenge: CODE_CHALLENGE,
       code_challenge_method: "S256",
-      identifier: TEST_EMAIL,
+      login_hint: TEST_EMAIL,
     };
 
     beforeEach(async () => {
@@ -590,8 +607,8 @@ describe("server-provided DPoP nonces", () => {
       const keyPair = await createTestDpopKeyPair();
       await runDpopNonceRoundTrip({
         kind: "authorization_server",
-        accepts: isInsufficientAuthorization(401),
-        prepare: async () => challengeSender(keyPair, initialRequest),
+        accepts: isInsufficientAuthorization(403),
+        prepare: async () => challengeSender(keyPair, initialRequest, "form"),
       });
     });
 
@@ -599,11 +616,12 @@ describe("server-provided DPoP nonces", () => {
       const keyPair = await createTestDpopKeyPair();
       const round1 = await challengeSender(
         keyPair,
-        initialRequest
+        initialRequest,
+        "form"
       )(await currentNonceFromServer(keyPair));
       const round1Nonce = await readAcceptedDpopNonce(
         round1,
-        isInsufficientAuthorization(401)
+        isInsufficientAuthorization(403)
       );
       const { auth_session } = (await round1.json()) as {
         auth_session: string;
@@ -614,9 +632,13 @@ describe("server-provided DPoP nonces", () => {
       });
       const round2 = await challengeSender(keyPair, {
         auth_session,
+        client_secret: FPA_CLIENT_SECRET,
         opaque_login_request: startLoginRequest,
       })(round1Nonce);
-      const round2Nonce = await readAcceptedDpopNonce(round2, hasStatus(200));
+      const round2Nonce = await readAcceptedDpopNonce(
+        round2,
+        isInsufficientAuthorization(403)
+      );
       const { opaque_login_response } = (await round2.json()) as {
         opaque_login_response: string;
       };
@@ -628,7 +650,8 @@ describe("server-provided DPoP nonces", () => {
       });
       const round3 = await challengeSender(keyPair, {
         auth_session,
-        opaque_finish_request: login?.finishLoginRequest,
+        client_secret: FPA_CLIENT_SECRET,
+        opaque_finish_request: login?.finishLoginRequest ?? "",
       })(round2Nonce);
       const round3Nonce = await readAcceptedDpopNonce(round3, hasStatus(200));
       const { authorization_code } = (await round3.json()) as {
@@ -639,22 +662,25 @@ describe("server-provided DPoP nonces", () => {
       const token = await tokenSender(keyPair, {
         grant_type: "authorization_code",
         client_id: FPA_CLIENT_ID,
+        client_secret: FPA_CLIENT_SECRET,
         code: authorization_code,
         code_verifier: CODE_VERIFIER,
       })(round3Nonce);
       expect(token.status).toBe(200);
     });
 
-    it("leaves requests without a DPoP proof alone", async () => {
+    it("refuses an initial request without a DPoP proof", async () => {
       const response = await auth.handler(
         new Request(CHALLENGE_URL, {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(initialRequest),
+          headers: { "Content-Type": "application/x-www-form-urlencoded" },
+          body: new URLSearchParams(initialRequest).toString(),
         })
       );
-      expect(response.headers.get(DPOP_NONCE_HEADER)).toBeNull();
-      expect(await isInsufficientAuthorization(401)(response)).toBe(true);
+      expect(response.status).toBe(400);
+      expect(await response.json()).toMatchObject({
+        error: "invalid_dpop_proof",
+      });
     });
   });
 

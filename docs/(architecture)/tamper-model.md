@@ -292,6 +292,8 @@ The controls in this section prevent attacks on the backchannel authorization fl
 
 When a user terminates their session, pending CIBA requests are revoked server-side (status set to `denied`). This prevents a race condition where an agent polls for a CIBA token after the user has logged out; without this control, an agent could obtain tokens for a session that no longer exists.
 
+The Authorization Challenge Endpoint also deletes sessions: one it created for a sign-in whose authorization code then cannot be issued, and one whose `auth_session` received too many wrong answers. Neither is the user logging out, so those deletions leave pending CIBA requests alone. These deletions also delete the authentication context recorded for the session, unless a token, agent session, CIBA request, or credential binding still refers to it. The provider already treats tokens whose session ended as inactive.
+
 ### Push Notification Safety
 
 **Threat:** Notification spoofing, unauthorized vault unlock via push, or stale notification exploitation.

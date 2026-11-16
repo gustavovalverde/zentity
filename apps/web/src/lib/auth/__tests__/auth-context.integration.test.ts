@@ -5,11 +5,18 @@ import { beforeEach, describe, expect, it } from "vitest";
 
 import {
   createSessionAuthenticationContext,
+  deleteUnreferencedAuthenticationContext,
   getAuthenticationStateBySessionId,
 } from "@/lib/auth/auth-context";
 import { db } from "@/lib/db/connection";
 import { authenticationContexts, sessions } from "@/lib/db/schema/auth";
-import { createTestUser, resetDatabase } from "@/test-utils/db-test-utils";
+import { oauthClients } from "@/lib/db/schema/oauth-provider";
+import {
+  createTestAuthContext,
+  createTestCibaRequest,
+  createTestUser,
+  resetDatabase,
+} from "@/test-utils/db-test-utils";
 
 async function insertSession(userId: string, createdAt: string) {
   const sessionId = crypto.randomUUID();
@@ -123,5 +130,52 @@ describe("session-backed authentication contexts", () => {
       .select({ id: authenticationContexts.id })
       .from(authenticationContexts);
     expect(rows).toHaveLength(0);
+  });
+});
+
+describe("deleteUnreferencedAuthenticationContext", () => {
+  beforeEach(async () => {
+    await resetDatabase();
+  });
+
+  async function contextExists(id: string): Promise<boolean> {
+    const row = await db
+      .select({ id: authenticationContexts.id })
+      .from(authenticationContexts)
+      .where(eq(authenticationContexts.id, id))
+      .get();
+    return row !== undefined;
+  }
+
+  it("deletes a context nothing refers to", async () => {
+    const userId = await createTestUser();
+    const authContextId = await createTestAuthContext(userId);
+
+    await deleteUnreferencedAuthenticationContext(authContextId);
+
+    expect(await contextExists(authContextId)).toBe(false);
+  });
+
+  it("keeps a context that a CIBA request still refers to", async () => {
+    const userId = await createTestUser();
+    await db
+      .insert(oauthClients)
+      .values({
+        clientId: "test-client",
+        redirectUris: JSON.stringify(["http://localhost/callback"]),
+      })
+      .run();
+    const { authContextId } = await createTestCibaRequest({
+      clientId: "test-client",
+      userId,
+      status: "approved",
+    });
+    if (!authContextId) {
+      throw new Error("expected an approval context");
+    }
+
+    await deleteUnreferencedAuthenticationContext(authContextId);
+
+    expect(await contextExists(authContextId)).toBe(true);
   });
 });
