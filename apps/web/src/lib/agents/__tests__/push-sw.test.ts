@@ -191,4 +191,18 @@ describe("push service worker", () => {
       })
     );
   });
+
+  it("shows an account notice without actions and opens settings on click", async () => {
+    const options = (await worker.push({
+      kind: "account_notice",
+      url: "/dashboard/settings",
+      approvalUrl: "/dashboard/settings",
+    })) as { actions?: unknown; data: Record<string, unknown> };
+
+    expect(options.actions).toBeUndefined();
+    await worker.click("", options.data);
+
+    expect(worker.fetch).not.toHaveBeenCalled();
+    expect(worker.openWindow).toHaveBeenCalledWith("/dashboard/settings");
+  });
 });

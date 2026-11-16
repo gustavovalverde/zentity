@@ -24,19 +24,25 @@ import {
   APIError,
   createAuthMiddleware,
   getSessionFromCtx,
+  isAPIError,
 } from "better-auth/api";
 import { and, asc, eq, gt, gte } from "drizzle-orm";
 import { jwtVerify } from "jose";
 
+import { sendWebPush } from "@/lib/agents/push-sender";
 import { getAppOrigin } from "@/lib/auth/origin";
+import { isServiceAccountEmail } from "@/lib/auth/service-account";
+import { isSyntheticEmail } from "@/lib/auth/synthetic-email";
 import { db } from "@/lib/db/connection";
 import {
+  accounts,
   authenticationContexts,
   passkeys,
   users,
   verifications,
 } from "@/lib/db/schema/auth";
-import { logWarn } from "@/lib/logging/error-logger";
+import { sendAccountSecurityNotice } from "@/lib/email/auth";
+import { logError, logWarn } from "@/lib/logging/error-logger";
 
 export const PASSKEY_REVERIFICATION_WINDOW_MS = 5 * 60 * 1000;
 export const MAGIC_LINK_REVERIFICATION_WINDOW_MS = 10 * 60 * 1000;
@@ -237,6 +243,111 @@ export async function checkRecoveryFactorChange(input: {
   return decision;
 }
 
+// ── Notices ───────────────────────────────────────────────
+
+export type RecoveryFactorNotice =
+  | "email_changed"
+  | "password_added"
+  | "password_changed"
+  | "password_reset"
+  | "recovery_key_added"
+  | "recovery_key_replaced"
+  | "recovery_key_removed"
+  | "vault_reset"
+  | "vault_root_replaced";
+
+const NOTICE_SUMMARIES: Record<
+  Exclude<RecoveryFactorNotice, "email_changed">,
+  string
+> = {
+  password_added: "A password was added to your Zentity account.",
+  password_changed: "The password of your Zentity account was changed.",
+  password_reset: "The password of your Zentity account was reset.",
+  recovery_key_added: "A recovery key was added to your Zentity account.",
+  recovery_key_replaced:
+    "The recovery key of your Zentity account was replaced. The old one no longer works.",
+  recovery_key_removed:
+    "The recovery key was removed from your Zentity account.",
+  vault_reset: "The encryption keys of your Zentity account were reset.",
+  vault_root_replaced:
+    "New encryption keys were set up for your Zentity account.",
+};
+
+// A notice is useful for a day; a device offline longer than that gets none.
+const NOTICE_PUSH_TTL_MS = 24 * 60 * 60 * 1000;
+
+function maskEmail(email: string): string {
+  const [local = "", domain = ""] = email.split("@");
+  return `${local.slice(0, 1)}•••@${domain}`;
+}
+
+function hasMailbox(email: string): boolean {
+  return !(isSyntheticEmail(email) || isServiceAccountEmail(email));
+}
+
+/**
+ * Tells the user by email, and by push where they subscribed, that a
+ * recovery factor changed. An `email_changed` notice goes to the previous
+ * address. Anonymous accounts are still in sign-up and get none. Never
+ * throws: a failed notice must not undo the change.
+ */
+export async function notifyRecoveryFactorChange(input: {
+  notice: RecoveryFactorNotice;
+  /** For `email_changed`: the address before and after the change. */
+  emailChange?: { from: string; to: string };
+  userId: string;
+}): Promise<void> {
+  try {
+    const user = await db
+      .select({ email: users.email, isAnonymous: users.isAnonymous })
+      .from(users)
+      .where(eq(users.id, input.userId))
+      .get();
+    if (!user || user.isAnonymous) {
+      return;
+    }
+    const summary =
+      input.notice === "email_changed"
+        ? `The email of your Zentity account was changed to ${maskEmail(input.emailChange?.to ?? user.email)}.`
+        : NOTICE_SUMMARIES[input.notice];
+    const recipient = input.emailChange?.from ?? user.email;
+    const settingsUrl = `${getAppOrigin()}/dashboard/settings`;
+
+    const results = await Promise.allSettled([
+      hasMailbox(recipient)
+        ? sendAccountSecurityNotice({ email: recipient, settingsUrl, summary })
+        : Promise.resolve(),
+      sendWebPush(
+        input.userId,
+        {
+          title: "Security change on your account",
+          body: summary,
+          // Workers installed before account notices open `approvalUrl`.
+          data: {
+            kind: "account_notice",
+            url: "/dashboard/settings",
+            approvalUrl: "/dashboard/settings",
+          },
+        },
+        { expiresAt: new Date(Date.now() + NOTICE_PUSH_TTL_MS) }
+      ),
+    ]);
+    for (const result of results) {
+      if (result.status === "rejected") {
+        logError(result.reason, {
+          userId: input.userId,
+          operation: "recovery-factor-notice",
+        });
+      }
+    }
+  } catch (error) {
+    logError(error, {
+      userId: input.userId,
+      operation: "recovery-factor-notice",
+    });
+  }
+}
+
 // ── Better Auth endpoints ─────────────────────────────────
 
 type HookCtx = Parameters<Parameters<typeof createAuthMiddleware>[0]>[0];
@@ -313,10 +424,19 @@ async function earliestPasskeyCreatedAt(userId: string): Promise<Date | null> {
   return row?.createdAt ?? null;
 }
 
+interface EmailChangeToken {
+  /** Whether opening the link writes the new address. */
+  changesAddress: boolean;
+  from: string;
+  issuedAt: number;
+  to: string;
+  userId: string;
+}
+
 async function readEmailChangeToken(
   token: string,
   secret: string
-): Promise<{ issuedAt: number; userId: string } | null> {
+): Promise<EmailChangeToken | null> {
   try {
     const { payload } = await jwtVerify(
       token,
@@ -324,9 +444,16 @@ async function readEmailChangeToken(
       { algorithms: ["HS256"] }
     );
     return typeof payload.updateTo === "string" &&
+      typeof payload.email === "string" &&
       typeof payload.userId === "string" &&
       typeof payload.iat === "number"
-      ? { issuedAt: payload.iat, userId: payload.userId }
+      ? {
+          from: payload.email,
+          issuedAt: payload.iat,
+          changesAddress: payload.requestType !== "change-email-confirmation",
+          to: payload.updateTo,
+          userId: payload.userId,
+        }
       : null;
   } catch {
     // The endpoint answers for a bad or expired token.
@@ -356,6 +483,9 @@ async function beforeVerifyEmailChange(ctx: HookCtx) {
     !firstPasskey ||
     change.issuedAt >= Math.floor(firstPasskey.getTime() / 1000)
   ) {
+    if (change.changesAddress) {
+      await pendingEmailChange.set(change);
+    }
     return;
   }
   logWarn("recovery factor change refused", {
@@ -368,6 +498,69 @@ async function beforeVerifyEmailChange(ctx: HookCtx) {
     );
   }
   throw reverificationRequired();
+}
+
+const pendingEmailChange = defineRequestState<EmailChangeToken | null>(
+  () => null
+);
+
+async function afterVerifyEmailChange() {
+  const change = await pendingEmailChange.get();
+  if (!change) {
+    return;
+  }
+  const user = await db
+    .select({ email: users.email })
+    .from(users)
+    .where(eq(users.id, change.userId))
+    .get();
+  if (user?.email.toLowerCase() === change.to.toLowerCase()) {
+    await notifyRecoveryFactorChange({
+      notice: "email_changed",
+      emailChange: { from: change.from, to: change.to },
+      userId: change.userId,
+    });
+  }
+}
+
+/** Whether the account had a password before this registration. */
+const passwordRegistration = defineRequestState<{
+  hadPassword: boolean;
+  userId: string;
+} | null>(() => null);
+
+async function beforePasswordRegistrationComplete(ctx: HookCtx) {
+  const session = await getSessionFromCtx(ctx);
+  if (!session) {
+    return;
+  }
+  const existing = await db
+    .select({ id: accounts.id })
+    .from(accounts)
+    .where(
+      and(
+        eq(accounts.userId, session.user.id),
+        eq(accounts.providerId, "opaque")
+      )
+    )
+    .limit(1)
+    .get();
+  await passwordRegistration.set({
+    hadPassword: Boolean(existing),
+    userId: session.user.id,
+  });
+}
+
+async function afterPasswordRegistrationComplete(ctx: HookCtx) {
+  const registration = await passwordRegistration.get();
+  const returned = (ctx.context as { returned?: unknown }).returned;
+  if (!registration || isAPIError(returned)) {
+    return;
+  }
+  await notifyRecoveryFactorChange({
+    notice: registration.hadPassword ? "password_changed" : "password_added",
+    userId: registration.userId,
+  });
 }
 
 // The magic-link plugin stores a token under this identifier (with its
@@ -460,6 +653,11 @@ export function recoveryFactorsPlugin() {
           ),
         },
         {
+          matcher: (ctx) =>
+            ctx.path === "/password/opaque/registration/complete",
+          handler: createAuthMiddleware(beforePasswordRegistrationComplete),
+        },
+        {
           matcher: (ctx) => ctx.path === "/send-verification-email",
           handler: createAuthMiddleware(beforeSendVerificationEmail),
         },
@@ -476,6 +674,15 @@ export function recoveryFactorsPlugin() {
         {
           matcher: (ctx) => ctx.path === "/magic-link/verify",
           handler: createAuthMiddleware(afterMagicLinkVerify),
+        },
+        {
+          matcher: (ctx) =>
+            ctx.path === "/password/opaque/registration/complete",
+          handler: createAuthMiddleware(afterPasswordRegistrationComplete),
+        },
+        {
+          matcher: (ctx) => ctx.path === "/verify-email",
+          handler: createAuthMiddleware(afterVerifyEmailChange),
         },
       ],
     },

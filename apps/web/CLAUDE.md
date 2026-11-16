@@ -39,7 +39,7 @@ Each sub-directory is a bounded context; the filename inside identifies the conc
 | `auth/oidc/` | OIDC provider: JWT signing, disclosure, HAIP (DPoP/PAR/JARM), back-channel logout, step-up, token exchange (`token-exchange.ts`), the bc-authorize pin for purchase requests (`purchase-request.ts`), the Proof-of-Human mint (`proof-of-human.ts`), and the MCP HTTP client provisioning behind `pnpm mcp:provision` (`mcp-client.ts`) |
 | `blockchain/` | Confidential-chain provider + helpers (`confidential/`), on-chain attestation (`attestation/`), wagmi config, tx error mapping |
 | `db/` | Drizzle schema (`schema/`) + queries (`queries/`), one file per bounded context |
-| `email/` | Resend transport + domain mailers (auth, CIBA) |
+| `email/` | Resend transport + domain mailers (auth, including account security notices, and CIBA) |
 | `http/` | Rate limiting, URL safety, binary transport, API route response helpers |
 | `identity/` | Verification flows: `document/` (OCR), `liveness/` (multi-gesture), `verification/` (orchestration) |
 | `logging/` | Pino logger, error logger, redaction |

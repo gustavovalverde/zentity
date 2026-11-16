@@ -144,3 +144,29 @@ export async function sendChangeEmailConfirmation(params: {
     tags: ["auth", "change-email-confirmation"],
   });
 }
+
+/**
+ * Tells the account owner that something they can recover the account with
+ * changed. It carries no secret, so it also goes to an unverified address.
+ */
+export async function sendAccountSecurityNotice(params: {
+  email: string;
+  settingsUrl: string;
+  summary: string;
+}): Promise<void> {
+  await send({
+    to: [params.email],
+    subject: "Security change on your Zentity account",
+    text: `${params.summary}\n\nIf you made this change, you don't need to do anything.\n\nIf you didn't, sign in and review your security settings: ${params.settingsUrl}\n\nZentity`,
+    html: `<div style="font-family:system-ui,sans-serif;max-width:480px;margin:0 auto;">
+<h2 style="margin-bottom:4px;">Security change on your account</h2>
+<p>${params.summary}</p>
+<p>If you made this change, you don't need to do anything.</p>
+<p style="margin:24px 0;">
+<a href="${params.settingsUrl}" style="display:inline-block;background:#18181b;color:#fff;padding:12px 24px;border-radius:6px;text-decoration:none;font-weight:500;">Review security settings</a>
+</p>
+<p style="color:#9ca3af;font-size:13px;">If you didn't make this change, sign in and review your security settings.</p>
+</div>`,
+    tags: ["auth", "account-security-notice"],
+  });
+}

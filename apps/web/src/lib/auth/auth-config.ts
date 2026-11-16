@@ -192,6 +192,7 @@ import {
 import { opaque } from "@/lib/auth/opaque/server";
 import { getTrustedOrigins, PASSKEY_RP_ID } from "@/lib/auth/origin";
 import {
+  notifyRecoveryFactorChange,
   readMagicLinkEmail,
   recoveryFactorsPlugin,
 } from "@/lib/auth/recovery-factors";
@@ -2120,8 +2121,13 @@ export const auth = betterAuth({
         const { sendResetPasswordEmail } = await import("@/lib/email/auth");
         await sendResetPasswordEmail({ user, url });
       },
-      onPasswordReset: ({ user }) =>
-        detachVaultCredential(user.id, OPAQUE_CREDENTIAL_ID),
+      onPasswordReset: async ({ user }) => {
+        await detachVaultCredential(user.id, OPAQUE_CREDENTIAL_ID);
+        await notifyRecoveryFactorChange({
+          notice: "password_reset",
+          userId: user.id,
+        });
+      },
       revokeSessionsOnPasswordReset: true,
     }),
     anonymous({

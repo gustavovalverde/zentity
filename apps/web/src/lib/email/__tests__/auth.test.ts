@@ -74,4 +74,21 @@ describe("auth mailer", () => {
 
     expect(logger.info).not.toHaveBeenCalled();
   });
+
+  it("sends the account security notice", async () => {
+    const { sendAccountSecurityNotice } = await import("../auth");
+
+    await sendAccountSecurityNotice({
+      email: "owner@example.com",
+      settingsUrl: "https://zentity.xyz/dashboard/settings",
+      summary: "A recovery key was added to your Zentity account.",
+    });
+
+    expect(mockSendEmail).toHaveBeenCalledOnce();
+    const payload = mockSendEmail.mock.calls[0]?.[0];
+    expect(payload.to).toEqual(["owner@example.com"]);
+    expect(payload.text).toContain("A recovery key was added");
+    expect(payload.html).toContain("https://zentity.xyz/dashboard/settings");
+    expect(payload.tags).toContain("account-security-notice");
+  });
 });

@@ -24,9 +24,15 @@ import { createTestUser, resetDatabase } from "@/test-utils/db-test-utils";
 import { TestAuthenticator } from "@/test-utils/webauthn-test-utils";
 
 const mockSendEmail = vi.fn();
+const mockSendWebPush = vi.fn();
 
 vi.mock("@/lib/email/transport", () => ({
   sendEmail: (...args: unknown[]) => mockSendEmail(...args),
+}));
+
+vi.mock("@/lib/agents/push-sender", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/agents/push-sender")>()),
+  sendWebPush: (...args: unknown[]) => mockSendWebPush(...args),
 }));
 
 const APP = "http://localhost:3000";
@@ -641,5 +647,199 @@ describe("recovery factor changes on an account without a passkey", () => {
     );
 
     expect(response.status).toBe(200);
+  });
+});
+
+describe("recovery factor notices", () => {
+  const email = "owner@example.com";
+  const password = "correct horse battery";
+  let userId: string;
+  let session: TestSession;
+
+  async function setPassword(cookie: string | undefined, token?: string) {
+    await opaqueReady;
+    const { clientRegistrationState, registrationRequest } =
+      opaqueClient.startRegistration({ password });
+    const [challengePath, completePath] = token
+      ? ["/password-reset/opaque/challenge", "/password-reset/opaque/complete"]
+      : [
+          "/password/opaque/registration/challenge",
+          "/password/opaque/registration/complete",
+        ];
+    const challenge = (await (
+      await post(challengePath, { token, registrationRequest }, cookie)
+    ).json()) as { challenge: string };
+    const { registrationRecord } = opaqueClient.finishRegistration({
+      clientRegistrationState,
+      registrationResponse: challenge.challenge,
+      password,
+    });
+    return post(completePath, { token, registrationRecord }, cookie);
+  }
+
+  function notices() {
+    return mockSendEmail.mock.calls.map(([message]) => ({
+      to: (message as { to: string[] }).to,
+      text: (message as { text: string }).text.split("\n")[0],
+    }));
+  }
+
+  beforeEach(async () => {
+    await resetDatabase();
+    mockSendEmail.mockResolvedValue("sent");
+    mockSendWebPush.mockResolvedValue(undefined);
+    userId = await createTestUser({ email, emailVerified: true });
+    session = await passkeySignIn(
+      await new TestAuthenticator().register(userId),
+      true
+    );
+  });
+
+  it("sends one notice for each recovery key and vault change", async () => {
+    const rootId = await createVault(userId);
+    const caller = secrets(userId, session);
+
+    await caller.removeCredential({ credentialId: "recovery_key" });
+    await caller.addWrapper({ secretId: rootId, ...RECOVERY_KEY_WRAPPER });
+    await caller.addWrapper({ secretId: rootId, ...RECOVERY_KEY_WRAPPER });
+    await caller.storeSecret(newRoot());
+    await caller.resetVault();
+
+    expect(notices()).toEqual([
+      {
+        to: [email],
+        text: "The recovery key was removed from your Zentity account.",
+      },
+      {
+        to: [email],
+        text: "A recovery key was added to your Zentity account.",
+      },
+      {
+        to: [email],
+        text: "The recovery key of your Zentity account was replaced. The old one no longer works.",
+      },
+      {
+        to: [email],
+        text: "New encryption keys were set up for your Zentity account.",
+      },
+      {
+        to: [email],
+        text: "The encryption keys of your Zentity account were reset.",
+      },
+    ]);
+    expect(mockSendWebPush).toHaveBeenCalledTimes(5);
+    expect(mockSendWebPush.mock.calls[0]?.[1]).toMatchObject({
+      data: { kind: "account_notice", url: "/dashboard/settings" },
+    });
+  });
+
+  it("sends nothing for a refused change", async () => {
+    const rootId = await createVault(userId);
+    const passwordSession = await sessionSignedInWith(userId, "opaque");
+
+    await expect(
+      secrets(userId, passwordSession).addWrapper({
+        secretId: rootId,
+        ...RECOVERY_KEY_WRAPPER,
+      })
+    ).rejects.toMatchObject({ code: "FORBIDDEN" });
+
+    expect(mockSendEmail).not.toHaveBeenCalled();
+    expect(mockSendWebPush).not.toHaveBeenCalled();
+  });
+
+  it("emails an unverified address but never a wallet placeholder", async () => {
+    const rootId = await createVault(userId);
+    await db
+      .update(users)
+      .set({ emailVerified: false })
+      .where(eq(users.id, userId))
+      .run();
+
+    await secrets(userId, session).removeCredential({
+      credentialId: "recovery_key",
+    });
+    expect(notices()).toHaveLength(1);
+
+    await db
+      .update(users)
+      .set({ email: "1234abcd@wallet.zentity.app" })
+      .where(eq(users.id, userId))
+      .run();
+    await secrets(userId, session).addWrapper({
+      secretId: rootId,
+      ...RECOVERY_KEY_WRAPPER,
+    });
+
+    expect(notices()).toHaveLength(1);
+    expect(mockSendWebPush).toHaveBeenCalledTimes(2);
+  });
+
+  it("tells the user a password was added, then changed", async () => {
+    expect((await setPassword(session.cookie)).status).toBe(200);
+    expect((await setPassword(session.cookie)).status).toBe(200);
+
+    expect(notices()).toEqual([
+      { to: [email], text: "A password was added to your Zentity account." },
+      {
+        to: [email],
+        text: "The password of your Zentity account was changed.",
+      },
+    ]);
+  });
+
+  it("tells the user their password was reset", async () => {
+    const token = crypto.randomUUID();
+    await db
+      .insert(verifications)
+      .values({
+        id: crypto.randomUUID(),
+        identifier: `opaque-reset:${token}`,
+        value: userId,
+        expiresAt: new Date(Date.now() + 300_000),
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      })
+      .run();
+
+    expect((await setPassword(undefined, token)).status).toBe(200);
+
+    expect(notices()).toEqual([
+      { to: [email], text: "The password of your Zentity account was reset." },
+    ]);
+  });
+
+  it("tells the previous address that the email changed", async () => {
+    const token = await createEmailVerificationToken(
+      env.BETTER_AUTH_SECRET,
+      email,
+      "new@example.com",
+      undefined,
+      { requestType: "change-email-verification", userId }
+    );
+
+    const response = await auth.handler(
+      new Request(`${AUTH}/verify-email?token=${token}`)
+    );
+
+    expect(response.status).toBe(200);
+    expect(notices()).toEqual([
+      {
+        to: [email],
+        text: "The email of your Zentity account was changed to n•••@example.com.",
+      },
+    ]);
+  });
+
+  it("sends nothing while sign-up sets the first password", async () => {
+    await db
+      .update(users)
+      .set({ isAnonymous: true })
+      .where(eq(users.id, userId))
+      .run();
+
+    expect((await setPassword(session.cookie)).status).toBe(200);
+
+    expect(mockSendEmail).not.toHaveBeenCalled();
   });
 });

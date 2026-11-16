@@ -12,6 +12,7 @@ import { and, eq } from "drizzle-orm";
 import { z } from "zod";
 
 import { getAuthenticationStateBySessionId } from "@/lib/auth/auth-context";
+import { notifyRecoveryFactorChange } from "@/lib/auth/recovery-factors";
 import { db } from "@/lib/db/connection";
 import { clearIdentityBundleFheKey } from "@/lib/db/queries/identity";
 import {
@@ -302,6 +303,12 @@ export const secretsRouter = router({
           .filter((id) => id !== input.secretId)
           .map((id) => deleteSecretBlob(computeSecretBlobRef(id)))
       );
+      if (mayReplaceRoot) {
+        await notifyRecoveryFactorChange({
+          notice: "vault_root_replaced",
+          userId: ctx.userId,
+        });
+      }
 
       const secret = await getEncryptedSecretByUserAndType(
         ctx.userId,
@@ -349,6 +356,11 @@ export const secretsRouter = router({
         });
       }
 
+      const replacing =
+        input.kekSource === "recovery_key" &&
+        (await getSecretWrappersBySecretId(root.id)).some(
+          (w) => w.credentialId === input.credentialId
+        );
       const wrapper = await upsertSecretWrapper({
         secretId: root.id,
         userId: ctx.userId,
@@ -357,6 +369,12 @@ export const secretsRouter = router({
         prfSalt: input.prfSalt,
         kekSource: input.kekSource,
       });
+      if (input.kekSource === "recovery_key") {
+        await notifyRecoveryFactorChange({
+          notice: replacing ? "recovery_key_replaced" : "recovery_key_added",
+          userId: ctx.userId,
+        });
+      }
 
       return { wrapper };
     }),
@@ -389,6 +407,12 @@ export const secretsRouter = router({
       }
 
       await detachVaultCredential(ctx.userId, input.credentialId);
+      if (input.credentialId === RECOVERY_KEY_CREDENTIAL_ID) {
+        await notifyRecoveryFactorChange({
+          notice: "recovery_key_removed",
+          userId: ctx.userId,
+        });
+      }
       return { success: true };
     }),
 
@@ -413,6 +437,12 @@ export const secretsRouter = router({
     await Promise.all(
       deletedSecretIds.map((id) => deleteSecretBlob(computeSecretBlobRef(id)))
     );
+    if (deletedSecretIds.length > 0) {
+      await notifyRecoveryFactorChange({
+        notice: "vault_reset",
+        userId: ctx.userId,
+      });
+    }
 
     return { success: true };
   }),
