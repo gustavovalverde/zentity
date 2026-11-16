@@ -48,6 +48,7 @@ import { resolveAudience } from "@/lib/http/url-safety";
 import { FACE_MATCH_MIN_CONFIDENCE } from "@/lib/identity/liveness/thresholds";
 import { recordValidityTransition } from "@/lib/identity/validity/transition";
 import {
+  dobToDaysSince1900,
   getTodayDobDays,
   minAgeYearsToDays,
 } from "@/lib/identity/verification/birth-year";
@@ -86,7 +87,6 @@ import {
   HASH_TO_FIELD_INFO,
   hashToFieldHexFromString,
 } from "@/lib/privacy/zk/hash-to-field";
-import { getTodayAsInt } from "@/lib/privacy/zk/noir/prover";
 import {
   getBbJsVersion,
   getCircuitMetadata,
@@ -380,6 +380,39 @@ function parseU32PublicInput(value: string, fieldName: string): number {
   return Number(parsed);
 }
 
+const YYYYMMDD_PATTERN = /^(\d{4})(\d{2})(\d{2})$/;
+const PROOF_DATE_OUTSIDE_WINDOW_MESSAGE =
+  "Your device's date doesn't match ours. Set your date and time to update automatically, then try again.";
+
+/** YYYYMMDD from the doc_validity `current_date` input, as days since 1900-01-01. */
+function dateIntToDaysSince1900(value: bigint): number | undefined {
+  const digits = value.toString();
+  if (!YYYYMMDD_PATTERN.test(digits)) {
+    return;
+  }
+  return dobToDaysSince1900(digits.replace(YYYYMMDD_PATTERN, "$1-$2-$3"));
+}
+
+/**
+ * A proof's date input must be the server's UTC day or the day before, so a
+ * proof generated just before UTC midnight still stores after it. Later dates
+ * are refused: they would make an age proof's subject older. For doc_validity
+ * the previous day grants a one-day expiry grace.
+ */
+function assertProofDateInWindow(providedDays: number | undefined): void {
+  const todayDays = getTodayDobDays();
+  if (
+    providedDays === undefined ||
+    providedDays < todayDays - 1 ||
+    providedDays > todayDays
+  ) {
+    throw new TRPCError({
+      code: "BAD_REQUEST",
+      message: PROOF_DATE_OUTSIDE_WINDOW_MESSAGE,
+    });
+  }
+}
+
 async function assertOcrClaimHash(
   userId: string,
   verificationId: string | null,
@@ -601,14 +634,7 @@ async function verifyProofInternal(args: {
     }
     const providedCurrentDays = parseU32PublicInput(ageInput0, "current_days");
     const providedMinAgeDays = parseU32PublicInput(ageInput1, "min_age_days");
-    const actualCurrentDays = getTodayDobDays();
-
-    if (Math.abs(providedCurrentDays - actualCurrentDays) > 2) {
-      throw new TRPCError({
-        code: "BAD_REQUEST",
-        message: `Invalid current_days: ${providedCurrentDays} (expected ~${actualCurrentDays})`,
-      });
-    }
+    assertProofDateInWindow(providedCurrentDays);
 
     const minAgePolicyDays = minAgeYearsToDays(MIN_AGE_POLICY);
     if (providedMinAgeDays < minAgePolicyDays) {
@@ -635,14 +661,9 @@ async function verifyProofInternal(args: {
         message: "Missing doc validity public input",
       });
     }
-    const providedDate = Number(BigInt(docInput0));
-    const actualDate = getTodayAsInt();
-    if (providedDate !== actualDate) {
-      throw new TRPCError({
-        code: "BAD_REQUEST",
-        message: `Invalid current_date: ${providedDate} (expected ${actualDate})`,
-      });
-    }
+    assertProofDateInWindow(
+      dateIntToDaysSince1900(parseFieldToBigInt(docInput0))
+    );
 
     await assertOcrClaimHash(
       args.userId,

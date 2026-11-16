@@ -1,13 +1,18 @@
 import type { Session } from "@/lib/auth/auth-config";
 
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { POLICY_VERSION } from "@/lib/blockchain/attestation/policy";
-import { getTodayDobDays } from "@/lib/identity/verification/birth-year";
+import {
+  dobToDaysSince1900,
+  getTodayDobDays,
+  minAgeYearsToDays,
+} from "@/lib/identity/verification/birth-year";
 import {
   HASH_TO_FIELD_INFO,
   hashToFieldHexFromString,
 } from "@/lib/privacy/zk/hash-to-field";
+import { getTodayAsInt } from "@/lib/privacy/zk/noir/prover";
 
 const mockGetAccountIdentity = vi.fn();
 const mockReconcileIdentityBundle = vi.fn();
@@ -24,6 +29,7 @@ const mockCloseProofSession = vi.fn();
 const mockCreateProofSession = vi.fn();
 const mockGetActiveCredentialBindingCommitments = vi.fn();
 const mockInsertProofArtifact = vi.fn();
+const mockGetLatestSignedClaimByUserTypeAndVerification = vi.fn();
 const mockUpsertAttestationEvidence = vi.fn();
 const mockMaterializeVerificationChecks = vi.fn();
 const mockScheduleFheEncryption = vi.fn();
@@ -92,6 +98,8 @@ vi.mock("@/lib/db/queries/privacy", async (importOriginal) => {
       mockGetActiveCredentialBindingCommitments(...args),
     insertProofArtifact: (...args: unknown[]) =>
       mockInsertProofArtifact(...args),
+    getLatestSignedClaimByUserTypeAndVerification: (...args: unknown[]) =>
+      mockGetLatestSignedClaimByUserTypeAndVerification(...args),
   };
 });
 
@@ -753,4 +761,139 @@ describe("proof router replay and context binding", () => {
       issuerId: expect.any(String),
     });
   });
+});
+
+const DATE_WINDOW_MESSAGE = /device's date doesn't match ours/;
+
+describe("proof date window", () => {
+  // Reaching the signed-claim lookup means the date check passed.
+  const PAST_DATE_CHECK_MESSAGE = "Missing signed ocr_result claim";
+  const MIN_AGE_DAYS = minAgeYearsToDays(18).toString();
+
+  function daysOf(isoDate: string): string {
+    const days = dobToDaysSince1900(isoDate);
+    if (days === undefined) {
+      throw new Error(`Invalid test date ${isoDate}`);
+    }
+    return days.toString();
+  }
+
+  function publicInputsFor(
+    circuitType: "age_verification" | "doc_validity",
+    isoDate: string
+  ): string[] {
+    return circuitType === "age_verification"
+      ? [daysOf(isoDate), MIN_AGE_DAYS, "1", "1", "1"]
+      : [isoDate.replaceAll("-", ""), "1", "1", "1"];
+  }
+
+  async function verifyDated(
+    circuitType: "age_verification" | "doc_validity",
+    publicInputs: string[]
+  ) {
+    const caller = await createCaller(authedUserSession);
+    return caller.verifyProof({
+      circuitType,
+      proof: "cHJvdG9wcm90b2RvY3Rvcg==",
+      publicInputs,
+      proofSessionId,
+      verificationId: "ver-1",
+    });
+  }
+
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    mockGetLatestSignedClaimByUserTypeAndVerification.mockResolvedValue(null);
+    mockGetProofSessionById.mockResolvedValue({
+      id: proofSessionId,
+      userId: "user-123",
+      verificationId: "ver-1",
+      msgSender: "user-123",
+      audience: "http://localhost",
+      policyVersion: POLICY_VERSION,
+      createdAt: 0,
+      expiresAt: Number.MAX_SAFE_INTEGER,
+      closedAt: null,
+    });
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  describe.each(["age_verification", "doc_validity"] as const)(
+    "%s",
+    (circuitType) => {
+      it.each([
+        ["today", "2026-03-01T12:00:00Z", "2026-03-01"],
+        ["yesterday", "2026-03-01T12:00:00Z", "2026-02-28"],
+        [
+          "yesterday across a year boundary",
+          "2027-01-01T00:00:05Z",
+          "2026-12-31",
+        ],
+      ])("accepts a proof dated %s", async (_label, serverNow, proofDate) => {
+        vi.setSystemTime(new Date(serverNow));
+
+        await expect(
+          verifyDated(circuitType, publicInputsFor(circuitType, proofDate))
+        ).rejects.toThrow(PAST_DATE_CHECK_MESSAGE);
+      });
+
+      it.each([
+        ["two days ago", "2026-03-01T12:00:00Z", "2026-02-27"],
+        ["tomorrow", "2026-03-01T12:00:00Z", "2026-03-02"],
+        [
+          "tomorrow across a year boundary",
+          "2026-12-31T23:59:59Z",
+          "2027-01-01",
+        ],
+      ])("rejects a proof dated %s", async (_label, serverNow, proofDate) => {
+        vi.setSystemTime(new Date(serverNow));
+
+        await expect(
+          verifyDated(circuitType, publicInputsFor(circuitType, proofDate))
+        ).rejects.toMatchObject({
+          code: "BAD_REQUEST",
+          message: expect.stringMatching(DATE_WINDOW_MESSAGE),
+        });
+        expect(
+          mockGetLatestSignedClaimByUserTypeAndVerification
+        ).not.toHaveBeenCalled();
+        expect(mockVerifyNoirProof).not.toHaveBeenCalled();
+      });
+
+      it("accepts a proof generated before UTC midnight and stored after it", async () => {
+        vi.setSystemTime(new Date("2026-02-28T23:59:58Z"));
+        const clientDate =
+          circuitType === "age_verification"
+            ? getTodayDobDays().toString()
+            : getTodayAsInt().toString();
+        const publicInputs =
+          circuitType === "age_verification"
+            ? [clientDate, MIN_AGE_DAYS, "1", "1", "1"]
+            : [clientDate, "1", "1", "1"];
+
+        vi.setSystemTime(new Date("2026-03-01T00:00:02Z"));
+
+        await expect(verifyDated(circuitType, publicInputs)).rejects.toThrow(
+          PAST_DATE_CHECK_MESSAGE
+        );
+      });
+    }
+  );
+
+  it.each(["20260230", "2026031", "0"])(
+    "rejects doc_validity current_date %s that is not a calendar date",
+    async (currentDate) => {
+      vi.setSystemTime(new Date("2026-03-01T12:00:00Z"));
+
+      await expect(
+        verifyDated("doc_validity", [currentDate, "1", "1", "1"])
+      ).rejects.toMatchObject({
+        code: "BAD_REQUEST",
+        message: expect.stringMatching(DATE_WINDOW_MESSAGE),
+      });
+    }
+  );
 });
