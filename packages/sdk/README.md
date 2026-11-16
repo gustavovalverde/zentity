@@ -150,16 +150,15 @@ This checks the token, not the request. A DPoP-bound access token (`cnf.jkt` set
 - The `jti` has not been seen before, so a captured proof cannot be replayed.
 - When the server requires nonces (RFC 9449 §8 and §9), the proof carries a current server-provided nonce.
 
-The SDK signs DPoP proofs but does not verify them. Any RFC 9449 verifier works. With Better Auth, `verifyAccessTokenRequest` and `verifyDpopProof` from `@better-auth/core/oauth2` cover the first four checks, including replay protection, from the stable 1.7 line onward. Server-provided nonces need `@better-auth/core` 1.8.0-beta.8 or later, because stable 1.7 has no nonce support. A verifier must stay strict about `htu`: it rejects a proof whose `htu` carries a fragment, even though this client never produces one.
+The SDK signs DPoP proofs but does not verify them. Any RFC 9449 verifier works. With Better Auth, `verifyAccessTokenRequest` and `verifyDpopProof` from `@better-auth/core/oauth2` cover the first four checks, including replay protection, from the stable 1.7 line onward. Server-provided nonces need `@better-auth/core` 1.8.0-beta.8 or later, because stable 1.7 has no nonce support. A verifier must stay strict about `htu`: it rejects a proof whose `htu` carries a fragment, even though this client never produces one. The SDK's Proof-of-Human merchant checks below use the same Better Auth code for the proof.
 
 ## Proof of Human
 
-`requestProofOfHumanToken` asks the issuer for a proof-of-human token with a DPoP-bound access token. `createProofOfHumanTokenVerifier` checks the issuer signature and returns the claims. `identityStrengthTier` maps the identity strength to a number for threshold checks.
+`requestProofOfHumanToken` asks the issuer for a client-mode proof-of-human token with a DPoP-bound access token. A relying party that holds one for its own user verifies it with `createProofOfHumanTokenVerifier`, which checks the issuer signature and that the token's audience is the relying party's own `client_id`, and returns the claims.
 
 ```ts
 import {
   createProofOfHumanTokenVerifier,
-  identityStrengthTier,
   requestProofOfHumanToken,
 } from "@zentity/sdk/rp";
 
@@ -173,24 +172,31 @@ const result = await requestProofOfHumanToken({
 
 if (result.ok) {
   const verifier = createProofOfHumanTokenVerifier({
+    audience: clientId,
     issuer: issuerUrl,
     jwksUrl,
   });
   const { poh } = await verifier.verify(result.token);
-  const humanWithDocument = poh.humanity.proven && identityStrengthTier(poh) >= 1;
+  const humanWithDocument =
+    poh.humanity.proven && poh.identity.strength !== "none";
 }
 ```
 
 Read `result.unverifiedClaims` only to decide what to show. Rely on the verified `poh` claims for access decisions.
 
-The proof-of-human token is bound to the presenter's DPoP key through `cnf.jkt`. A service that receives the token from someone else must check that `cnf.jkt` equals the thumbprint of the key that signed the DPoP proof sent with it. Without that check, anyone who captures the token can replay it.
+The proof-of-human token is bound to the requester's DPoP key through `cnf.jkt`, so the relying party compares `cnf.jkt` with the thumbprint of its own key. Without that check, anyone who captures the token can replay it.
 
-## x402 Payment Required
+## Accepting Proof-of-Human at an x402 Merchant
 
-`createPaymentRequired` builds the x402 v2 `402` response with the `PAYMENT-REQUIRED` header. Declare Zentity's compliance requirement in `extensions.zentity`.
+A merchant answers an unpaid request with `createPaymentRequired({ ..., wwwAuthenticate: PROOF_OF_HUMAN_CHALLENGE })`, the `auth-hints` extension from `buildAuthHintsExtension`, and the identity requirement from `buildZentityExtension({ minIdentityStrength })`, with `resource.url` the absolute request URL.
 
 ```ts
-import { createPaymentRequired } from "@zentity/sdk/rp";
+import {
+  buildAuthHintsExtension,
+  buildZentityExtension,
+  createPaymentRequired,
+  PROOF_OF_HUMAN_CHALLENGE,
+} from "@zentity/sdk/rp";
 
 return createPaymentRequired({
   accepts: {
@@ -202,10 +208,29 @@ return createPaymentRequired({
     maxTimeoutSeconds: 300,
     extra: { name: "USDC", version: "2" },
   },
-  resource: { url: "/api/premium" },
-  extensions: { zentity: { minComplianceLevel: 2, pohIssuer: issuerUrl } },
+  resource: { url: request.url },
+  extensions: {
+    "auth-hints": buildAuthHintsExtension({
+      acceptIndexes: [0],
+      authorizationServer: issuerUrl,
+      tokenEndpoint: `${issuerUrl}/oauth2/token`,
+    }),
+    zentity: buildZentityExtension({ minIdentityStrength: "documentary_full" }),
+  },
+  wwwAuthenticate: PROOF_OF_HUMAN_CHALLENGE,
 });
 ```
+
+On the paid retry the merchant runs, in order:
+
+1. `verifyProofOfHumanPresentation({ request, issuer, audience, jwks, replayStore })`: the token's signature, `iss`, `typ: poh+jwt`, `aud` (the merchant's origin), `exp`, and an unused `jti`, then the DPoP proof by the token's key, whose `jti` it records. The token itself is not spent yet.
+2. `assertIdentityStrength(claims, minimum)`.
+3. `assertApprovedRequirement(claims, routeRequirement, paymentPayload, resourceUrl)`: the approved requirement equals the route's and the payment's `accepted`, for this URL.
+4. The facilitator's `/verify`.
+5. `recordProofOfHumanUse(claims, replayStore)`, which spends the token.
+6. The facilitator's `/settle`.
+
+A failure throws `ProofOfHumanPresentationError` with `code`, `status`, and, for a 401, `wwwAuthenticate`. `createInMemoryProofOfHumanReplayStore()` serves one instance; share a store across instances.
 
 ## x402 Purchases
 
