@@ -10,6 +10,7 @@ import { headers } from "next/headers";
 import { getAuth } from "@/lib/auth";
 import { getDb } from "@/lib/db/connection";
 import { account } from "@/lib/db/schema";
+import { readDcrClientId } from "@/lib/dcr";
 import { env } from "@/lib/env";
 import { getOAuthDpopClient, getOAuthDpopJkt } from "@/lib/oauth-dpop-client";
 import { getOAuthProviderId } from "@/scenarios/route-scenario-registry";
@@ -106,13 +107,15 @@ export function isPohError(r: PohResult | PohError): r is PohError {
 }
 
 /**
- * What a PoH token presented by the signed-in user must be bound to: the
- * subject Zentity issued to the x402 client for this user, and the sign-in
- * DPoP key's thumbprint. Every demo-rp user shares that key, so the subject
- * is what ties the token to this user rather than to any user of this
- * deployment. Null without a session or an x402 access token.
+ * What a client-mode PoH token for the signed-in user must be bound to: the
+ * x402 client it is audienced to, the subject Zentity issued to that client
+ * for this user, and the sign-in DPoP key's thumbprint. Every demo-rp user
+ * shares that key, so the subject is what ties the token to this user rather
+ * than to any user of this deployment. Null without a session, an x402
+ * access token, or a registered client.
  */
 export async function getProofOfHumanBinding(): Promise<{
+  clientId: string;
   jkt: string;
   subject: string;
 } | null> {
@@ -133,9 +136,10 @@ export async function getProofOfHumanBinding(): Promise<{
     )
     .limit(1)
     .get();
-  if (!(acct?.accessToken && acct.accountId)) {
+  const clientId = await readDcrClientId("x402");
+  if (!(acct?.accessToken && acct.accountId && clientId)) {
     return null;
   }
 
-  return { jkt: await getOAuthDpopJkt(), subject: acct.accountId };
+  return { clientId, jkt: await getOAuthDpopJkt(), subject: acct.accountId };
 }

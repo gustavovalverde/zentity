@@ -4,10 +4,10 @@ import {
   ShieldKeyIcon,
 } from "@hugeicons/core-free-icons";
 import type { IconSvgElement } from "@hugeicons/react";
-import {
-  type IdentityEvidenceStrength,
-  identityStrengthTier,
-  type ProofOfHumanClaims,
+import type { IdentityStrength } from "@zentity/sdk/protocol";
+import type {
+  IdentityEvidenceStrength,
+  ProofOfHumanClaims,
 } from "@zentity/sdk/rp";
 
 export type PohClaims = ProofOfHumanClaims;
@@ -25,7 +25,8 @@ export interface X402Resource {
   network: `${string}:${string}`;
   payTo: string;
   price: string;
-  requiredTier: number;
+  /** The identity strength a Proof-of-Human must state, or null for none. */
+  requiredIdentityStrength: IdentityStrength | null;
   requireOnChain: boolean;
   responseData: Record<string, unknown>;
 }
@@ -34,7 +35,7 @@ export const RESOURCES: X402Resource[] = [
   {
     id: "public-api",
     name: "Public API",
-    description: "Weather data — payment only, no compliance",
+    description: "Weather data, payment only",
     endpoint: "/api/weather/forecast",
     icon: CloudIcon,
     price: "$0.000001",
@@ -44,7 +45,7 @@ export const RESOURCES: X402Resource[] = [
     eip712Version: "2",
     network: "eip155:84532",
     payTo: "0x000000000000000000000000000000000000dEaD",
-    requiredTier: 0,
+    requiredIdentityStrength: null,
     requireOnChain: false,
     responseData: {
       forecast: [
@@ -58,7 +59,7 @@ export const RESOURCES: X402Resource[] = [
   {
     id: "verified-identity",
     name: "Verified Identity",
-    description: "Financial analytics — requires Tier 2+ (verified human)",
+    description: "Financial analytics, for a fully verified identity",
     endpoint: "/api/analytics/market",
     icon: DashboardSquare01Icon,
     price: "$0.000001",
@@ -68,7 +69,7 @@ export const RESOURCES: X402Resource[] = [
     eip712Version: "2",
     network: "eip155:84532",
     payTo: "0x000000000000000000000000000000000000dEaD",
-    requiredTier: 2,
+    requiredIdentityStrength: "documentary_full",
     requireOnChain: false,
     responseData: {
       market: { index: "SPX", value: 5842.3, change: "+1.2%" },
@@ -80,7 +81,8 @@ export const RESOURCES: X402Resource[] = [
   {
     id: "regulated-finance",
     name: "Regulated Financial API",
-    description: "Cross-border settlement — Tier 3 + Base compliance mirror",
+    description:
+      "Cross-border settlement, for a chip-verified identity and the Base compliance mirror",
     endpoint: "/api/defi/settle",
     icon: ShieldKeyIcon,
     price: "$0.000001",
@@ -90,7 +92,7 @@ export const RESOURCES: X402Resource[] = [
     eip712Version: "2",
     network: "eip155:84532",
     payTo: "0x000000000000000000000000000000000000dEaD",
-    requiredTier: 3,
+    requiredIdentityStrength: "cryptographic_chip",
     requireOnChain: true,
     responseData: {
       settlement: {
@@ -157,10 +159,6 @@ const IDENTITY_STRENGTH_LABELS: Record<IdentityEvidenceStrength, string> = {
   documentary_full: "Document verified",
   cryptographic_chip: "NFC chip verified",
 };
-
-export function getPohIdentityTier(claims: PohClaims): number {
-  return identityStrengthTier(claims);
-}
 
 export function formatPohIdentityStrength(
   strength: IdentityEvidenceStrength

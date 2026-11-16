@@ -145,28 +145,6 @@ export function asObjectRecord(value: unknown): Record<string, unknown> | null {
 	return value as Record<string, unknown>;
 }
 
-export function attachProofOfHumanToken(
-	paymentPayload: PaymentPayload,
-	paymentRequired: PaymentRequiredPayload,
-	pohToken: string,
-): PaymentSignaturePayload {
-	const declaredZentity = asObjectRecord(paymentRequired.extensions?.zentity);
-	const payloadZentity = asObjectRecord(paymentPayload.extensions?.zentity);
-
-	return {
-		...paymentPayload,
-		x402Version: 2,
-		extensions: {
-			...paymentPayload.extensions,
-			zentity: {
-				...declaredZentity,
-				...payloadZentity,
-				pohToken,
-			},
-		},
-	} as PaymentSignaturePayload;
-}
-
 // ─── Zentity Proof-of-Human extensions ──────────────────────────────
 
 /** The x402 extension that says how to authenticate for a requirement. */

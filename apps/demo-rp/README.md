@@ -112,10 +112,12 @@ Aether uses the `useCibaFlow` polling hook, architecturally distinct from the OA
 2. Sign in with Zentity and connect a wallet
 3. Select a regulated resource and run the flow
 4. The RP returns `PAYMENT-REQUIRED`; the wallet signs `PAYMENT-SIGNATURE`
-5. Zentity proof data is carried under `PaymentPayload.extensions.zentity`
-6. On-chain resources check Base `IdentityRegistryMirror.isCompliant(payer, requiredLevel)`
+5. For an identity-gated resource, the RP's server obtains a client-mode Proof-of-Human token for the signed-in user from Zentity and checks it; the token never reaches the browser or the payment payload
+6. On-chain resources check Base `IdentityRegistryMirror.isCompliant(payer, level)`
 
-For the on-chain tier, the demo uses the Base Sepolia deployment manifest from `@zentity/contracts`. Set `BASE_SEPOLIA_IDENTITY_REGISTRY_MIRROR` only when you need to point at a different mirror deployment. If no package manifest or override is available, the demo reports `identity_registry_mirror_not_configured` instead of silently falling back to a mock.
+Agents use `GET /api/x402/access?resourceId=<id>` instead. The 402 carries `WWW-Authenticate: DPoP algs="ES256"`, the `auth-hints` extension naming Zentity's issuer, and `extensions.zentity = { info: { minIdentityStrength }, schema }`. The agent retries with `PAYMENT-SIGNATURE`, `Authorization: DPoP <merchant-mode Proof-of-Human token>`, and a DPoP proof. The route checks, in order: the token and proof (`verifyProofOfHumanPresentation`), the identity strength, the approved terms against the route and the payment, the facilitator's verification, the token's single use, and settlement. Its replay store is in memory, so the merchant serves one instance; a deployment with several instances needs a shared store. On-chain resources refuse agent tokens with `401 invalid_token`.
+
+For the on-chain resource, the demo uses the Base Sepolia deployment manifest from `@zentity/contracts`. Set `BASE_SEPOLIA_IDENTITY_REGISTRY_MIRROR` only when you need to point at a different mirror deployment. If no package manifest or override is available, the demo reports `identity_registry_mirror_not_configured` instead of silently falling back to a mock.
 
 ### x402 User Journey
 
@@ -124,10 +126,10 @@ The `/x402` page demonstrates three payment-time access patterns. Each pattern s
 | Resource | User precondition | Runtime journey | What the RP learns |
 |----------|-------------------|-----------------|--------------------|
 | Public API | Wallet can sign and pay | Payment-only retry. No Proof-of-Human token is requested. | Payment settlement result only |
-| Verified Identity | User has a Zentity verification tier of 2 or higher | The 402 response advertises `extensions.zentity.minComplianceLevel`. The client obtains a short-lived Proof-of-Human token and attaches it under `PaymentPayload.extensions.zentity.pohToken` before retrying. | Verified tier, sybil-resistance status, and payment settlement result |
-| Regulated Financial API | User has Tier 3+ and a mirrored wallet attestation on Base Sepolia | The client performs the Proof-of-Human retry, then the resource server verifies that the wallet which signed the payment is compliant through `IdentityRegistryMirror.isCompliant(payer, requiredLevel)`. | Proof result, Base mirror boolean, payer wallet address, and payment settlement result |
+| Verified Identity | User's identity strength is `documentary_full` or stronger | The 402 response advertises `extensions.zentity.info.minIdentityStrength`. The browser retries with the payment only; the RP's server obtains a client-mode Proof-of-Human token for the user, checks its audience, subject, and key, and compares its identity strength. | Identity strength, verification and humanity flags, and payment settlement result |
+| Regulated Financial API | User's identity strength is `cryptographic_chip` and the wallet has a mirrored attestation on Base Sepolia | The server-side Proof-of-Human check, then the resource server verifies that the wallet which signed the payment is compliant through `IdentityRegistryMirror.isCompliant(payer, level)`. Agents cannot use this resource. | Proof result, Base mirror boolean, payer wallet address, and payment settlement result |
 
-The important privacy boundary is that payment-time access does not disclose raw identity data. The resource server receives no document fields, proof hashes, commitments, FHE ciphertext handles, or decrypted attributes. For the on-chain scenario, the public mirror exposes only wallet address, active mirrored attestation state, and numeric compliance level.
+The important privacy boundary is that payment-time access does not disclose raw identity data. The resource server receives no document fields, proof hashes, commitments, FHE ciphertext handles, or decrypted attributes. For the on-chain scenario, the public mirror exposes only wallet address, active mirrored attestation state, and the contract's numeric compliance level, which stays on-chain.
 
 Common failure states are visible in the protocol trace:
 

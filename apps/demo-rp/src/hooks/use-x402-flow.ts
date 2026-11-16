@@ -1,12 +1,6 @@
 "use client";
 
-import {
-  attachProofOfHumanToken,
-  encodePaymentSignatureHeader,
-  PAYMENT_SIGNATURE_HEADER,
-  type PaymentRequiredPayload,
-  parsePaymentSignatureHeader,
-} from "@zentity/sdk/rp";
+import type { PaymentRequiredPayload } from "@zentity/sdk/rp";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useAccount, useSwitchChain } from "wagmi";
 import { getWalletClient } from "wagmi/actions";
@@ -31,25 +25,6 @@ function makeId(): string {
 
 function entry(partial: Omit<TraceEntry, "id" | "timestamp">): TraceEntry {
   return { id: makeId(), timestamp: Date.now(), ...partial };
-}
-
-function attachPohTokenToPaymentHeaders(
-  paymentHeaders: Record<string, string> | null,
-  paymentRequired: PaymentRequiredPayload,
-  pohToken: string
-): Record<string, string> | null {
-  const paymentSignature = paymentHeaders?.[PAYMENT_SIGNATURE_HEADER];
-  if (!paymentSignature) {
-    return paymentHeaders;
-  }
-
-  const paymentPayload = parsePaymentSignatureHeader(paymentSignature);
-  return {
-    ...paymentHeaders,
-    [PAYMENT_SIGNATURE_HEADER]: encodePaymentSignatureHeader(
-      attachProofOfHumanToken(paymentPayload, paymentRequired, pohToken)
-    ),
-  };
 }
 
 interface UseX402FlowReturn {
@@ -234,8 +209,10 @@ export function useX402Flow(): UseX402FlowReturn {
           );
         }
 
-        // --- Step 3: For compliance tiers, obtain PoH token ---
-        if (resource.requiredTier > 0) {
+        // --- Step 3: For identity-gated resources, the merchant obtains the
+        // user's Proof-of-Human from Zentity server side; it never reaches
+        // the browser ---
+        if (resource.requiredIdentityStrength) {
           await delay(STEP_DELAY);
           if (abortedRef.current) {
             return;
@@ -245,53 +222,13 @@ export function useX402Flow(): UseX402FlowReturn {
           push(
             entry({
               type: "action",
-              label: "Obtaining Proof-of-Human token",
+              label: "Merchant checks your Proof-of-Human",
               detail:
-                "POST /api/auth/oauth2/proof-of-human (DPoP-authenticated)",
+                "The merchant's server obtains a DPoP-bound token from Zentity for your sign-in and checks its audience, subject, and key",
             })
           );
 
-          const pohRes = await fetch("/api/x402/poh", { method: "POST" });
-          const pohBody = await pohRes.json();
-
-          if (abortedRef.current) {
-            return;
-          }
-
-          if (!pohRes.ok) {
-            push(
-              entry({
-                type: "response",
-                status: pohRes.status,
-                statusText: "Error",
-                body: pohBody,
-              })
-            );
-            setError(
-              pohBody.error_description ?? pohBody.error ?? "PoH failed"
-            );
-            setState("denied");
-            return;
-          }
-
-          const claims = pohBody.claims as PohClaims;
-          const pohToken = pohBody.token as string;
-          setPohClaims(claims);
-
-          push(
-            entry({
-              type: "response",
-              status: 200,
-              statusText: "OK",
-              body: {
-                token: `${pohToken.substring(0, 40)}...`,
-                claims,
-              },
-            })
-          );
-          setState("gotPoh");
-
-          // --- Step 4: Retry with payment + compliance ---
+          // --- Step 4: Retry with payment ---
           await delay(STEP_DELAY);
           if (abortedRef.current) {
             return;
@@ -301,22 +238,17 @@ export function useX402Flow(): UseX402FlowReturn {
           push(
             entry({
               type: "action",
-              label: "Retrying with payment + compliance proof",
+              label: "Retrying with payment",
               detail:
-                "PAYMENT-SIGNATURE header + PoH token + DPoP binding verification",
+                "PAYMENT-SIGNATURE header; the merchant adds the PoH check",
             })
           );
 
           const retryHeaders: Record<string, string> = {
             "Content-Type": "application/json",
           };
-          const paymentHeadersWithPoh = attachPohTokenToPaymentHeaders(
-            paymentHeaders,
-            body402,
-            pohToken
-          );
-          if (paymentHeadersWithPoh) {
-            Object.assign(retryHeaders, paymentHeadersWithPoh);
+          if (paymentHeaders) {
+            Object.assign(retryHeaders, paymentHeaders);
           }
 
           push(
@@ -329,7 +261,6 @@ export function useX402Flow(): UseX402FlowReturn {
                 ...(paymentHeaders
                   ? { "PAYMENT-SIGNATURE": "(base64 signed)" }
                   : {}),
-                Authorization: `PoH ${(pohBody.token as string).substring(0, 30)}...`,
               },
               body: {
                 resourceId: resource.id,
@@ -367,6 +298,11 @@ export function useX402Flow(): UseX402FlowReturn {
               body: retryBody,
             })
           );
+
+          if (retryBody.poh) {
+            setPohClaims(retryBody.poh as PohClaims);
+            setState("gotPoh");
+          }
 
           if (retryRes.ok) {
             const txHash = retryBody.settlement?.transaction as

@@ -1,5 +1,6 @@
+import { meetsIdentityStrength } from "@zentity/sdk/protocol";
 import {
-  getPohIdentityTier,
+  formatPohIdentityStrength,
   type PohClaims,
   SOLIDITY_FACILITATOR,
   SOLIDITY_IS_COMPLIANT,
@@ -104,7 +105,9 @@ function CodeBlock({ code, title }: { code: string; title: string }) {
 }
 
 export function SolidityPanel({ pohClaims }: { pohClaims: PohClaims | null }) {
-  const identityTier = pohClaims ? getPohIdentityTier(pohClaims) : null;
+  const passes = pohClaims
+    ? meetsIdentityStrength(pohClaims.identity.strength, "documentary_full")
+    : false;
 
   return (
     <div className="space-y-4">
@@ -118,23 +121,17 @@ export function SolidityPanel({ pohClaims }: { pohClaims: PohClaims | null }) {
           </h4>
           <div className="space-y-1 font-mono text-xs">
             <div>
-              <span className="text-muted-foreground">requiredLevel: </span>
-              <span className="text-orange-600">2</span>
-              <span className="text-muted-foreground"> → userTier: </span>
-              <span
-                className={
-                  identityTier !== null && identityTier >= 2
-                    ? "text-emerald-700"
-                    : "text-red-600"
-                }
-              >
-                {identityTier}
+              <span className="text-muted-foreground">required: </span>
+              <span className="text-orange-600">
+                {formatPohIdentityStrength("documentary_full")}
+              </span>
+              <span className="text-muted-foreground"> → yours: </span>
+              <span className={passes ? "text-emerald-700" : "text-red-600"}>
+                {formatPohIdentityStrength(pohClaims.identity.strength)}
               </span>
               <span className="text-muted-foreground">
                 {" "}
-                {identityTier !== null && identityTier >= 2
-                  ? "✓ passes"
-                  : "✗ fails"}
+                {passes ? "✓ passes" : "✗ fails"}
               </span>
             </div>
             <div>

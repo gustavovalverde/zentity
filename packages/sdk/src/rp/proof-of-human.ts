@@ -1,14 +1,34 @@
-import { decodeJwt, type JWTVerifyOptions } from "jose";
+import {
+  type DpopReplayStore,
+  enforceDpopBinding,
+  isDpopBindingError,
+  parseAccessTokenAuthorization,
+} from "@better-auth/core/oauth2";
+import {
+  createLocalJWKSet,
+  createRemoteJWKSet,
+  decodeJwt,
+  type JSONWebKeySet,
+  type JWTPayload,
+  type JWTVerifyGetKey,
+  jwtVerify,
+} from "jose";
 import { z } from "zod";
+import { canonicalJson } from "../protocol/authorization-details";
 import {
   type IdentityStrength,
   IdentityStrengthSchema,
+  meetsIdentityStrength,
+  X402_PURCHASE_TYPE,
 } from "../protocol/purchase-authorization";
 import type { DpopClient } from "./dpop-client";
 import {
   createJwksTokenVerifier,
   type JwksTokenVerifierOptions,
 } from "./token-verifier";
+
+/** The `typ` of every Zentity Proof-of-Human token. */
+export const PROOF_OF_HUMAN_TOKEN_TYPE = "poh+jwt";
 
 export type IdentityEvidenceStrength =
   | "none"
@@ -44,35 +64,39 @@ export interface ProofOfHumanClaims {
 }
 
 /**
- * uint8 ladder mapping identity-evidence strength to an integer for callers
- * that compare a numeric threshold (e.g. `minComplianceLevel`). Mirrors the
- * issuer-side `COMPLIANCE_ONCHAIN_TIERS` constant so RP and chain agree on
- * what each tier means.
+ * The `poh` claims of a merchant-mode token: only that the user's identity
+ * meets the merchant's minimum.
  */
-const IDENTITY_STRENGTH_TIERS: Record<IdentityEvidenceStrength, number> =
-  {
-    none: 0,
-    documentary: 1,
-    documentary_full: 2,
-    cryptographic_chip: 3,
-  };
-
-export function identityStrengthTier(claims: ProofOfHumanClaims): number {
-  return IDENTITY_STRENGTH_TIERS[claims.identity.strength];
+export interface MerchantProofOfHumanClaims {
+  identity: { strength_at_least: IdentityStrength };
+  policy: ProofOfHumanPolicyAxis;
 }
 
 export interface VerifiedProofOfHumanToken {
-  cnf?: { jkt: string } | undefined;
+  /** The agent's pairwise subject, when a verified agent asked. */
+  act?: { sub: string } | undefined;
+  aud: string;
+  /** The approved `x402_purchase` entry of a merchant-mode token. */
+  authorizationDetails?: unknown[] | undefined;
+  cnf: { jkt: string };
   exp: number;
-  poh: ProofOfHumanClaims;
+  iat: number;
+  jti: string;
+  poh: ProofOfHumanClaims | MerchantProofOfHumanClaims;
   sub: string;
 }
 
 export interface ProofOfHumanTokenVerifier {
-  verify(
-    token: string,
-    options?: JWTVerifyOptions
-  ): Promise<VerifiedProofOfHumanToken>;
+  verify(token: string): Promise<VerifiedProofOfHumanToken>;
+}
+
+export interface ProofOfHumanTokenVerifierOptions
+  extends JwksTokenVerifierOptions {
+  /**
+   * The audience the token must name: a relying party's own `client_id` for a
+   * client-mode token, a merchant's origin for a merchant-mode token.
+   */
+  audience: string;
 }
 
 export interface RequestProofOfHumanTokenOptions {
@@ -119,15 +143,6 @@ function asStrength(value: unknown): IdentityEvidenceStrength {
     : "none";
 }
 
-/**
- * The `poh` claims of a merchant-mode token: only that the user's identity
- * meets the merchant's minimum.
- */
-export interface MerchantProofOfHumanClaims {
-  identity: { strength_at_least: IdentityStrength };
-  policy: ProofOfHumanPolicyAxis;
-}
-
 const merchantClaimsSchema = z
   .object({
     identity: z.object({ strength_at_least: IdentityStrengthSchema }).strict(),
@@ -141,6 +156,13 @@ export function parseMerchantProofOfHumanClaims(
 ): MerchantProofOfHumanClaims | null {
   const parsed = merchantClaimsSchema.safeParse(claims);
   return parsed.success ? parsed.data : null;
+}
+
+/** Whether `poh` claims are a merchant-mode predicate. */
+export function isMerchantProofOfHumanClaims(
+  claims: ProofOfHumanClaims | MerchantProofOfHumanClaims
+): claims is MerchantProofOfHumanClaims {
+  return "strength_at_least" in claims.identity;
 }
 
 function parseProofOfHumanClaims(claims: unknown): ProofOfHumanClaims {
@@ -189,33 +211,343 @@ function parseProofOfHumanConfirmation(
   return typeof jkt === "string" ? { jkt } : undefined;
 }
 
+/**
+ * The claims of a verified PoH token. A token without `jti`, `cnf.jkt`, or a
+ * single string `aud` is refused: every Zentity PoH token has them.
+ */
+function readVerifiedClaims(payload: JWTPayload): VerifiedProofOfHumanToken {
+  const cnf = parseProofOfHumanConfirmation(payload.cnf);
+  if (
+    typeof payload.sub !== "string" ||
+    typeof payload.exp !== "number" ||
+    typeof payload.iat !== "number" ||
+    typeof payload.jti !== "string" ||
+    typeof payload.aud !== "string" ||
+    !cnf
+  ) {
+    throw new Error(
+      "Proof-of-human token missing sub, aud, iat, exp, jti, or cnf.jkt"
+    );
+  }
+  const act =
+    payload.act &&
+    typeof payload.act === "object" &&
+    typeof (payload.act as { sub?: unknown }).sub === "string"
+      ? { sub: (payload.act as { sub: string }).sub }
+      : undefined;
+  return {
+    sub: payload.sub,
+    aud: payload.aud,
+    iat: payload.iat,
+    exp: payload.exp,
+    jti: payload.jti,
+    cnf,
+    poh:
+      parseMerchantProofOfHumanClaims(payload.poh) ??
+      parseProofOfHumanClaims(payload.poh),
+    ...(act ? { act } : {}),
+    ...(Array.isArray(payload.authorization_details)
+      ? { authorizationDetails: payload.authorization_details }
+      : {}),
+  };
+}
+
+/**
+ * Verifies a PoH token's signature (EdDSA), issuer, `typ: poh+jwt`,
+ * audience, and expiry, and reads its claims.
+ */
 export function createProofOfHumanTokenVerifier(
-  options: JwksTokenVerifierOptions
+  options: ProofOfHumanTokenVerifierOptions
 ): ProofOfHumanTokenVerifier {
   const verifier = createJwksTokenVerifier(options);
 
   return {
-    async verify(
-      token: string,
-      verifyOptions: JWTVerifyOptions = {}
-    ): Promise<VerifiedProofOfHumanToken> {
-      const proofOfHumanVerifyOptions = { ...verifyOptions };
-      proofOfHumanVerifyOptions.algorithms ??= ["EdDSA"];
-
-      const { payload } = await verifier.verify(token, proofOfHumanVerifyOptions);
-      if (typeof payload.sub !== "string" || typeof payload.exp !== "number") {
-        throw new Error("Proof-of-human token missing sub or exp claim");
-      }
-
-      return {
-        sub: payload.sub,
-        exp: payload.exp,
-        poh: parseProofOfHumanClaims(payload.poh),
-        cnf: parseProofOfHumanConfirmation(payload.cnf),
-      };
+    async verify(token: string): Promise<VerifiedProofOfHumanToken> {
+      const { payload } = await verifier.verify(token, {
+        algorithms: ["EdDSA"],
+        audience: options.audience,
+        typ: PROOF_OF_HUMAN_TOKEN_TYPE,
+      });
+      return readVerifiedClaims(payload);
     },
   };
 }
+
+// ─── Merchant presentation ──────────────────────────────────────────
+
+/**
+ * Where a merchant records the `jti` values it has seen: DPoP proof `jti`
+ * values, and the PoH token's own `jti` once a payment verified. Share one
+ * store across every instance that serves the resource.
+ */
+export interface ProofOfHumanReplayStore {
+  /** Whether `key` was recorded and has not expired. */
+  has(key: string): Promise<boolean> | boolean;
+  /** Records `key` until `expiresAt`; false when it was already recorded. */
+  reserve(reservation: {
+    expiresAt: Date;
+    key: string;
+    now: Date;
+  }): Promise<boolean> | boolean;
+}
+
+/**
+ * An in-memory replay store for one merchant instance. A deployment with
+ * more than one instance needs a shared store instead.
+ */
+export function createInMemoryProofOfHumanReplayStore(): ProofOfHumanReplayStore {
+  const entries = new Map<string, number>();
+  const prune = (now: number) => {
+    for (const [key, expiresAt] of entries) {
+      if (expiresAt <= now) {
+        entries.delete(key);
+      }
+    }
+  };
+  return {
+    has(key) {
+      const expiresAt = entries.get(key);
+      return expiresAt !== undefined && expiresAt > Date.now();
+    },
+    reserve({ key, expiresAt, now }) {
+      prune(now.getTime());
+      if (entries.has(key)) {
+        return false;
+      }
+      entries.set(key, expiresAt.getTime());
+      return true;
+    },
+  };
+}
+
+export type ProofOfHumanPresentationErrorCode =
+  | "invalid_token"
+  | "invalid_dpop_proof"
+  | "insufficient_identity_strength"
+  | "approval_mismatch";
+
+/**
+ * Why a merchant refuses a PoH presentation. `status` is the HTTP status to
+ * answer with, and `wwwAuthenticate` the challenge for a 401.
+ */
+export class ProofOfHumanPresentationError extends Error {
+  readonly code: ProofOfHumanPresentationErrorCode;
+  readonly status: 401 | 403;
+
+  constructor(code: ProofOfHumanPresentationErrorCode, message: string) {
+    super(message);
+    this.name = "ProofOfHumanPresentationError";
+    this.code = code;
+    this.status =
+      code === "invalid_token" || code === "invalid_dpop_proof" ? 401 : 403;
+  }
+
+  /** The `WWW-Authenticate` value for a 401, RFC 9449 §7.1. */
+  get wwwAuthenticate(): string | undefined {
+    return this.status === 401
+      ? `DPoP error="${this.code}", algs="ES256"`
+      : undefined;
+  }
+}
+
+const POH_REPLAY_PREFIX = "poh:";
+const DPOP_REPLAY_PREFIX = "dpop:";
+
+const remoteKeySets = new Map<string, JWTVerifyGetKey>();
+
+function resolveKeySet(
+  jwks: string | URL | JSONWebKeySet | JWTVerifyGetKey
+): JWTVerifyGetKey {
+  if (typeof jwks === "function") {
+    return jwks;
+  }
+  if (typeof jwks === "string" || jwks instanceof URL) {
+    const url = String(jwks);
+    const cached = remoteKeySets.get(url);
+    if (cached) {
+      return cached;
+    }
+    const keySet = createRemoteJWKSet(new URL(url));
+    remoteKeySets.set(url, keySet);
+    return keySet;
+  }
+  return createLocalJWKSet(jwks);
+}
+
+function dpopReplayStore(store: ProofOfHumanReplayStore): DpopReplayStore {
+  return {
+    reserve: ({ key, expiresAt, now }) =>
+      store.reserve({ key: `${DPOP_REPLAY_PREFIX}${key}`, expiresAt, now }),
+  };
+}
+
+export interface VerifyProofOfHumanPresentationOptions {
+  /** The merchant's origin, which a merchant-mode token names as `aud`. */
+  audience: string;
+  /** The Zentity issuer (`iss` of the token), the app origin. */
+  issuer: string;
+  /** Zentity's JWKS: its URL, the key set, or a jose key resolver. */
+  jwks: string | URL | JSONWebKeySet | JWTVerifyGetKey;
+  replayStore: ProofOfHumanReplayStore;
+  request: Request;
+  /**
+   * The URL the agent signed the DPoP proof for, when `request.url` is not
+   * the public URL (for example behind a proxy).
+   */
+  url?: string;
+}
+
+/**
+ * The first two merchant checks on a request with a PoH token, without
+ * spending it: the token's signature, `iss`, `typ`, `aud`, `exp`, and an
+ * unused `jti` (read only); then the DPoP proof (`htm`, `htu`, `iat`, `ath`,
+ * the key equal to `cnf.jkt`), whose `jti` is recorded. Record the token's
+ * own `jti` with {@link recordProofOfHumanUse} only after the payment
+ * verifies, so a refused payment does not spend the approval.
+ */
+export async function verifyProofOfHumanPresentation(
+  options: VerifyProofOfHumanPresentationOptions
+): Promise<VerifiedProofOfHumanToken> {
+  const authorization = parseAccessTokenAuthorization(
+    options.request.headers.get("authorization") ?? undefined
+  );
+  if (authorization?.scheme !== "DPoP" || !authorization.token) {
+    throw new ProofOfHumanPresentationError(
+      "invalid_token",
+      "Present a proof-of-human token with the DPoP scheme"
+    );
+  }
+
+  let claims: VerifiedProofOfHumanToken;
+  try {
+    const { payload } = await jwtVerify(
+      authorization.token,
+      resolveKeySet(options.jwks),
+      {
+        algorithms: ["EdDSA"],
+        audience: options.audience,
+        issuer: options.issuer,
+        typ: PROOF_OF_HUMAN_TOKEN_TYPE,
+      }
+    );
+    claims = readVerifiedClaims(payload);
+  } catch {
+    throw new ProofOfHumanPresentationError(
+      "invalid_token",
+      "The proof-of-human token is not valid for this merchant"
+    );
+  }
+  if (
+    await options.replayStore.has(`${POH_REPLAY_PREFIX}${claims.jti}`)
+  ) {
+    throw new ProofOfHumanPresentationError(
+      "invalid_token",
+      "The proof-of-human token was already used"
+    );
+  }
+
+  try {
+    await enforceDpopBinding({
+      payload: { cnf: claims.cnf },
+      authorization,
+      proofJwt: options.request.headers.get("dpop"),
+      method: options.request.method,
+      url: options.url ?? options.request.url,
+      replayStore: dpopReplayStore(options.replayStore),
+      signingAlgorithms: ["ES256"],
+    });
+  } catch (error) {
+    if (isDpopBindingError(error)) {
+      throw new ProofOfHumanPresentationError(
+        error.code === "invalid_token" ? "invalid_token" : "invalid_dpop_proof",
+        error.message
+      );
+    }
+    throw error;
+  }
+  return claims;
+}
+
+/**
+ * The third merchant check: the token states at least the merchant's
+ * minimum identity strength.
+ */
+export function assertIdentityStrength(
+  claims: VerifiedProofOfHumanToken,
+  minimum: IdentityStrength
+): void {
+  const strength = isMerchantProofOfHumanClaims(claims.poh)
+    ? claims.poh.identity.strength_at_least
+    : claims.poh.identity.strength;
+  if (!meetsIdentityStrength(strength, minimum)) {
+    throw new ProofOfHumanPresentationError(
+      "insufficient_identity_strength",
+      `This resource requires ${minimum} identity verification`
+    );
+  }
+}
+
+function canonicalEquals(left: unknown, right: unknown): boolean {
+  try {
+    return canonicalJson(left) === canonicalJson(right);
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * The fourth merchant check: the approved `payment_requirements` equal the
+ * route's requirement and the payment's `accepted` requirement, and the
+ * approved `resource_url` is the URL of this resource.
+ */
+export function assertApprovedRequirement(
+  claims: VerifiedProofOfHumanToken,
+  routeRequirement: unknown,
+  paymentPayload: { accepted?: unknown },
+  resourceUrl: string
+): void {
+  const [entry, ...rest] = claims.authorizationDetails ?? [];
+  const approved = entry as
+    | { payment_requirements?: unknown; resource_url?: unknown; type?: unknown }
+    | undefined;
+  if (
+    !approved ||
+    rest.length > 0 ||
+    approved.type !== X402_PURCHASE_TYPE ||
+    approved.resource_url !== resourceUrl ||
+    !canonicalEquals(approved.payment_requirements, routeRequirement) ||
+    !canonicalEquals(paymentPayload.accepted, routeRequirement)
+  ) {
+    throw new ProofOfHumanPresentationError(
+      "approval_mismatch",
+      "The approved terms differ from this resource's payment"
+    );
+  }
+}
+
+/**
+ * The sixth merchant check, after the facilitator verified the payment:
+ * records the token's `jti` until it expires. A token already recorded is
+ * refused, so one approval pays once.
+ */
+export async function recordProofOfHumanUse(
+  claims: Pick<VerifiedProofOfHumanToken, "exp" | "jti">,
+  replayStore: ProofOfHumanReplayStore
+): Promise<void> {
+  const recorded = await replayStore.reserve({
+    key: `${POH_REPLAY_PREFIX}${claims.jti}`,
+    expiresAt: new Date(claims.exp * 1000),
+    now: new Date(),
+  });
+  if (!recorded) {
+    throw new ProofOfHumanPresentationError(
+      "invalid_token",
+      "The proof-of-human token was already used"
+    );
+  }
+}
+
+// ─── Requesting a token ─────────────────────────────────────────────
 
 const proofOfHumanResponseSchema = z.object({
   error: z.string().optional().catch(undefined),

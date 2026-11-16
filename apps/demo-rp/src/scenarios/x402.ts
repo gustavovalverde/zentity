@@ -36,7 +36,7 @@ export const x402Scenario: RouteScenario = {
     {
       label: "Proof-of-Human",
       detail:
-        "Compact JWTs asserting verification tier and sybil resistance. No personal data is disclosed, only a cryptographic yes or no.",
+        "Compact JWTs stating identity strength, for one audience, bound to a DPoP key. No personal data is disclosed, only a cryptographic yes or no.",
       variant: "mechanism",
     },
   ],

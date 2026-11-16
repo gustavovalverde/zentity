@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  buildZentityExtension,
   createPaymentRequired,
   PAYMENT_REQUIRED_HEADER,
+  PROOF_OF_HUMAN_CHALLENGE,
 } from "./payment-required";
 
 describe("createPaymentRequired", () => {
@@ -18,13 +20,13 @@ describe("createPaymentRequired", () => {
         extra: { name: "USDC", version: "2" },
       },
       resource: { url: "/api/x402/access" },
-      description: "Tier-gated resource",
+      description: "Identity-gated resource",
       extensions: {
-        zentity: {
-          minComplianceLevel: 3,
-          pohIssuer: "https://app.zentity.xyz",
-        },
+        zentity: buildZentityExtension({
+          minIdentityStrength: "cryptographic_chip",
+        }),
       },
+      wwwAuthenticate: PROOF_OF_HUMAN_CHALLENGE,
     });
 
     expect(response.status).toBe(402);
@@ -46,18 +48,18 @@ describe("createPaymentRequired", () => {
       ],
       resource: {
         url: "/api/x402/access",
-        description: "Tier-gated resource",
+        description: "Identity-gated resource",
       },
       extensions: {
-        zentity: {
-          minComplianceLevel: 3,
-          pohIssuer: "https://app.zentity.xyz",
-        },
+        zentity: buildZentityExtension({
+          minIdentityStrength: "cryptographic_chip",
+        }),
       },
     });
+    expect(response.headers.get("WWW-Authenticate")).toBe('DPoP algs="ES256"');
 
     expect(payload.resource).toMatchObject({
-      description: "Tier-gated resource",
+      description: "Identity-gated resource",
       url: "/api/x402/access",
     });
     expect(response.headers.get(PAYMENT_REQUIRED_HEADER)).toBe(

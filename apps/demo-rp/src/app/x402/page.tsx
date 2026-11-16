@@ -102,9 +102,8 @@ function X402Demo() {
               <p className="mx-auto max-w-sm font-light text-lg text-white/60 leading-relaxed">
                 Autonomous agents need to pay for services, but compliance rules
                 still apply. Zentity issues a Proof-of-Human token: a compact
-                attestation of the user's verification tier and sybil
-                resistance, with no identity data attached. Services can enforce
-                per-human rate limits and gate access by compliance tier.
+                statement that the user's identity is verified to the strength a
+                service requires, with no identity data attached.
               </p>
             </div>
 

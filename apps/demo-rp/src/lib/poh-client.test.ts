@@ -46,6 +46,10 @@ vi.mock("@zentity/sdk/rp", () => ({
   requestProofOfHumanToken: mocks.requestProofOfHumanToken,
 }));
 
+vi.mock("@/lib/dcr", () => ({
+  readDcrClientId: async () => "x402-client",
+}));
+
 import { acquirePohToken, getProofOfHumanBinding } from "./poh-client";
 
 describe("poh-client", () => {
@@ -59,6 +63,7 @@ describe("poh-client", () => {
 
   it("binds a user with an x402 token to their subject and the sign-in jkt", async () => {
     await expect(getProofOfHumanBinding()).resolves.toEqual({
+      clientId: "x402-client",
       jkt: "sign-in-jkt",
       subject: "x402-sub-1",
     });
