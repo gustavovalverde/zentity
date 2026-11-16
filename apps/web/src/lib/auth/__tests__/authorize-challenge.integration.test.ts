@@ -1,5 +1,3 @@
-import type { Eip712TypedData } from "@/lib/auth/eip712/types";
-
 import crypto from "node:crypto";
 
 import { client, ready, server } from "@serenity-kit/opaque";
@@ -7,6 +5,7 @@ import { makeSignature } from "better-auth/crypto";
 import { eq } from "drizzle-orm";
 import { decodeJwt } from "jose";
 import { privateKeyToAccount } from "viem/accounts";
+import { parseSiweMessage } from "viem/siwe";
 import { beforeEach, describe, expect, it } from "vitest";
 
 import { env } from "@/env";
@@ -749,8 +748,36 @@ describe("Authorization Challenge Endpoint", () => {
     });
   });
 
-  describe("EIP-712 wallet challenge flow", () => {
-    it("returns eip712 challenge type for wallet user (by email)", async () => {
+  describe("SIWE wallet challenge flow", () => {
+    async function startWalletRound1(identifier: string = TEST_WALLET.address) {
+      const round1 = await callChallenge({
+        client_id: TEST_CLIENT_ID,
+        response_type: "code",
+        scope: "openid",
+        code_challenge: CODE_CHALLENGE,
+        code_challenge_method: "S256",
+        identifier,
+      });
+      if (round1.status !== 401) {
+        throw new Error(`Expected a wallet challenge, got ${round1.status}`);
+      }
+      return {
+        authSession: round1.json.auth_session as string,
+        message: round1.json.message as string,
+      };
+    }
+
+    async function startWalletChallenge() {
+      await createUserWithWallet(TEST_WALLET.address);
+      const { authSession, message } = await startWalletRound1();
+      return {
+        authSession,
+        message,
+        signature: await TEST_WALLET.signMessage({ message }),
+      };
+    }
+
+    it("returns a siwe challenge for wallet user (by email)", async () => {
       await createUserWithWallet(TEST_WALLET.address);
 
       const { status, json } = await callChallenge({
@@ -762,83 +789,50 @@ describe("Authorization Challenge Endpoint", () => {
 
       expect(status).toBe(401);
       expect(json.error).toBe("insufficient_authorization");
-      expect(json.challenge_type).toBe("eip712");
+      expect(json.challenge_type).toBe("siwe");
       expect(json.auth_session).toBeTypeOf("string");
-      expect(json.nonce).toBeTypeOf("string");
-      expect(json.typed_data).toBeDefined();
+      expect(json.message).toBeTypeOf("string");
+      expect(json).not.toHaveProperty("typed_data");
     });
 
-    it("returns eip712 challenge type for wallet user (by address)", async () => {
+    it("names the app origin and binds the message to its auth_session", async () => {
       await createUserWithWallet(TEST_WALLET.address);
+      const { authSession, message } = await startWalletRound1();
+      const appUrl = new URL(env.NEXT_PUBLIC_APP_URL);
+      const session = await db
+        .select({ id: authChallengeSessions.id })
+        .from(authChallengeSessions)
+        .where(eq(authChallengeSessions.authSession, authSession))
+        .get();
 
-      const { status, json } = await callChallenge({
-        client_id: TEST_CLIENT_ID,
-        response_type: "code",
-        scope: "openid",
-        identifier: TEST_WALLET.address,
+      expect(parseSiweMessage(message)).toMatchObject({
+        address: TEST_WALLET.address,
+        chainId: 1,
+        domain: appUrl.host,
+        requestId: session?.id,
+        statement: "Sign in to Zentity from a first-party app.",
+        uri: appUrl.origin,
       });
-
-      expect(status).toBe(401);
-      expect(json.challenge_type).toBe("eip712");
-      expect(json.nonce).toBeTypeOf("string");
-      expect(json.typed_data).toBeDefined();
     });
 
-    it("completes 2-round EIP-712 flow and returns authorization_code", async () => {
-      await createUserWithWallet(TEST_WALLET.address);
-
-      const round1 = await callChallenge({
-        client_id: TEST_CLIENT_ID,
-        response_type: "code",
-        scope: "openid",
-        code_challenge: CODE_CHALLENGE,
-        code_challenge_method: "S256",
-        identifier: TEST_WALLET.address,
-      });
-      expect(round1.status).toBe(401);
-      const authSession = round1.json.auth_session as string;
-      const typedData = round1.json.typed_data as Eip712TypedData;
-
-      const signature = await TEST_WALLET.signTypedData({
-        domain: typedData.domain,
-        types: typedData.types,
-        primaryType: typedData.primaryType as "WalletAuth",
-        message: typedData.message as { address: `0x${string}`; nonce: string },
-      });
+    it("completes the 2-round flow with an EIP-191 signature", async () => {
+      const { authSession, signature } = await startWalletChallenge();
 
       const round2 = await callChallenge({
         auth_session: authSession,
-        eip712_signature: signature,
+        siwe_signature: signature,
       });
       expect(round2.status).toBe(200);
       expect(round2.json.authorization_code).toBeTypeOf("string");
       expect((round2.json.authorization_code as string).length).toBe(32);
     });
 
-    it("exchanges EIP-712 authorization code for tokens", async () => {
-      await createUserWithWallet(TEST_WALLET.address);
-
-      const round1 = await callChallenge({
-        client_id: TEST_CLIENT_ID,
-        response_type: "code",
-        scope: "openid",
-        code_challenge: CODE_CHALLENGE,
-        code_challenge_method: "S256",
-        identifier: TEST_WALLET.address,
-      });
-      const authSession = round1.json.auth_session as string;
-      const typedData = round1.json.typed_data as Eip712TypedData;
-
-      const signature = await TEST_WALLET.signTypedData({
-        domain: typedData.domain,
-        types: typedData.types,
-        primaryType: typedData.primaryType as "WalletAuth",
-        message: typedData.message as { address: `0x${string}`; nonce: string },
-      });
+    it("exchanges the wallet authorization code for tokens", async () => {
+      const { authSession, signature } = await startWalletChallenge();
 
       const round2 = await callChallenge({
         auth_session: authSession,
-        eip712_signature: signature,
+        siwe_signature: signature,
       });
       const authorizationCode = round2.json.authorization_code as string;
 
@@ -854,41 +848,22 @@ describe("Authorization Challenge Endpoint", () => {
       expect(json.auth_session).toBe(authSession);
     });
 
-    async function startWalletChallenge() {
-      await createUserWithWallet(TEST_WALLET.address);
-      const round1 = await callChallenge({
-        client_id: TEST_CLIENT_ID,
-        response_type: "code",
-        scope: "openid",
-        code_challenge: CODE_CHALLENGE,
-        code_challenge_method: "S256",
-        identifier: TEST_WALLET.address,
-      });
-      const typedData = round1.json.typed_data as Eip712TypedData;
-      const signature = await TEST_WALLET.signTypedData({
-        domain: typedData.domain,
-        types: typedData.types,
-        primaryType: typedData.primaryType as "WalletAuth",
-        message: typedData.message as { address: `0x${string}`; nonce: string },
-      });
-      return {
-        authSession: round1.json.auth_session as string,
-        nonce: round1.json.nonce as string,
-        signature,
-      };
-    }
-
     it("rejects a correctly signed challenge whose nonce has expired", async () => {
-      const { authSession, nonce, signature } = await startWalletChallenge();
+      const { authSession, message, signature } = await startWalletChallenge();
       await db
         .update(verifications)
         .set({ expiresAt: new Date(Date.now() - 1000) })
-        .where(eq(verifications.identifier, `eip712:${nonce}`))
+        .where(
+          eq(
+            verifications.identifier,
+            `siwe:${parseSiweMessage(message).nonce}`
+          )
+        )
         .run();
 
       const round2 = await callChallenge({
         auth_session: authSession,
-        eip712_signature: signature,
+        siwe_signature: signature,
       });
       expect(round2.status).toBe(401);
       expect(round2.json.error).toBe("access_denied");
@@ -901,30 +876,104 @@ describe("Authorization Challenge Endpoint", () => {
         Array.from({ length: 4 }, () =>
           callChallenge({
             auth_session: authSession,
-            eip712_signature: signature,
+            siwe_signature: signature,
           })
         )
       );
       expect(results.filter((r) => r.status === 200)).toHaveLength(1);
     });
 
-    it("rejects invalid EIP-712 signature", async () => {
+    it("rejects an invalid signature", async () => {
       await createUserWithWallet(TEST_WALLET.address);
-
-      const round1 = await callChallenge({
-        client_id: TEST_CLIENT_ID,
-        response_type: "code",
-        scope: "openid",
-        identifier: TEST_WALLET.address,
-      });
+      const { authSession } = await startWalletRound1();
 
       const round2 = await callChallenge({
-        auth_session: round1.json.auth_session as string,
-        eip712_signature:
+        auth_session: authSession,
+        siwe_signature:
           "0x0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
       });
       expect(round2.status).toBe(401);
       expect(round2.json.error).toBe("access_denied");
+    });
+
+    it("rejects the signature of another auth_session's challenge", async () => {
+      const first = await startWalletChallenge();
+      const second = await startWalletRound1();
+
+      const round2 = await callChallenge({
+        auth_session: second.authSession,
+        siwe_signature: first.signature,
+      });
+      expect(round2.status).toBe(401);
+      expect(round2.json.error).toBe("access_denied");
+    });
+
+    it("does not accept a browser sign-in signature", async () => {
+      await createUserWithWallet(TEST_WALLET.address);
+      const { authSession } = await startWalletRound1();
+      const signIn = await auth.handler(
+        new Request("http://localhost:3000/api/auth/sign-in/siwe/challenge", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ address: TEST_WALLET.address, chainId: 1 }),
+        })
+      );
+      const { message } = (await signIn.json()) as { message: string };
+      const signature = await TEST_WALLET.signMessage({ message });
+
+      const round2 = await callChallenge({
+        auth_session: authSession,
+        siwe_signature: signature,
+      });
+      expect(round2.status).toBe(401);
+      expect(round2.json.error).toBe("access_denied");
+    });
+
+    it("is not accepted by browser sign-in", async () => {
+      const { message, signature } = await startWalletChallenge();
+
+      const response = await auth.handler(
+        new Request("http://localhost:3000/api/auth/sign-in/siwe/complete", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ message, signature }),
+        })
+      );
+      expect(response.status).toBe(401);
+      expect(response.headers.get("set-cookie")).toBeNull();
+    });
+
+    it("re-enters a step-up session with a wallet challenge", async () => {
+      const userId = await createUserWithWallet(TEST_WALLET.address);
+      const authSession = crypto.randomUUID();
+      await db
+        .insert(authChallengeSessions)
+        .values({
+          authSession,
+          clientId: TEST_CLIENT_ID,
+          userId,
+          scope: "openid",
+          state: "pending",
+          expiresAt: new Date(Date.now() + 600_000),
+        })
+        .run();
+
+      const reEntry = await callChallenge({
+        auth_session: authSession,
+        code_challenge: CODE_CHALLENGE,
+        code_challenge_method: "S256",
+      });
+      expect(reEntry.status).toBe(401);
+      expect(reEntry.json.challenge_type).toBe("siwe");
+
+      const round2 = await callChallenge({
+        auth_session: authSession,
+        siwe_signature: await TEST_WALLET.signMessage({
+          message: reEntry.json.message as string,
+        }),
+      });
+      expect(round2.status).toBe(200);
+      expect(round2.json.authorization_code).toBeTypeOf("string");
     });
   });
 

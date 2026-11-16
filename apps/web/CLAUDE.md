@@ -35,7 +35,7 @@ Each sub-directory is a bounded context; the filename inside identifies the conc
 |---|---|
 | `agents/` | Agent host/session model, host attestation, capability grants, pairwise actor subject, approval evaluate/resolve, web push |
 | `assurance/` | Assurance tier computation, security posture queries, OIDC claims, feature gating |
-| `auth/` | Better-auth config, session read (`session.ts`) + client cleanup (`session-cleanup.ts`), resource-auth (Bearer/DPoP), auth context events, per-method sub-dirs: `eip712/`, `opaque/`, `passkey/`, `oidc/` |
+| `auth/` | Better-auth config, session read (`session.ts`) + client cleanup (`session-cleanup.ts`), resource-auth (Bearer/DPoP), auth context events, per-method sub-dirs: `opaque/`, `passkey/`, `siwe/`, `oidc/` |
 | `auth/oidc/` | OIDC provider: JWT signing, disclosure, HAIP (DPoP/PAR/JARM), back-channel logout, step-up |
 | `blockchain/` | Confidential-chain provider + helpers (`confidential/`), on-chain attestation (`attestation/`), wagmi config, tx error mapping |
 | `db/` | Drizzle schema (`schema/`) + queries (`queries/`), one file per bounded context |

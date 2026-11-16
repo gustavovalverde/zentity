@@ -59,7 +59,7 @@ flowchart TD
 **Note on wallets**: The term "wallet" can refer to two distinct concepts:
 
 1. **Credential wallet**: stores and presents verifiable credentials (SSI context)
-2. **Web3 wallet**: signs transactions and can be used for authentication (EIP-712 signatures)
+2. **Web3 wallet**: signs transactions and can be used for authentication (Sign-In with Ethereum)
 
 These are not mutually exclusive; a Web3 wallet user can also hold credentials in a credential wallet.
 

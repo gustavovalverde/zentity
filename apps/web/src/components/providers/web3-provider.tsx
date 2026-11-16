@@ -14,8 +14,6 @@ import {
   wagmiAdapter,
 } from "@/lib/blockchain/wagmi";
 
-import { Eip712Bridge } from "./eip712-bridge";
-
 const metadata = {
   name: "Zentity",
   description: "Privacy-preserving identity verification",
@@ -66,10 +64,7 @@ export function Web3Provider({
       config={wagmiAdapter.wagmiConfig}
       initialState={initialState}
     >
-      <ConfidentialChainProvider>
-        <Eip712Bridge />
-        {children}
-      </ConfidentialChainProvider>
+      <ConfidentialChainProvider>{children}</ConfidentialChainProvider>
     </WagmiProvider>
   );
 }

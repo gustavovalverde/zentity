@@ -9,7 +9,7 @@ Zentity eliminates plaintext data handling through four interlocking cryptograph
 
 | Pillar | What it protects | Where it runs | Why it exists |
 |---|---|---|---|
-| **Auth + key custody (Passkeys + OPAQUE + Wallet)** | Authentication + key custody | Browser + authenticator / wallet | Passkeys for passwordless login, OPAQUE for privacy-preserving passwords, and wallet signatures (EIP-712) for Web3-native auth; all three yield client-held keys that seal profiles and wrap FHE keys. |
+| **Auth + key custody (Passkeys + OPAQUE + Wallet)** | Authentication + key custody | Browser + authenticator / wallet | Passkeys for passwordless login, OPAQUE for privacy-preserving passwords, and wallet signatures (Sign-In with Ethereum to authenticate, EIP-712 to derive keys) for Web3-native auth; all three yield client-held keys that seal profiles and wrap FHE keys. |
 | **Zero-Knowledge Proofs (ZKPs)** | Eligibility without disclosure | Browser (prove) + server (verify) | Prove age, nationality group, or document validity without revealing the underlying values. |
 | **Fully Homomorphic Encryption (FHE)** | Encrypted computation | Server + fhEVM | Compute on encrypted attributes (age, nationality, compliance level) without decryption. |
 | **Cryptographic Commitments** | Integrity + dedup + erasure | Server DB | One-way hashes bind values without storing them; deleting the salt breaks linkability. |
@@ -143,14 +143,14 @@ OPAQUE is an **augmented PAKE** that keeps raw passwords off the server:
 - The client derives an **export key** on registration/login; we use it to derive a KEK (via HKDF) that wraps the DEK, mirroring the passkey PRF flow.
 - Clients verify the server's static public key (pinned in production) to prevent MITM.
 
-### 1c) Wallet (EIP-712 signature authentication)
+### 1c) Wallet (Sign-In with Ethereum and EIP-712 key derivation)
 
-Web3 wallet authentication uses EIP-712 typed data signing for key derivation:
+Web3 wallets authenticate with Sign-In with Ethereum and derive keys with EIP-712 typed data:
 
-- The user signs an EIP-712 typed data message during wallet authentication and verification preflight to derive a KEK (via HKDF) that wraps/unlocks the DEK, mirroring the passkey PRF flow.
+- Sign-in and sign-up sign a server-built **SIWE (EIP-4361)** message with EIP-191 `personal_sign`. It names the app origin, states its purpose, and carries a single-use nonce that expires after five minutes, so a signature collected by another site or for another purpose is refused.
+- The user signs an EIP-712 `KeyDerivation` message during verification preflight to derive a KEK (via HKDF) that wraps/unlocks the DEK, mirroring the passkey PRF flow.
 - At sign-up, we perform a best-effort stability check (sign twice, compare) to reject obviously unstable wallet signers.
 - This check is not a long-term guarantee across wallet firmware/app changes or device migrations. Wallet users should immediately add a backup passkey.
-- Sign-in also requires a **SIWE (EIP-191)** signature for session authentication (nonce-based replay protection).
 - The private key never leaves the wallet; the signature stays in the browser.
 - Supports hardware wallets (Ledger/Trezor) for enhanced security.
 - The server stores only the wallet address for account association.

@@ -1,12 +1,10 @@
 "use client";
 
-import type { Eip712TypedData } from "@/lib/auth/eip712/types";
-
 import { useAppKit, useAppKitAccount } from "@reown/appkit/react";
 import { Wallet } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
-import { useChainId, useSignTypedData } from "wagmi";
+import { useChainId, useSignMessage } from "wagmi";
 
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -27,7 +25,7 @@ export function WalletSignInButton() {
   const { open } = useAppKit();
   const { address, isConnected } = useAppKitAccount();
   const chainId = useChainId();
-  const { mutateAsync: signTypedData } = useSignTypedData();
+  const { mutateAsync: signMessage } = useSignMessage();
 
   const [error, setError] = useState<string | null>(null);
   const [status, setStatus] = useState<SignInStatus>("idle");
@@ -61,20 +59,10 @@ export function WalletSignInButton() {
     setError(null);
 
     try {
-      // Step 1: EIP-712 authentication
-      const _result = await authClient.signIn.eip712({
+      await authClient.signIn.siwe({
         address,
         chainId,
-        signTypedData: async (typedData: Eip712TypedData) =>
-          signTypedData({
-            domain: typedData.domain as Record<string, unknown>,
-            types: typedData.types as Record<
-              string,
-              Array<{ name: string; type: string }>
-            >,
-            primaryType: typedData.primaryType,
-            message: typedData.message,
-          }),
+        signMessage: (message) => signMessage({ message }),
       });
 
       if (hasOAuthParams()) {
@@ -101,7 +89,7 @@ export function WalletSignInButton() {
 
       setStatus(isConnected && address ? "ready" : "idle");
     }
-  }, [address, chainId, isConnected, signTypedData]);
+  }, [address, chainId, isConnected, signMessage]);
 
   const isLoading = status === "signing";
   const isReady = isConnected && address;

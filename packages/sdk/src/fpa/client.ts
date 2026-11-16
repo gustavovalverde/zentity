@@ -63,7 +63,11 @@ export interface PasswordAuthorizationStrategy {
 
 export interface WalletAuthorizationStrategy {
   chainId?: number;
-  signTypedData(typedData: Record<string, unknown>): MaybePromise<string>;
+  /**
+   * Signs the server's Sign-In with Ethereum (EIP-4361) message with EIP-191
+   * `personal_sign`, as viem's `account.signMessage({ message })` does.
+   */
+  signMessage(message: string): MaybePromise<string>;
 }
 
 export interface AuthorizationStrategies {
@@ -158,8 +162,8 @@ const challengeBodySchema = z.object({
   authorization_code: optionalField(z.string()),
   challenge_type: optionalField(z.string()),
   error: optionalField(z.string()),
+  message: optionalField(z.string()),
   opaque_login_response: optionalField(z.string()),
-  typed_data: optionalField(z.record(z.string(), z.unknown())),
 });
 
 type ChallengeBody = z.infer<typeof challengeBodySchema>;
@@ -199,8 +203,8 @@ function readAuthorizationCode(body: ChallengeBody): string {
   );
 }
 
-function readChallengeType(body: ChallengeBody): "eip712" | "opaque" {
-  if (body.challenge_type === "opaque" || body.challenge_type === "eip712") {
+function readChallengeType(body: ChallengeBody): "opaque" | "siwe" {
+  if (body.challenge_type === "opaque" || body.challenge_type === "siwe") {
     return body.challenge_type;
   }
   throw new Error(`Unsupported challenge type: ${String(body.challenge_type)}`);
@@ -519,16 +523,16 @@ export function createFirstPartyAuth(
     walletStrategy: WalletAuthorizationStrategy,
     round1Body: ChallengeBody
   ): Promise<AuthorizationCodeResult> {
-    const signature = await walletStrategy.signTypedData(
-      required(round1Body.typed_data, "EIP-712 response missing typed_data")
+    const signature = await walletStrategy.signMessage(
+      required(round1Body.message, "SIWE challenge missing message")
     );
     const round2 = await postChallenge(dpopClient, endpoint, {
       auth_session: authSession,
-      eip712_signature: signature,
+      siwe_signature: signature,
     });
     if (!round2.response.ok) {
       throw new Error(
-        `EIP-712 round 2 failed: ${round2.response.status} ${await round2.response.text()}`
+        `SIWE round 2 failed: ${round2.response.status} ${await round2.response.text()}`
       );
     }
 
@@ -566,7 +570,7 @@ export function createFirstPartyAuth(
     }
 
     if (!strategies.wallet) {
-      throw new Error("EIP-712 challenge requires a wallet strategy");
+      throw new Error("SIWE challenge requires a wallet strategy");
     }
 
     return completeWalletChallenge(

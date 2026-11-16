@@ -32,9 +32,8 @@ The backend signs attestation permits from verified identity state. The browser 
 
 ### Auth & session gating
 
-- **Wallet connection ≠ session**: Reown AppKit connects a wallet, but it does not create a server session.
-- **SIWE bridge**: the UI performs Sign‑In With Ethereum via Better Auth (`/api/auth/siwe/*`) to mint a session and link the wallet address.
-- **Wallet-as-auth**: Wallet signatures (EIP-712) can also serve as the primary authentication method for account creation, distinct from wallet connection for on-chain operations.
+- **Wallet connection ≠ session**: Reown AppKit connects a wallet, but it does not create a server session, and connecting never asks the wallet for a signature.
+- **Wallet-as-auth**: a wallet can be the account's credential. After the user chooses wallet sign-in or sign-up, the server issues a Sign-In with Ethereum (EIP-4361) message naming the app origin (`/api/auth/sign-in/siwe/*`, `/api/auth/sign-up/siwe/*`), and the wallet signs it with EIP-191 `personal_sign`. This is separate from the EIP-712 `KeyDerivation` signature that wraps the user's keys.
 - **Server gating**: Web3/FHE APIs require a Better Auth session and explicit credential unlock for encrypted payloads.
 
 ---
@@ -88,7 +87,6 @@ sequenceDiagram
 
   Note over UI,IR: Phase 2 - Web3 Attestation
   UI->>UI: Connect wallet (Reown)
-  UI->>BE: SIWE sign-in (Better Auth session)
   Note over UI: User unlocks passkey to authorize attributes
   UI->>BE: Request on-chain attestation
   BE->>Registrar: Encrypt identity attributes
@@ -199,7 +197,7 @@ UI implications:
 
 - Verify Web2 proofs and signed claims before enabling Web3 attestation.
 - Ensure the wallet is connected to the target network with gas available.
-- Ensure SIWE has established a Better Auth session for the wallet address.
+- Ensure the user has a Better Auth session; connecting a wallet does not create one.
 - Require a passkey PRF unlock before generating or decrypting encrypted payloads.
 - Confirm the registrar keys and contract addresses are configured.
 - Confirm ACL grants are issued for required contracts.

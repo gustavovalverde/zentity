@@ -17,7 +17,7 @@ Zentity's architecture separates proving (browser), verifying (server), and comp
 | OCR | RapidOCR (PPOCRv5), python-stdnum | Document parsing, field extraction, and validation. |
 | FHE and Web3 | TFHE-rs (Rust), fhEVM, Base mirror | Encrypted computation off-chain, encrypted on-chain attestation, and narrow public payment-time predicates. |
 | Storage | SQLite (libSQL/Turso), Drizzle ORM | Privacy-first storage of commitments, proofs, and encrypted blobs. |
-| Auth + key custody | Better Auth + WebAuthn + PRF + OPAQUE + EIP-712 Wallet | Passkey, OPAQUE password, or wallet signature authentication; all three derive client-held keys for sealing secrets. |
+| Auth + key custody | Better Auth + WebAuthn + PRF + OPAQUE + Wallet (SIWE sign-in, EIP-712 keys) | Passkey, OPAQUE password, or wallet signature authentication; all three derive client-held keys for sealing secrets. |
 | Verifiable credentials | OIDC4VCI, OIDC4VP, SD-JWT VC, DCQL, JARM | Credential issuance and wallet presentation via OpenID standards. |
 | HAIP compliance | @better-auth/haip (DPoP, PAR, JARM, wallet attestation, DCQL) | High Assurance Interoperability Profile for regulated wallet integrations. |
 | CIBA | @better-auth/ciba (backchannel auth, poll + ping modes) | Agent-initiated async authorization via email/push notification and user approval. |
@@ -158,7 +158,8 @@ sequenceDiagram
     AUTH-->>UI: Anonymous session
     UI->>AUTH: Create credential on anonymous user
   else Wallet (SIWE)
-    UI->>AUTH: signInWithSiwe() (creates user directly)
+    UI->>AUTH: ensureAuthSession() (lazy)
+    UI->>AUTH: signUp.siwe() signs the sign-up message, links the wallet
   end
   AUTH-->>UI: Session with credential
   UI->>API: completeAccountCreation
@@ -208,18 +209,18 @@ OPAQUE authentication uses a password-derived export key:
 - Server stores the OPAQUE **registration record** (no plaintext password).
 - Secret wrappers are stored with `kek_source = "opaque"`.
 
-**Wallet (EIP-712) flow**
+**Wallet flow**
 
-Wallet authentication uses EIP-712 typed data signing to derive the KEK:
+A wallet signs two different messages: a Sign-In with Ethereum (EIP-4361) message to authenticate, and an EIP-712 `KeyDerivation` message whose signature derives the KEK:
 
-- User signs an EIP-712 typed data message during wallet authentication and verification preflight.
-- At sign-up, we run a best-effort stability check (sign twice, compare) to reject clearly unstable signers before key wrapping.
+- Sign-in and sign-up sign a server-built EIP-4361 message with EIP-191 `personal_sign`. The message names the app origin from `NEXT_PUBLIC_APP_URL`, states its purpose (sign-in and sign-up differ), and carries a single-use nonce that expires five minutes after it is issued. The server accepts only the exact message it issued for that purpose, and verifies the signature as an ECDSA signature from the wallet's own key (EOA). A wallet prompt appears only after the user chooses wallet sign-in or sign-up.
+- User signs the EIP-712 `KeyDerivation` message during verification preflight and vault unlock.
+- At sign-up and at verification preflight, the wallet signs the same message twice and the signatures are compared, to reject clearly unstable signers before key wrapping.
 - This check does not guarantee future wallet behavior across firmware/app changes or device migration, so wallet users should add a backup passkey.
 - Signature bytes are processed through **HKDF-SHA256** to derive the KEK.
 - The private key never leaves the wallet; the signature stays in the browser.
 - Server stores the wallet address for account association.
 - Secret wrappers are stored with `kek_source = "wallet"`.
-- Sign-in also requires a **SIWE (EIP-191)** signature for session authentication (nonce-based replay protection).
 - Supports hardware wallets (Ledger/Trezor) for enhanced security.
 
 ### Disclosure

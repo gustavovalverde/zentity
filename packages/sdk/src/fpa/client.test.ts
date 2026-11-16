@@ -330,15 +330,27 @@ describe("createFirstPartyAuth", () => {
     );
   });
 
-  it("completes wallet-based authorization with an EIP-712 signature", async () => {
+  it("completes wallet-based authorization by signing the SIWE message", async () => {
     const authStateStorage = createMemoryAuthStateStorage();
     const auth = createFirstPartyAuth({
       issuerUrl: "https://issuer.example",
       storage: authStateStorage.storage,
     });
-    const signTypedData = vi.fn(async () => "wallet-signature");
-
-    vi.spyOn(globalThis, "fetch")
+    const siweMessage = [
+      "https://issuer.example wants you to sign in with your Ethereum account:",
+      "0x0000000000000000000000000000000000000001",
+      "",
+      "Sign in to Zentity from a first-party app.",
+      "",
+      "URI: https://issuer.example",
+      "Version: 1",
+      "Chain ID: 1",
+      "Nonce: abcdefgh12345678",
+      "Issued At: 2026-01-01T00:00:00.000Z",
+    ].join("\n");
+    const signMessage = vi.fn(async () => "wallet-signature");
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
       .mockResolvedValueOnce(
         new Response(
           JSON.stringify({
@@ -355,16 +367,8 @@ describe("createFirstPartyAuth", () => {
         new Response(
           JSON.stringify({
             auth_session: "wallet-session-1",
-            challenge_type: "eip712",
-            typed_data: {
-              domain: { name: "Zentity" },
-              message: { action: "login" },
-              primaryType: "Login",
-              types: {
-                EIP712Domain: [{ name: "name", type: "string" }],
-                Login: [{ name: "action", type: "string" }],
-              },
-            },
+            challenge_type: "siwe",
+            message: siweMessage,
           }),
           { status: 401 }
         )
@@ -386,16 +390,16 @@ describe("createFirstPartyAuth", () => {
       strategies: {
         wallet: {
           chainId: 1,
-          signTypedData,
+          signMessage,
         },
       },
     });
 
-    expect(signTypedData).toHaveBeenCalledWith(
-      expect.objectContaining({
-        domain: { name: "Zentity" },
-      })
-    );
+    expect(signMessage).toHaveBeenCalledExactlyOnceWith(siweMessage);
+    expect(JSON.parse(String(fetchMock.mock.calls[2]?.[1]?.body))).toEqual({
+      auth_session: "wallet-session-1",
+      siwe_signature: "wallet-signature",
+    });
     expect(result).toEqual({
       authSession: "wallet-session-1",
       authorizationCode: "wallet-authorization-code",

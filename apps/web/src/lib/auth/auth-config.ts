@@ -76,7 +76,6 @@ import {
   getAuthenticationStateBySessionId,
   resolveAuthenticationContext,
 } from "@/lib/auth/auth-context";
-import { eip712Auth } from "@/lib/auth/eip712/server";
 import { getHardenedJWKSet } from "@/lib/auth/jwt";
 import { authorizeChallengePlugin } from "@/lib/auth/oidc/authorize-challenge";
 import {
@@ -172,6 +171,7 @@ import {
 import { opaque } from "@/lib/auth/opaque/server";
 import { getTrustedOrigins } from "@/lib/auth/origin";
 import { canManageOAuthClients } from "@/lib/auth/rp-admin";
+import { siweAuth } from "@/lib/auth/siwe/server";
 import { parseStoredStringArray } from "@/lib/db/adapter-compat";
 import { db } from "@/lib/db/connection";
 import { denyPendingCibaRequestsForUser } from "@/lib/db/queries/ciba";
@@ -307,7 +307,7 @@ const resolveLastLoginMethod = (ctx: { path?: string }): LoginMethod | null => {
   ) {
     return "oauth";
   }
-  if (path.includes("/eip712/")) {
+  if (path.includes("/siwe/")) {
     return "eip712";
   }
   if (path.startsWith("/sign-in/email") || path.startsWith("/sign-up/email")) {
@@ -1773,15 +1773,19 @@ export const auth = betterAuth({
               window: 60, // 1 minute
               max: 5, // 5 password reset completions per minute
             },
-            "/eip712/nonce": {
-              window: 60,
-              max: 10,
-            },
-            "/sign-up/eip712/register": {
+            "/sign-up/siwe/challenge": {
               window: 60,
               max: 5,
             },
-            "/sign-in/eip712/verify": {
+            "/sign-up/siwe/complete": {
+              window: 60,
+              max: 5,
+            },
+            "/sign-in/siwe/challenge": {
+              window: 60,
+              max: 10,
+            },
+            "/sign-in/siwe/complete": {
               window: 60,
               max: 10,
             },
@@ -2000,7 +2004,7 @@ export const auth = betterAuth({
     organization({
       creatorRole: "owner",
     }),
-    eip712Auth({ emailDomainName: "wallet.zentity.app" }),
+    siweAuth({ emailDomainName: "wallet.zentity.app" }),
     jwt({
       ...signingKeyOptions,
       jwks: {

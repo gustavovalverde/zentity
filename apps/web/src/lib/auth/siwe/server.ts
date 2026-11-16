@@ -1,96 +1,218 @@
 import type { InternalAdapter } from "@better-auth/core";
-import type { Eip712TypedData } from "./types";
 
 import { APIError, type BetterAuthPlugin } from "better-auth";
 import { createAuthEndpoint, getSessionFromCtx } from "better-auth/api";
 import { setSessionCookie } from "better-auth/cookies";
-import { getAddress } from "viem";
+import { generateRandomString } from "better-auth/crypto";
+import { type Address, getAddress, isAddress, verifyMessage } from "viem";
+import {
+  createSiweMessage,
+  parseSiweMessage,
+  validateSiweMessage,
+} from "viem/siwe";
 import { z } from "zod";
 
+import { env } from "@/env";
 import { createSessionAuthenticationContext } from "@/lib/auth/auth-context";
 
-import { buildWalletAuthTypedData, verifyEip712Signature } from "./typed-data";
+/**
+ * What a wallet signature authorizes. Each purpose has its own statement, and
+ * a challenge redeems only for the purpose it was issued for, so a signature
+ * made to sign in cannot create an account or authorize a first-party app.
+ */
+type SiwePurpose = "sign-in" | "sign-up" | "first-party-app";
 
-const NONCE_TTL_MS = 15 * 60 * 1000;
+const STATEMENTS: Record<SiwePurpose, string> = {
+  "sign-in": "Sign in to Zentity with this wallet.",
+  "sign-up": "Create a Zentity account with this wallet.",
+  "first-party-app": "Sign in to Zentity from a first-party app.",
+};
+
+const CHALLENGE_TTL_MS = 5 * 60 * 1000;
+
+interface IssuedChallenge {
+  message: string;
+  purpose: SiwePurpose;
+}
+
+type SiweRedemption =
+  | { ok: true; address: Address; chainId: number }
+  | {
+      ok: false;
+      error: "invalid_nonce" | "invalid_message" | "invalid_signature";
+    };
 
 function nonceIdentifier(nonce: string): string {
-  return `eip712:${nonce}`;
-}
-
-function nonceSubject(address: string, chainId: number): string {
-  return `${address.toLowerCase()}:${chainId}`;
+  return `siwe:${nonce}`;
 }
 
 /**
- * Stores a single-use sign-in nonce for one wallet on one chain. The row is
- * keyed by the nonce, so consuming a nonce cannot burn another one.
+ * The app origin every message names: wallets compare it with the page that
+ * asks for the signature, and the server accepts no other.
  */
-export async function issueWalletNonce(
+function appOrigin(): { domain: string; scheme: string; uri: string } {
+  const url = new URL(env.NEXT_PUBLIC_APP_URL);
+  return {
+    domain: url.host,
+    scheme: url.protocol.slice(0, -1),
+    uri: url.origin,
+  };
+}
+
+function parseIssuedChallenge(value: string): IssuedChallenge | null {
+  try {
+    const parsed = JSON.parse(value) as Partial<IssuedChallenge>;
+    if (typeof parsed.message === "string" && parsed.purpose) {
+      return { message: parsed.message, purpose: parsed.purpose };
+    }
+  } catch {
+    // An unreadable row redeems nothing.
+  }
+  return null;
+}
+
+async function isWalletSignature(
+  address: Address,
+  message: string,
+  signature: string
+): Promise<boolean> {
+  try {
+    return await verifyMessage({
+      address,
+      message,
+      signature: signature as `0x${string}`,
+    });
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Builds the EIP-4361 message the wallet signs for one purpose, and stores it
+ * under a single-use nonce that expires with the message.
+ */
+export async function issueSiweChallenge(
   internalAdapter: InternalAdapter,
-  address: string,
-  chainId: number
+  params: {
+    address: string;
+    chainId: number;
+    purpose: SiwePurpose;
+    requestId?: string;
+  }
 ): Promise<string> {
-  const nonce = crypto.randomUUID();
+  const { domain, scheme, uri } = appOrigin();
+  const nonce = generateRandomString(32, "a-z", "A-Z", "0-9");
+  const issuedAt = new Date();
+  const expirationTime = new Date(issuedAt.getTime() + CHALLENGE_TTL_MS);
+  const message = createSiweMessage({
+    address: getAddress(params.address),
+    chainId: params.chainId,
+    domain,
+    expirationTime,
+    issuedAt,
+    nonce,
+    ...(params.requestId ? { requestId: params.requestId } : {}),
+    scheme,
+    statement: STATEMENTS[params.purpose],
+    uri,
+    version: "1",
+  });
+
   await internalAdapter.createVerificationValue({
     identifier: nonceIdentifier(nonce),
-    value: nonceSubject(address, chainId),
-    expiresAt: new Date(Date.now() + NONCE_TTL_MS),
+    value: JSON.stringify({
+      message,
+      purpose: params.purpose,
+    } satisfies IssuedChallenge),
+    expiresAt: expirationTime,
   });
-  return nonce;
+  return message;
 }
 
 /**
- * Consumes the nonce whether or not it matches, and reports whether it was
- * unexpired and issued for this wallet and chain. Concurrent callers race on
- * one atomic consume, so at most one of them sees `true`.
+ * Consumes the challenge whose nonce the message carries, whatever the
+ * outcome, and accepts the signature only when the message is exactly the one
+ * issued for this purpose, is unexpired, names this app's origin, and was
+ * signed by the address it names. Concurrent callers race on one atomic
+ * consume, so at most one of them succeeds.
  */
-export async function consumeWalletNonce(
+export async function redeemSiweChallenge(
   internalAdapter: InternalAdapter,
-  nonce: string,
-  address: string,
-  chainId: number
-): Promise<boolean> {
+  params: {
+    message: string;
+    purpose: SiwePurpose;
+    requestId?: string;
+    signature: string;
+  }
+): Promise<SiweRedemption> {
+  const parsed = parseSiweMessage(params.message);
+  if (!parsed.nonce) {
+    return { ok: false, error: "invalid_message" };
+  }
+
   const verification = await internalAdapter.consumeVerificationValue(
-    nonceIdentifier(nonce)
+    nonceIdentifier(parsed.nonce)
   );
-  return verification?.value === nonceSubject(address, chainId);
+  if (!verification) {
+    return { ok: false, error: "invalid_nonce" };
+  }
+
+  const issued = parseIssuedChallenge(verification.value);
+  const { domain, scheme } = appOrigin();
+  if (
+    !(
+      issued?.purpose === params.purpose &&
+      issued.message === params.message &&
+      parsed.address &&
+      parsed.chainId &&
+      parsed.requestId === params.requestId &&
+      validateSiweMessage({
+        message: parsed,
+        domain,
+        scheme,
+        nonce: parsed.nonce,
+      })
+    )
+  ) {
+    return { ok: false, error: "invalid_message" };
+  }
+
+  const address = getAddress(parsed.address);
+  if (!(await isWalletSignature(address, params.message, params.signature))) {
+    return { ok: false, error: "invalid_signature" };
+  }
+  return { ok: true, address, chainId: parsed.chainId };
 }
 
-export const eip712Auth = (options: { emailDomainName: string }) => {
+const REDEMPTION_ERRORS = {
+  invalid_nonce: "Invalid or expired nonce",
+  invalid_message: "Invalid sign-in message",
+  invalid_signature: "Invalid signature",
+} as const;
+
+async function redeemOrThrow(
+  internalAdapter: InternalAdapter,
+  params: { message: string; purpose: SiwePurpose; signature: string }
+): Promise<{ address: Address; chainId: number }> {
+  const redemption = await redeemSiweChallenge(internalAdapter, params);
+  if (!redemption.ok) {
+    throw new APIError("UNAUTHORIZED", {
+      message: REDEMPTION_ERRORS[redemption.error],
+    });
+  }
+  return redemption;
+}
+
+const challengeBody = z.object({
+  address: z.string().refine((value) => isAddress(value), "Invalid address"),
+  chainId: z.number().int().positive(),
+});
+
+export const siweAuth = (options: { emailDomainName: string }) => {
   const { emailDomainName } = options;
 
-  async function verifySignature(
-    signature: string,
-    typedData: Eip712TypedData,
-    expectedAddress: string
-  ): Promise<void> {
-    const valid = await verifyEip712Signature(
-      signature,
-      typedData,
-      expectedAddress
-    );
-    if (!valid) {
-      throw new APIError("UNAUTHORIZED", {
-        message: "Invalid signature",
-      });
-    }
-  }
-
-  async function consumeNonce(
-    internalAdapter: InternalAdapter,
-    address: string,
-    chainId: number,
-    nonce: string
-  ): Promise<void> {
-    if (!(await consumeWalletNonce(internalAdapter, nonce, address, chainId))) {
-      throw new APIError("UNAUTHORIZED", {
-        message: "Invalid or expired nonce",
-      });
-    }
-  }
-
   return {
-    id: "eip712",
+    id: "siwe",
     schema: {
       walletAddress: {
         fields: {
@@ -107,59 +229,41 @@ export const eip712Auth = (options: { emailDomainName: string }) => {
       },
     },
     endpoints: {
-      eip712Nonce: createAuthEndpoint(
-        "/eip712/nonce",
-        {
-          method: "POST",
-          body: z.object({
-            address: z.string().min(1),
-            chainId: z.number().int().positive(),
-          }),
-        },
+      siweSignUpChallenge: createAuthEndpoint(
+        "/sign-up/siwe/challenge",
+        { method: "POST", body: challengeBody },
         async (ctx) => {
-          const address = getAddress(ctx.body.address);
-          const { chainId } = ctx.body;
-
-          const nonce = await issueWalletNonce(
+          const message = await issueSiweChallenge(
             ctx.context.internalAdapter,
-            address,
-            chainId
+            { ...ctx.body, purpose: "sign-up" }
           );
-          const typedData = buildWalletAuthTypedData(address, chainId, nonce);
-
-          return ctx.json({ nonce, typedData });
+          return ctx.json({ message });
         }
       ),
 
-      eip712Register: createAuthEndpoint(
-        "/sign-up/eip712/register",
+      siweSignUpComplete: createAuthEndpoint(
+        "/sign-up/siwe/complete",
         {
           method: "POST",
           body: z.object({
+            message: z.string().min(1),
             signature: z.string().min(1),
             signature2: z.string().min(1),
-            address: z.string().min(1),
-            chainId: z.number().int().positive(),
-            nonce: z.string().min(1),
             email: z.email().optional(),
           }),
         },
         async (ctx) => {
-          const address = getAddress(ctx.body.address);
-          const { chainId, nonce, signature, signature2, email } = ctx.body;
+          const { message, signature, signature2, email } = ctx.body;
 
-          // Consume and validate nonce
-          await consumeNonce(
+          const { address, chainId } = await redeemOrThrow(
             ctx.context.internalAdapter,
-            address,
-            chainId,
-            nonce
+            { message, purpose: "sign-up", signature }
           );
-
-          // Reconstruct typed data and verify both signatures
-          const typedData = buildWalletAuthTypedData(address, chainId, nonce);
-          await verifySignature(signature, typedData, address);
-          await verifySignature(signature2, typedData, address);
+          if (!(await isWalletSignature(address, message, signature2))) {
+            throw new APIError("UNAUTHORIZED", {
+              message: REDEMPTION_ERRORS.invalid_signature,
+            });
+          }
 
           // Enforce deterministic signatures server-side
           if (signature !== signature2) {
@@ -291,32 +395,32 @@ export const eip712Auth = (options: { emailDomainName: string }) => {
         }
       ),
 
-      eip712Verify: createAuthEndpoint(
-        "/sign-in/eip712/verify",
+      siweSignInChallenge: createAuthEndpoint(
+        "/sign-in/siwe/challenge",
+        { method: "POST", body: challengeBody },
+        async (ctx) => {
+          const message = await issueSiweChallenge(
+            ctx.context.internalAdapter,
+            { ...ctx.body, purpose: "sign-in" }
+          );
+          return ctx.json({ message });
+        }
+      ),
+
+      siweSignInComplete: createAuthEndpoint(
+        "/sign-in/siwe/complete",
         {
           method: "POST",
           body: z.object({
+            message: z.string().min(1),
             signature: z.string().min(1),
-            address: z.string().min(1),
-            chainId: z.number().int().positive(),
-            nonce: z.string().min(1),
           }),
         },
         async (ctx) => {
-          const address = getAddress(ctx.body.address);
-          const { chainId, nonce, signature } = ctx.body;
-
-          // Consume and validate nonce
-          await consumeNonce(
+          const { address, chainId } = await redeemOrThrow(
             ctx.context.internalAdapter,
-            address,
-            chainId,
-            nonce
+            { ...ctx.body, purpose: "sign-in" }
           );
-
-          // Reconstruct typed data and verify signature
-          const typedData = buildWalletAuthTypedData(address, chainId, nonce);
-          await verifySignature(signature, typedData, address);
 
           // Look up wallet — try exact chain first, then any chain
           const exactMatches = (await ctx.context.adapter.findMany({
