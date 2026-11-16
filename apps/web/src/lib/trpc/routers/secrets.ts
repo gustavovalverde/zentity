@@ -25,6 +25,7 @@ import {
 import { encryptedSecrets, secretWrappers } from "@/lib/db/schema/privacy";
 import {
   kekSourceSchema,
+  OPAQUE_CREDENTIAL_ID,
   prfSaltSchema,
   RECOVERY_KEY_CREDENTIAL_ID,
   secretTypeSchema,
@@ -41,12 +42,32 @@ import {
 } from "@/lib/privacy/secrets/storage.server";
 import { getVaultAccess } from "@/lib/privacy/secrets/vault-access";
 
-import { protectedProcedure, router } from "../server";
+import {
+  protectedProcedure,
+  requireRecoveryFactorChange,
+  router,
+} from "../server";
 
 const metadataSchema = z.record(z.string(), z.unknown()).nullable().optional();
 const sha256HexSchema = z.string().regex(/^[a-fA-F0-9]{64}$/);
 
 const VAULT_RESET_FRESHNESS_MS = 15 * 60 * 1000;
+
+const WALLET_CREDENTIAL_PREFIX = "wallet:";
+
+/**
+ * Ids that name a factor other than a passkey. A passkey wrapper under one
+ * would replace that factor's wrapper, since wrappers are keyed by
+ * (secret, credential id).
+ */
+function isReservedCredentialId(credentialId: string): boolean {
+  return (
+    credentialId === OPAQUE_CREDENTIAL_ID ||
+    credentialId === RECOVERY_KEY_CREDENTIAL_ID ||
+    credentialId === VAULT_KEY_CREDENTIAL_ID ||
+    credentialId.startsWith(WALLET_CREDENTIAL_PREFIX)
+  );
+}
 
 function assertUnlockingWrapper(input: {
   credentialId: string;
@@ -54,10 +75,13 @@ function assertUnlockingWrapper(input: {
   prfSalt?: string | undefined;
 }) {
   const valid =
-    (input.kekSource === "prf" && Boolean(input.prfSalt)) ||
-    (input.kekSource === "opaque" && input.credentialId === "opaque") ||
+    (input.kekSource === "prf" &&
+      Boolean(input.prfSalt) &&
+      !isReservedCredentialId(input.credentialId)) ||
+    (input.kekSource === "opaque" &&
+      input.credentialId === OPAQUE_CREDENTIAL_ID) ||
     (input.kekSource === "wallet" &&
-      input.credentialId.startsWith("wallet:")) ||
+      input.credentialId.startsWith(WALLET_CREDENTIAL_PREFIX)) ||
     (input.kekSource === "recovery_key" &&
       input.credentialId === RECOVERY_KEY_CREDENTIAL_ID);
   if (!valid) {
@@ -173,7 +197,17 @@ export const secretsRouter = router({
 
       assertWrapperForSecretType(input);
       const isRoot = input.secretType === VAULT_ROOT_SECRET_TYPE;
-      if (!isRoot) {
+      let mayReplaceRoot = false;
+      if (isRoot) {
+        const root = await getEncryptedSecretByUserAndType(
+          ctx.userId,
+          VAULT_ROOT_SECRET_TYPE
+        );
+        if (root && root.id !== input.secretId) {
+          await requireRecoveryFactorChange(ctx, "vault_root");
+          mayReplaceRoot = true;
+        }
+      } else {
         await requireVaultRoot(ctx.userId);
       }
 
@@ -195,6 +229,12 @@ export const secretsRouter = router({
         let replaced: string[] = [];
         if (existing && existing.id !== input.secretId) {
           if (isRoot) {
+            if (!mayReplaceRoot) {
+              throw new TRPCError({
+                code: "CONFLICT",
+                message: "Encryption keys changed. Please try again.",
+              });
+            }
             // A new vault key orphans every secret wrapped under the old one.
             replaced = await deleteVaultSecrets(ctx.userId, tx);
           } else {
@@ -296,6 +336,11 @@ export const secretsRouter = router({
     )
     .mutation(async ({ ctx, input }) => {
       assertUnlockingWrapper(input);
+      const writesRecoveryKey =
+        input.credentialId === RECOVERY_KEY_CREDENTIAL_ID;
+      if (writesRecoveryKey) {
+        await requireRecoveryFactorChange(ctx, "recovery_key");
+      }
       const root = await requireVaultRoot(ctx.userId);
       if (root.id !== input.secretId) {
         throw new TRPCError({
@@ -319,6 +364,9 @@ export const secretsRouter = router({
   removeCredential: protectedProcedure
     .input(z.object({ credentialId: z.string().min(1) }))
     .mutation(async ({ ctx, input }) => {
+      if (input.credentialId === RECOVERY_KEY_CREDENTIAL_ID) {
+        await requireRecoveryFactorChange(ctx, "recovery_key");
+      }
       const root = await requireVaultRoot(ctx.userId);
       const wrappers = await getSecretWrappersBySecretId(root.id);
 
@@ -358,6 +406,7 @@ export const secretsRouter = router({
         message: "Sign in again to start over with new keys.",
       });
     }
+    await requireRecoveryFactorChange(ctx, "vault_reset");
 
     const deletedSecretIds = await deleteVaultSecrets(ctx.userId);
     await clearIdentityBundleFheKey(ctx.userId);

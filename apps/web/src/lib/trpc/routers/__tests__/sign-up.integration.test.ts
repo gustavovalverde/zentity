@@ -6,6 +6,7 @@ import { eq } from "drizzle-orm";
 import { getAddress } from "viem";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { createAuthenticationContext } from "@/lib/auth/auth-context";
 import { db } from "@/lib/db/connection";
 import { users, walletAddresses } from "@/lib/db/schema/auth";
 import { signUpRouter } from "@/lib/trpc/routers/sign-up";
@@ -24,8 +25,16 @@ vi.mock("@/lib/email/transport", () => ({
 
 const WALLET = "0x1234567890abcdef1234567890abcdef12345678";
 
+/** A tRPC caller for a session the user opened with their password. */
 async function caller(userId: string) {
-  const { sessionId } = await createTestSession(userId);
+  const passwordSignIn = await createAuthenticationContext({
+    userId,
+    loginMethod: "opaque",
+    authenticatedAt: new Date(),
+    sourceKind: "better_auth",
+    referenceType: "session",
+  });
+  const { sessionId } = await createTestSession(userId, passwordSignIn.id);
   return signUpRouter.createCaller({
     authContext: null,
     flowId: null,
@@ -77,7 +86,7 @@ describe("signUp.completeAccountCreation", () => {
     mockSendEmail.mockResolvedValue("sent");
   });
 
-  describe("on an account that finished sign-up", () => {
+  describe("from a password session on a passkey account", () => {
     let userId: string;
     const originalEmail = "owner@example.com";
 

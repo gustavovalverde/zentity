@@ -191,6 +191,10 @@ import {
 } from "@/lib/auth/oidc/well-known";
 import { opaque } from "@/lib/auth/opaque/server";
 import { getTrustedOrigins, PASSKEY_RP_ID } from "@/lib/auth/origin";
+import {
+  readMagicLinkEmail,
+  recoveryFactorsPlugin,
+} from "@/lib/auth/recovery-factors";
 import { canManageOAuthClients } from "@/lib/auth/rp-admin";
 import { siweAuth } from "@/lib/auth/siwe/server";
 import {
@@ -820,36 +824,11 @@ async function beforeUpdateClientKeepSector(ctx: HookCtx) {
 // unverified. For OPAQUE and wallet users that row is the only credential.
 const EMAIL_PROOF_PROTECTED_PROVIDERS = ["opaque", "eip712"];
 
-// The magic-link plugin stores a token under this identifier (with its
-// default plain token storage).
-function magicLinkIdentifier(token: string): string {
-  return `magic-link:${token}`;
-}
-
 async function beforeMagicLinkProtectCredentials(ctx: HookCtx) {
   const token =
     typeof ctx.query?.token === "string" ? ctx.query.token : undefined;
-  if (!token) {
-    return;
-  }
-
-  const verification = await db
-    .select({ value: verifications.value })
-    .from(verifications)
-    .where(eq(verifications.identifier, magicLinkIdentifier(token)))
-    .limit(1)
-    .get();
-  if (!verification) {
-    return;
-  }
-
-  let email: unknown;
-  try {
-    email = (JSON.parse(verification.value) as { email?: unknown }).email;
-  } catch {
-    return;
-  }
-  if (typeof email !== "string") {
+  const email = token ? await readMagicLinkEmail(token) : null;
+  if (!email) {
     return;
   }
 
@@ -859,7 +838,7 @@ async function beforeMagicLinkProtectCredentials(ctx: HookCtx) {
     .innerJoin(accounts, eq(accounts.userId, users.id))
     .where(
       and(
-        eq(users.email, email.toLowerCase()),
+        eq(users.email, email),
         eq(users.emailVerified, false),
         inArray(accounts.providerId, EMAIL_PROOF_PROTECTED_PROVIDERS)
       )
@@ -2176,6 +2155,7 @@ export const auth = betterAuth({
       creatorRole: "owner",
     }),
     siweAuth({ emailDomainName: WALLET_EMAIL_DOMAIN }),
+    recoveryFactorsPlugin(),
     jwt({
       ...signingKeyOptions,
       jwks: {
