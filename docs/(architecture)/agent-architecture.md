@@ -636,7 +636,6 @@ flowchart LR
   C --> D["Agent-Assertion on CIBA request"]
   D --> E["Human approval via CIBA"]
   E --> F["Access token with sub + act.sub"]
-  F --> G["Optional RFC 8693 exchange (audience rebinding + claim narrowing)"]
 ```
 
 Each step narrows who can continue the flow. The architecture remains OAuth-native while keeping the human and the agent as separate principals.
@@ -708,7 +707,6 @@ The response includes:
 - `active`
 - caller-projected `sub` when the server can safely project the user identifier for the introspecting client
 - top-level `agent`, `task`, `capabilities`, `oversight`, `audit`
-- `delegation` when present on exchanged tokens
 - `zentity.attestation`
 - `zentity.lifecycle`
 
@@ -716,7 +714,7 @@ A relying party can ask whether an agent session is still active without learnin
 
 ### Agent JWKS
 
-`GET /api/auth/agent/jwks` publishes the signing keys used for agent-facing JWT verification: the same key set as `/api/auth/oauth2/jwks`, which holds the live signing keys and retired ones still inside the grace period. The discovery document points here, not to a separate experimental path. This is the key material a client needs for validating signed agent-facing JWTs and tokens issued by token exchange.
+`GET /api/auth/agent/jwks` publishes the signing keys used for agent-facing JWT verification: the same key set as `/api/auth/oauth2/jwks`, which holds the live signing keys and retired ones still inside the grace period. The discovery document points here, not to a separate experimental path. This is the key material a client needs for validating signed agent-facing JWTs. Tokens issued by token exchange are opaque, so a client checks them at the OAuth introspection endpoint (`/api/auth/oauth2/introspect`) instead.
 
 ### A2A discovery
 
