@@ -6,7 +6,6 @@ import { eq, inArray, lt } from "drizzle-orm";
 import { importJWK, jwtVerify } from "jose";
 import { z } from "zod";
 
-import { resolveAgentSubForClient } from "@/lib/agents/actor-subject";
 import { db } from "@/lib/db/connection";
 import {
   agentHosts,
@@ -314,11 +313,6 @@ export async function bindAgentAssertionToCibaRequest(
     return null;
   }
 
-  const pairwiseActSub = await resolveAgentSubForClient(
-    session.id,
-    cibaRow.clientId
-  );
-
   await cleanupExpiredAgentAssertionJtis();
 
   let bound = false;
@@ -349,7 +343,6 @@ export async function bindAgentAssertionToCibaRequest(
         taskId: assertion.taskId,
         taskHash: assertion.taskDescriptionHash,
         assertionVerified: true,
-        pairwiseActSub,
         attestationProvider: host.attestationProvider ?? null,
         attestationTier: host.attestationTier ?? "unverified",
       })

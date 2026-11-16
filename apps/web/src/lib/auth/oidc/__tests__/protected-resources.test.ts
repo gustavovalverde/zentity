@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 
-import { getProtectedResourceAudiences } from "@/lib/auth/oidc/haip/resource-metadata";
+import {
+  getProtectedResourceAudiences,
+  normalizeUserTokenResources,
+} from "@/lib/auth/oidc/haip/resource-metadata";
 
 const RESOURCE_CONFIG = {
   appUrl: "http://localhost:3000",
@@ -40,5 +43,43 @@ describe("protected resource registry", () => {
       (a) => a === "http://localhost:3000"
     ).length;
     expect(appUrlCount).toBe(1);
+  });
+});
+
+describe("normalizeUserTokenResources", () => {
+  // R15: a JWT access token's subject is pairwise for one audience.
+  it("refuses two resources outside Zentity", () => {
+    expect(() =>
+      normalizeUserTokenResources(
+        {
+          resource: [
+            "http://localhost:3200",
+            "urn:zentity:wallet:protected-resources-test",
+          ],
+        },
+        { allowWalletAudience: true }
+      )
+    ).toThrow(
+      expect.objectContaining({
+        body: expect.objectContaining({
+          error: "invalid_target",
+          error_description: "request one resource outside Zentity per token",
+        }),
+      })
+    );
+  });
+
+  it("keeps one external resource next to Zentity-hosted ones", () => {
+    const params: Record<string, unknown> = {
+      resource: [
+        "http://localhost:3200/",
+        "http://localhost:3200",
+        "http://localhost:3000/api/auth/oauth2/userinfo",
+      ],
+    };
+
+    normalizeUserTokenResources(params, { allowWalletAudience: false });
+
+    expect(params.resource).toEqual(["http://localhost:3200"]);
   });
 });

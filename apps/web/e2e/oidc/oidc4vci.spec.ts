@@ -3,6 +3,7 @@ import { expect, test } from "@playwright/test";
 const TRAILING_SLASHES_REGEX = /\/+$/;
 
 import {
+  BUILT_IN_WALLET_CLIENT_ID,
   createCredentialOffer,
   createDpopBinding,
   createIssuerSession,
@@ -56,7 +57,7 @@ test.describe("OIDC4VCI issuer", () => {
     request,
   }) => {
     const { cookieHeader, userId } = await createIssuerSession(request);
-    const clientId = await createWalletClient(request, cookieHeader);
+    const clientId = BUILT_IN_WALLET_CLIENT_ID;
     const dpopBinding = await createDpopBinding();
     const { preAuthorizedCode } = await createCredentialOffer(request, {
       cookieHeader,
@@ -110,13 +111,43 @@ test.describe("OIDC4VCI issuer", () => {
     });
   });
 
+  // A registered wallet is pairwise, and the OIDC4VCI plugin cannot resolve a
+  // pairwise subject to a user (U25 in
+  // docs/adr/platform/0002-better-auth-patches.md).
+  test("refuses a credential offer for a registered wallet", async ({
+    request,
+  }) => {
+    const { cookieHeader, userId } = await createIssuerSession(request);
+    const clientId = await createWalletClient(request, cookieHeader);
+
+    const res = await request.post(
+      `${oidcConfig.authBaseUrl}/oidc4vci/credential-offer`,
+      {
+        data: {
+          client_id: clientId,
+          userId,
+          credential_configuration_id:
+            oidcConfig.identityCredentialConfigurationId,
+        },
+        headers: { Cookie: cookieHeader, ...originHeaders },
+      }
+    );
+
+    expect(res.status()).toBe(400);
+    expect(await res.json()).toEqual({
+      error: "invalid_client",
+      error_description:
+        "credentials are issued only to wallet clients with public subjects, and this client is pairwise",
+    });
+  });
+
   test("rejects Draft 11 format-based credential requests", async ({
     request,
   }) => {
     // OID4VCI 1.0 identifies the credential by credential_identifier or
     // credential_configuration_id; a Draft 11 format + vct request is refused.
     const { cookieHeader, userId } = await createIssuerSession(request);
-    const clientId = await createWalletClient(request, cookieHeader);
+    const clientId = BUILT_IN_WALLET_CLIENT_ID;
     const dpopBinding = await createDpopBinding();
     const { preAuthorizedCode } = await createCredentialOffer(request, {
       cookieHeader,
@@ -148,7 +179,7 @@ test.describe("OIDC4VCI issuer", () => {
 
   test("rejects reuse of a c_nonce", async ({ request }) => {
     const { cookieHeader, userId } = await createIssuerSession(request);
-    const clientId = await createWalletClient(request, cookieHeader);
+    const clientId = BUILT_IN_WALLET_CLIENT_ID;
     const dpopBinding = await createDpopBinding();
     const { preAuthorizedCode } = await createCredentialOffer(request, {
       cookieHeader,
@@ -189,8 +220,7 @@ test.describe("OIDC4VCI issuer", () => {
   });
 
   test("rejects invalid pre-authorized codes", async ({ request }) => {
-    const { cookieHeader } = await createIssuerSession(request);
-    const clientId = await createWalletClient(request, cookieHeader);
+    const clientId = BUILT_IN_WALLET_CLIENT_ID;
     const dpopBinding = await createDpopBinding();
     const tokenRes = await exchangePreAuthorizedCode(request, {
       preAuthorizedCode: "not-a-real-code",
@@ -206,7 +236,7 @@ test.describe("OIDC4VCI issuer", () => {
     request,
   }) => {
     const { cookieHeader, userId } = await createIssuerSession(request);
-    const clientId = await createWalletClient(request, cookieHeader);
+    const clientId = BUILT_IN_WALLET_CLIENT_ID;
     const dpopBinding = await createDpopBinding();
     const { preAuthorizedCode } = await createCredentialOffer(request, {
       cookieHeader,
@@ -268,7 +298,7 @@ test.describe("OIDC4VCI issuer", () => {
     request,
   }) => {
     const { cookieHeader, userId } = await createIssuerSession(request);
-    const clientId = await createWalletClient(request, cookieHeader);
+    const clientId = BUILT_IN_WALLET_CLIENT_ID;
     const dpopBinding = await createDpopBinding();
     const { preAuthorizedCode } = await createCredentialOffer(request, {
       cookieHeader,

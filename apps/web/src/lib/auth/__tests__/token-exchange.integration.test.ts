@@ -12,15 +12,14 @@ const WALLET_AUDIENCE = vi.hoisted(() => {
 import { POST as registerClient } from "@/app/api/auth/oauth2/register/route";
 import { env } from "@/env";
 import { auth } from "@/lib/auth/auth-config";
-import { AUTHENTICATION_CONTEXT_CLAIM } from "@/lib/auth/auth-context";
 import { encryptPrivateKey } from "@/lib/auth/oidc/jwt-signer";
 import { resolveSubForClientId } from "@/lib/auth/oidc/pairwise";
 import { introspectZentityAccessToken } from "@/lib/auth/oidc/resource-principal";
 import { TOKEN_EXCHANGE_GRANT_TYPE } from "@/lib/auth/oidc/token-exchange";
 import { getAuthIssuer } from "@/lib/auth/oidc/well-known";
 import { db } from "@/lib/db/connection";
-import { agentTokenSnapshots } from "@/lib/db/schema/agent";
 import { sessions } from "@/lib/db/schema/auth";
+import { cibaApprovals } from "@/lib/db/schema/ciba";
 import {
   jwks as jwksTable,
   oauthAccessTokens,
@@ -238,12 +237,6 @@ async function insertOpaqueToken(input: {
   userId: string;
 }) {
   const token = `opaque-${crypto.randomUUID()}`;
-  const accessTokenClaims = {
-    ...input.accessTokenClaims,
-    ...(input.authContextId
-      ? { [AUTHENTICATION_CONTEXT_CLAIM]: input.authContextId }
-      : {}),
-  };
   await db
     .insert(oauthAccessTokens)
     .values({
@@ -251,16 +244,16 @@ async function insertOpaqueToken(input: {
       clientId: input.clientId ?? AGENT_ID,
       userId: input.userId,
       sessionId: input.sessionId ?? null,
+      authContextId: input.authContextId ?? null,
       referenceId: input.referenceId ?? crypto.randomUUID(),
       scopes: JSON.stringify(input.scopes.split(" ")),
       expiresAt: input.expiresAt ?? new Date(Date.now() + 3_600_000),
       confirmation: input.dpopKeyPair
         ? JSON.stringify({ jkt: await jwkThumbprint(input.dpopKeyPair) })
         : null,
-      accessTokenClaims:
-        Object.keys(accessTokenClaims).length > 0
-          ? JSON.stringify(accessTokenClaims)
-          : null,
+      accessTokenClaims: input.accessTokenClaims
+        ? JSON.stringify(input.accessTokenClaims)
+        : null,
     })
     .run();
   return token;
@@ -464,6 +457,45 @@ describe("Token Exchange (RFC 8693)", () => {
   });
 
   describe("resource server exchange", () => {
+    // T3 leftover: a resource server holding a user's token could obtain a
+    // bootstrap token and register agents for that user.
+    it("refuses bootstrap scopes to a resource server", async () => {
+      const resourceServerId = "exchange-bootstrap-rs";
+      await insertClient(resourceServerId, {
+        clientSecret: hashToken(MCP_SECRET),
+        tokenEndpointAuthMethod: "client_secret_basic",
+        redirectUris: JSON.stringify([]),
+        responseTypes: JSON.stringify([]),
+        grantTypes: JSON.stringify([TOKEN_EXCHANGE_GRANT_TYPE]),
+        scopes: JSON.stringify(["openid", ...BOOTSTRAP_SCOPE.split(" ")]),
+        skipConsent: true,
+      });
+      await db
+        .insert(oauthClientResources)
+        .values({
+          id: crypto.randomUUID(),
+          clientId: resourceServerId,
+          resourceId: MCP_AUDIENCE,
+        })
+        .run();
+      const remote = await remoteHostToken(`openid ${BOOTSTRAP_SCOPE}`);
+
+      const { status, json } = await exchangeAsMcp(
+        remote.token,
+        { scope: BOOTSTRAP_SCOPE },
+        resourceServerId
+      );
+
+      expect({ status, json }).toEqual({
+        status: 400,
+        json: {
+          error: "invalid_scope",
+          error_description:
+            "Bootstrap token exchanges must exchange the client's own DPoP-bound token",
+        },
+      });
+    });
+
     it("lets the linked MCP client exchange a remote host's token, bound to its own key", async () => {
       const remote = await remoteHostToken();
 
@@ -483,7 +515,8 @@ describe("Token Exchange (RFC 8693)", () => {
         dpopJkt: await jwkThumbprint(dpopKeyPair),
         userId,
       });
-      expect(await db.select().from(agentTokenSnapshots).all()).toEqual([]);
+      // An exchange records no approval token.
+      expect(await db.select().from(cibaApprovals).all()).toEqual([]);
     });
 
     // R26: the MCP server's subject is its own pairwise subject.

@@ -18,7 +18,6 @@ import {
   agentSessions,
   capabilityUsageLedger,
 } from "@/lib/db/schema/agent";
-import { pairwiseSubjects } from "@/lib/db/schema/oauth-provider";
 
 const ONE_DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -611,16 +610,6 @@ export async function revokeSessionForActor(
       .update(agentSessions)
       .set({ status: "revoked" })
       .where(eq(agentSessions.id, sessionId));
-
-    await tx
-      .delete(pairwiseSubjects)
-      .where(
-        and(
-          eq(pairwiseSubjects.subjectType, "agent_session"),
-          eq(pairwiseSubjects.subjectId, sessionId)
-        )
-      )
-      .run();
 
     await tx
       .update(agentSessionGrants)

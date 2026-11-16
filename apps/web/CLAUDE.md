@@ -33,7 +33,7 @@ Each sub-directory is a bounded context; the filename inside identifies the conc
 
 | Path | Bounded context |
 |---|---|
-| `agents/` | Agent host/session model, host attestation, capability grants, pairwise actor subject, approval evaluate/resolve, web push |
+| `agents/` | Agent host/session model, host attestation, capability grants, the per-sector actor subject (`actor-subject.ts`), the CIBA approval record a token is read from (`approval-record.ts`), approval evaluate/resolve, web push |
 | `assurance/` | Assurance tier computation, security posture queries, OIDC claims, feature gating |
 | `auth/` | Better-auth config, session read (`session.ts`) + client cleanup (`session-cleanup.ts`), resource-auth (Bearer/DPoP), auth context events, the reserved address domain of Zentity's own service accounts (`service-account.ts`), per-method sub-dirs: `opaque/`, `passkey/` (PRF evaluation, and `step-up.ts`, the request-bound passkey confirmation for CIBA approvals), `siwe/`, `oidc/` |
 | `auth/oidc/` | OIDC provider: JWT signing, disclosure, HAIP (DPoP/PAR/JARM), back-channel logout, step-up, token exchange (`token-exchange.ts`), and the MCP HTTP client provisioning behind `pnpm mcp:provision` (`mcp-client.ts`) |

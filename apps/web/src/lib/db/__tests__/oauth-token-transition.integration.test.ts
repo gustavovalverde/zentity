@@ -24,6 +24,12 @@ function cibaApprovalSchema() {
   );
 }
 
+function cibaApprovalColumns() {
+  return db.all<{ name: string; type: string; notnull: number }>(
+    sql`SELECT name, type, "notnull" FROM pragma_table_info('ciba_approval') ORDER BY cid`
+  );
+}
+
 async function accessTokenAuthContext() {
   return {
     columns: await db.all(
@@ -81,6 +87,7 @@ describe("deploy backfill", () => {
       "ciba_approval_agent_session_id_idx",
       "ciba_approval_client_id_idx",
       "ciba_approval_reference_id_unique",
+      "ciba_approval_token_jti_unique",
       "ciba_approval_user_decided_idx",
       "sqlite_autoindex_ciba_approval_1",
     ]);
@@ -95,6 +102,26 @@ describe("deploy backfill", () => {
       "ciba_approval: already present"
     );
     expect(await cibaApprovalSchema()).toEqual(pushed);
+  });
+
+  it("adds the token columns to a ciba_approval created without them", async () => {
+    const pushedColumns = await cibaApprovalColumns();
+    const pushedIndexes = (await cibaApprovalSchema()).map((row) => row.name);
+    await db.run(sql`DROP INDEX ciba_approval_token_jti_unique`);
+    for (const column of ["token_jti", "token_audience", "token_issued_at"]) {
+      await db.run(sql.raw(`ALTER TABLE ciba_approval DROP COLUMN ${column}`));
+    }
+
+    expect(await runTransitionScript()).toContain(
+      "ciba_approval token columns added: 3"
+    );
+    expect(await cibaApprovalColumns()).toEqual(pushedColumns);
+    expect((await cibaApprovalSchema()).map((row) => row.name)).toEqual(
+      pushedIndexes
+    );
+    expect(await runTransitionScript()).toContain(
+      "ciba_approval token columns added: 0"
+    );
   });
 
   it("adds oauth_access_token.auth_context_id as db:push does, before the release serves traffic", async () => {

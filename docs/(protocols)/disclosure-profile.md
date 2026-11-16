@@ -46,11 +46,11 @@ Proof claims are derived from the user's account identity snapshot. No PII is in
 | `proof:compliance` | `policy_version`, `verification_time`, `attestation_expires_at` | id_token, userinfo |
 | `proof:chip` | `chip_verified`, `chip_verification_method` | id_token, userinfo |
 | `proof:humanity` | `humanity_proven` (boolean) | id_token, userinfo |
-| `proof:sybil` | `sybil_nullifier` | **access_token only** |
-| `proof:humanity:rp_unique` | `rp_unique_humanity_id` | **access_token only** |
+| `proof:sybil` | `sybil_nullifier` | **opaque access_token only** |
+| `proof:humanity:rp_unique` | `rp_unique_humanity_id` | **opaque access_token only** |
 | `poh` | (no id_token/userinfo claims) | dedicated [Proof of Human endpoint](oauth-integrations.md#proof-of-human) |
 
-`proof:sybil` is special: its claim (`sybil_nullifier`) is a per-RP pseudonymous nullifier derived from `HMAC-SHA256(DEDUP_HMAC_SECRET, nullifierSeed + "|rp|" + clientId)`. `nullifierSeed` is bundle-owned state on `identity_bundles`, itself an HMAC-derived value computed at credential write time (`HMAC-SHA256(DEDUP_HMAC_SECRET, rawKey || source)`) so no raw chip identifier reaches the bundle. The seed is written from the first verified credential, preserved across later credential additions, and cleared only on full identity revocation. The claim appears only in access tokens, never in id_tokens or userinfo, because putting per-RP pseudonyms in shared claim surfaces would create correlation vectors.
+`proof:sybil` is special: its claim (`sybil_nullifier`) is a per-RP pseudonymous nullifier derived from `HMAC-SHA256(DEDUP_HMAC_SECRET, nullifierSeed + "|rp|" + clientId)`. `nullifierSeed` is bundle-owned state on `identity_bundles`, itself an HMAC-derived value computed at credential write time (`HMAC-SHA256(DEDUP_HMAC_SECRET, rawKey || source)`) so no raw chip identifier reaches the bundle. The seed is written from the first verified credential, preserved across later credential additions, and cleared only on full identity revocation. The claim appears only in opaque access tokens, which Zentity resolves at introspection, never in id_tokens, userinfo, or a JWT access token for a resource server outside Zentity, because putting per-RP pseudonyms in shared claim surfaces would create correlation vectors.
 
 `proof:humanity` exposes a single boolean (`humanity_proven`). Provenance — how many providers, which providers — is intentionally NOT exposed in id_tokens or userinfo. RPs that need a stable per-user pseudonym request `proof:humanity:rp_unique` instead.
 

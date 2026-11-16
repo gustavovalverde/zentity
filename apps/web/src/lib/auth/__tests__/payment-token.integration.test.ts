@@ -37,14 +37,18 @@ vi.mock("@/env", async (importOriginal) => {
 
 import crypto from "node:crypto";
 
+import { PAYMENT_AUTHORIZATION_CAPABILITY } from "@zentity/sdk/protocol";
+
 import { GET as listRevocations } from "@/app/api/auth/oauth2/revoked/route";
 import { env } from "@/env";
-import { resolveAgentSubForClient } from "@/lib/agents/actor-subject";
 import { auth } from "@/lib/auth/auth-config";
 import { createAuthenticationContext } from "@/lib/auth/auth-context";
-import { stageFinalCibaDisclosure } from "@/lib/auth/oidc/disclosure/context";
+import {
+  RELEASE_BINDING_CLAIM,
+  stageFinalCibaDisclosure,
+} from "@/lib/auth/oidc/disclosure/context";
 import { createScopeHash } from "@/lib/auth/oidc/disclosure/delivery";
-import { resolveSubForClientId } from "@/lib/auth/oidc/pairwise";
+import { pairwiseValue, resolveSubForClientId } from "@/lib/auth/oidc/pairwise";
 import { getAuthIssuer } from "@/lib/auth/oidc/well-known";
 import { db } from "@/lib/db/connection";
 import { agentHosts, agentSessions } from "@/lib/db/schema/agent";
@@ -60,6 +64,7 @@ import {
 } from "@/test-utils/ciba-decision-test-utils";
 import {
   createTestCibaApproval,
+  createTestCibaRequest,
   createTestUser,
   hashCibaAuthReqId,
   resetDatabase,
@@ -342,6 +347,8 @@ describe("payment_authorization token", () => {
           authContextId: approval.id,
           agentSessionId: input.agent.sessionId,
           hostId: input.agent.hostId,
+          approvalMethod: "user_verification",
+          authorizationDetails: JSON.stringify([PAYMENT_RAR]),
         },
       });
     }
@@ -425,6 +432,27 @@ describe("payment_authorization token", () => {
     const claims = decodeJwt(accessToken);
     expect((claims.exp ?? 0) - (claims.iat ?? 0)).toBe(120);
     expect(claims.ba_sub).toEqual(expect.any(String));
+    // R8: a staged release adds only its binding claim; the proof scopes add
+    // no anti-abuse handle to a token for an outside audience.
+    expect(Object.keys(claims).toSorted()).toEqual(
+      [
+        "iss",
+        "sub",
+        "ba_sub",
+        "aud",
+        "azp",
+        "client_id",
+        "scope",
+        "iat",
+        "exp",
+        "jti",
+        "cnf",
+        "reference_id",
+        "authorization_details",
+        "act",
+        RELEASE_BINDING_CLAIM,
+      ].toSorted()
+    );
 
     const userInfo = await fetchUserInfo(accessToken, dpopKeyPair);
     expect(userInfo).toEqual({
@@ -437,16 +465,119 @@ describe("payment_authorization token", () => {
     });
   });
 
+  async function issueMcpToken(clientId: string) {
+    const { authReqId } = await createTestCibaRequest({
+      clientId,
+      userId,
+      status: "approved",
+      resources: JSON.stringify([env.MCP_PUBLIC_URL]),
+    });
+    const token = await postTokenWithDpop({
+      grant_type: CIBA_GRANT_TYPE,
+      auth_req_id: authReqId,
+      client_id: clientId,
+    });
+    if (token.status !== 200) {
+      throw new Error(`token request answered ${token.status}`);
+    }
+    return token;
+  }
+
+  // R1: a client-keyed subject would let the MCP server and the wallet join
+  // what each learns about the user.
+  it("gives each audience of one client its own subject", async () => {
+    const wallet = await pollToken((await approvePayment({})).authReqId);
+    const mcp = await issueMcpToken(CLIENT_ID);
+    const walletSub = decodeJwt(wallet.json.access_token as string).sub;
+    const mcpSub = decodeJwt(mcp.json.access_token as string).sub;
+
+    expect(decodeJwt(wallet.json.id_token as string).sub).toBe(loginHint);
+    expect(new Set([walletSub, mcpSub, loginHint, userId]).size).toBe(4);
+    for (const token of [wallet, mcp]) {
+      const userInfo = await fetchUserInfo(
+        token.json.access_token as string,
+        token.dpopKeyPair
+      );
+      expect(userInfo).toEqual({
+        status: 200,
+        body: expect.objectContaining({ sub: loginHint }),
+      });
+    }
+  });
+
+  it("gives two clients different subjects at one audience", async () => {
+    const otherClientId = "payment-token-other-agent";
+    await insertCibaClient(otherClientId, {});
+
+    const first = await issueMcpToken(CLIENT_ID);
+    const second = await issueMcpToken(otherClientId);
+
+    expect(decodeJwt(first.json.access_token as string).sub).not.toBe(
+      decodeJwt(second.json.access_token as string).sub
+    );
+  });
+
+  // R2: the wallet token names the agent only by its pairwise act.sub, and
+  // what the approval authorizes goes to the client in the token response.
   it("keeps the actor Zentity computed for a verified agent", async () => {
     const agent = await createRegisteredAgent(userId);
-    const { authReqId } = await approvePayment({ agent });
+    const { authReqId, authReqIdHash } = await approvePayment({ agent });
 
-    const claims = decodeJwt(
-      (await pollToken(authReqId)).json.access_token as string
+    const response = (await pollToken(authReqId)).json;
+    const claims = decodeJwt(response.access_token as string);
+    // R8: the wallet reads aud, jti, exp, cnf, and authorization_details;
+    // nothing else beyond the RFC 9068 and provider claims reaches it.
+    expect(Object.keys(claims).toSorted()).toEqual(
+      [
+        "iss",
+        "sub",
+        "ba_sub",
+        "aud",
+        "azp",
+        "client_id",
+        "scope",
+        "iat",
+        "exp",
+        "jti",
+        "cnf",
+        "reference_id",
+        "authorization_details",
+        "act",
+      ].toSorted()
     );
-    expect(claims.sub).toBe(loginHint);
-    expect(claims.act).toMatchObject({
-      sub: await resolveAgentSubForClient(agent.sessionId, CLIENT_ID),
+    // R4: the request hash appears once, as the token's reference_id.
+    expect(JSON.stringify(claims).split(authReqIdHash).length - 1).toBe(1);
+    expect(JSON.stringify(response)).not.toContain(agent.sessionId);
+    expect(JSON.stringify(response)).not.toContain(agent.hostId);
+    for (const claim of [
+      "task",
+      "audit",
+      "oversight",
+      "capabilities",
+      "delegation",
+      "aap_claims_version",
+    ]) {
+      expect(claims).not.toHaveProperty(claim);
+    }
+    expect(response).toEqual(
+      expect.objectContaining({
+        capabilities: [{ action: PAYMENT_AUTHORIZATION_CAPABILITY }],
+        oversight: {
+          method: "user_verification",
+          approved_at: expect.any(Number),
+        },
+        delegation: { depth: 0, max_depth: 1 },
+        aap_claims_version: 2,
+      })
+    );
+    expect(claims.sub).toBe(
+      await pairwiseValue(`client/${CLIENT_ID} ${WALLET_AUDIENCE}`, userId)
+    );
+    expect(claims.act).toEqual({
+      sub: await pairwiseValue(
+        `client/${CLIENT_ID} ${WALLET_AUDIENCE}`,
+        agent.sessionId
+      ),
       sub_profile: "service",
     });
   });
@@ -623,6 +754,22 @@ describe("wallet audience outside a CIBA payment", () => {
       new Request(
         `${AUTH_URL}/oauth2/authorize?${new URLSearchParams(authorizeQuery)}`
       )
+    );
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual(WALLET_TARGET);
+  });
+
+  it("is refused beside another resource in a form-encoded authorization request", async () => {
+    const response = await auth.handler(
+      new Request(`${AUTH_URL}/oauth2/authorize`, {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams([
+          ...Object.entries(authorizeQuery),
+          ["resource", env.MCP_PUBLIC_URL],
+        ]),
+      })
     );
 
     expect(response.status).toBe(400);

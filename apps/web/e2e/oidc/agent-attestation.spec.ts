@@ -2,6 +2,7 @@ import { expect, test } from "@playwright/test";
 import { decodeJwt } from "jose";
 
 import {
+  cibaLoginHint,
   createDpopBinding,
   createIssuerSession,
   decideCibaRequest,
@@ -42,7 +43,7 @@ test.describe("Registered agent assertion in CIBA flow", () => {
     const bcRes = await request.post(`${AUTH_BASE_URL}/oauth2/bc-authorize`, {
       form: {
         client_id: clientId,
-        login_hint: session.userId,
+        login_hint: await cibaLoginHint(clientId, session.userId),
         scope: "openid",
         binding_message: "Agent claims E2E test",
         agent_claims: agentClaims,
@@ -96,7 +97,7 @@ test.describe("Registered agent assertion in CIBA flow", () => {
     const bcRes = await request.post(`${AUTH_BASE_URL}/oauth2/bc-authorize`, {
       form: {
         client_id: clientId,
-        login_hint: session.userId,
+        login_hint: await cibaLoginHint(clientId, session.userId),
         scope: "openid",
         binding_message: "No agent claims test",
         resource: MCP_RESOURCE,

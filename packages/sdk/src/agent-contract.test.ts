@@ -8,8 +8,8 @@ const ISSUER = "https://zentity.example";
 
 function configurationDocument() {
   return {
-    aap_claims_version: 1,
-    act_did_emission_policy: "attested_hosts_only",
+    aap_claims_version: 2,
+    act_did_emission_policy: "never",
     approval_methods: ["ciba"],
     approval_page_url_template: `${ISSUER}/approve/{request_id}`,
     bootstrap_token_exchange: {
@@ -59,7 +59,7 @@ describe("agent contract", () => {
     expect(() =>
       agentConfigurationSchema.parse({
         ...configurationDocument(),
-        aap_claims_version: 2,
+        aap_claims_version: 1,
       })
     ).toThrow();
   });

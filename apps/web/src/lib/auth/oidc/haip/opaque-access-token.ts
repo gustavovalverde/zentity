@@ -4,8 +4,40 @@ import type { OAuthActorClaim } from "@better-auth/oauth-provider";
 
 import { createHash, randomBytes } from "node:crypto";
 
+import { eq } from "drizzle-orm";
+
 import { db } from "@/lib/db/connection";
 import { oauthAccessTokens } from "@/lib/db/schema/oauth-provider";
+
+/**
+ * Zentity's opaque access tokens live in the OAuth provider's token store, so
+ * the provider validates, introspects, and revokes them like natively issued
+ * ones, `act` and the per-token `accessTokenClaims` included. Zentity keeps
+ * one extension column the provider never reads: the authentication context
+ * of a token issued without a session. Introspection does not return it, so
+ * no client learns the id of the authentication behind a token.
+ */
+
+// The provider's default `storeTokens: "hashed"` storage key.
+function hashOpaqueAccessToken(token: string): string {
+  return createHash("sha256").update(token).digest("base64url");
+}
+
+/**
+ * Reads the authentication context of an opaque access token. Validate the
+ * token with the provider first; this read checks nothing.
+ */
+export async function loadOpaqueAccessTokenAuthContextId(
+  token: string
+): Promise<string | null> {
+  const row = await db
+    .select({ authContextId: oauthAccessTokens.authContextId })
+    .from(oauthAccessTokens)
+    .where(eq(oauthAccessTokens.token, hashOpaqueAccessToken(token)))
+    .limit(1)
+    .get();
+  return row?.authContextId ?? null;
+}
 
 /**
  * Mints an opaque access token in the OAuth provider's token store, so
@@ -18,6 +50,7 @@ import { oauthAccessTokens } from "@/lib/db/schema/oauth-provider";
 export async function mintOpaqueAccessToken(input: {
   accessTokenClaims?: Record<string, unknown> | undefined;
   act?: OAuthActorClaim | undefined;
+  authContextId?: string | undefined;
   clientId: string;
   dpopJkt?: string | undefined;
   expiresAt: Date;
@@ -31,10 +64,10 @@ export async function mintOpaqueAccessToken(input: {
   await db
     .insert(oauthAccessTokens)
     .values({
-      // The provider's default `storeTokens: "hashed"` storage key.
-      token: createHash("sha256").update(token).digest("base64url"),
+      token: hashOpaqueAccessToken(token),
       clientId: input.clientId,
       sessionId: input.sessionId ?? null,
+      authContextId: input.authContextId ?? null,
       userId: input.userId,
       referenceId: input.referenceId,
       scopes: JSON.stringify(input.scopes),

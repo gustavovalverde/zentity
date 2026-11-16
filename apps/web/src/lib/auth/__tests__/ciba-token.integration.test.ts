@@ -1,19 +1,15 @@
 import crypto from "node:crypto";
 
-import { encodeEd25519DidKeyFromJwk } from "@zentity/sdk/protocol";
 import { makeSignature } from "better-auth/crypto";
 import { eq } from "drizzle-orm";
 import { decodeJwt } from "jose";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { env } from "@/env";
-import { resolveAgentSubForClient } from "@/lib/agents/actor-subject";
 import { auth } from "@/lib/auth/auth-config";
-import {
-  AUTHENTICATION_CONTEXT_CLAIM,
-  createAuthenticationContext,
-} from "@/lib/auth/auth-context";
+import { createAuthenticationContext } from "@/lib/auth/auth-context";
 import { createCibaApproval } from "@/lib/auth/oidc/ciba";
+import { pairwiseValue } from "@/lib/auth/oidc/pairwise";
 import { db } from "@/lib/db/connection";
 import { agentHosts, agentSessions } from "@/lib/db/schema/agent";
 import { cibaApprovals, cibaRequests } from "@/lib/db/schema/ciba";
@@ -31,11 +27,6 @@ import { postTokenWithDpop } from "@/test-utils/dpop-test-utils";
 const CIBA_GRANT_TYPE = "urn:openid:params:grant-type:ciba";
 const TEST_CLIENT_ID = "ciba-test-agent";
 const TEST_RESOURCE = "http://localhost:3000/api/auth";
-const HOST_DID = encodeEd25519DidKeyFromJwk({
-  crv: "Ed25519",
-  kty: "OKP",
-  x: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
-});
 let defaultAuthContextId: string;
 
 async function createTestClient(clientId = TEST_CLIENT_ID) {
@@ -152,13 +143,9 @@ async function inspectCibaAccessToken(
     if (typeof payload.jti !== "string" || payload.jti.length === 0) {
       throw new Error("Expected JWT access token to carry a jti");
     }
-    if (
-      authContextId &&
-      payload[AUTHENTICATION_CONTEXT_CLAIM] !== authContextId
-    ) {
-      throw new Error(
-        `Expected JWT auth context ${authContextId}, got ${String(payload[AUTHENTICATION_CONTEXT_CLAIM])}`
-      );
+    // R10: the approval's authentication context stays on the server.
+    if ("zentity_auth_context_id" in payload) {
+      throw new Error("Expected no authentication context id in the JWT");
     }
     return { kind: "jwt" as const, payload };
   }
@@ -177,11 +164,9 @@ async function inspectCibaAccessToken(
       `Expected opaque token userId ${userId}, got ${String(record.userId)}`
     );
   }
-  const storedAuthContextId =
-    record.accessTokenClaims[AUTHENTICATION_CONTEXT_CLAIM];
-  if (authContextId && storedAuthContextId !== authContextId) {
+  if (authContextId && record.authContextId !== authContextId) {
     throw new Error(
-      `Expected opaque token auth context ${authContextId}, got ${String(storedAuthContextId)}`
+      `Expected opaque token auth context ${authContextId}, got ${String(record.authContextId)}`
     );
   }
   return { kind: "opaque" as const, record };
@@ -372,54 +357,45 @@ describe("CIBA token endpoint", () => {
       userId,
       defaultAuthContextId
     );
+    expect(tokenShape.kind).toBe("jwt");
     if (tokenShape.kind === "jwt") {
       expect(tokenShape.payload).not.toHaveProperty("agent_sub");
       expect(tokenShape.payload).not.toHaveProperty("zentity_context_id");
       expect(tokenShape.payload).not.toHaveProperty("zentity_release_id");
-      const actorId = await resolveAgentSubForClient(sessionId, TEST_CLIENT_ID);
+      // Every audience is Zentity-hosted, so the actor is pairwise in the
+      // client's own sector, its first redirect host.
       expect(tokenShape.payload.act).toEqual({
-        did: HOST_DID,
-        host_attestation: "attested",
-        host_id: hostId,
-        session_id: sessionId,
-        sub: actorId,
+        sub: await pairwiseValue("localhost", sessionId),
         sub_profile: "service",
-        type: "mcp-agent",
       });
-      expect(tokenShape.payload.task).toEqual({
-        constraints: [{ field: "merchant", op: "eq", value: "Test Store" }],
-        created_at: expect.any(Number),
-        description: "purchase",
-        expires_at: expect.any(Number),
-        hash: expect.any(String),
-      });
-      expect(tokenShape.payload.capabilities).toEqual([
-        {
-          action: "purchase",
-          constraints: [{ field: "merchant", op: "eq", value: "Test Store" }],
-        },
-      ]);
-      expect(tokenShape.payload.oversight).toEqual({
-        approval_id: "grant-123",
-        approved_at: expect.any(Number),
-        method: "capability_grant",
-      });
-      // auth_req_id is hashed at rest (it is a bearer credential); the audit
-      // correlation claim carries the hash, never the raw value.
-      const authReqIdHash = hashCibaAuthReqId(authReqId);
-      expect(tokenShape.payload.audit).toEqual({
-        ciba_request_id: authReqIdHash,
-        context_id: defaultAuthContextId,
-        release_id: "dev",
-        request_id: authReqIdHash,
-      });
-      expect(tokenShape.payload.delegation).toEqual({
-        depth: 0,
-        max_depth: 1,
-        parent_jti: null,
-      });
-      expect(tokenShape.payload.aap_claims_version).toBe(1);
+      for (const claim of [
+        "task",
+        "audit",
+        "oversight",
+        "capabilities",
+        "delegation",
+        "aap_claims_version",
+      ]) {
+        expect(tokenShape.payload).not.toHaveProperty(claim);
+      }
     }
+    // The token response states what the approval authorizes.
+    expect(json).toEqual(
+      expect.objectContaining({
+        capabilities: [
+          {
+            action: "purchase",
+            constraints: [{ field: "merchant", op: "eq", value: "Test Store" }],
+          },
+        ],
+        oversight: {
+          method: "capability_grant",
+          approved_at: expect.any(Number),
+        },
+        delegation: { depth: 0, max_depth: 1 },
+        aap_claims_version: 2,
+      })
+    );
   });
 
   it("does not emit agent claims for plain CIBA requests", async () => {
@@ -454,6 +430,13 @@ describe("CIBA token endpoint", () => {
       expect(tokenShape.payload.oversight).toBeUndefined();
       expect(tokenShape.payload.audit).toBeUndefined();
       expect(tokenShape.payload.delegation).toBeUndefined();
+    }
+    expect(json.oversight).toEqual({
+      method: "session",
+      approved_at: expect.any(Number),
+    });
+    for (const member of ["capabilities", "delegation", "aap_claims_version"]) {
+      expect(json).not.toHaveProperty(member);
     }
   });
 
@@ -671,7 +654,7 @@ describe("CIBA decision record", () => {
   );
 
   // R8: approved_at is the decision time, not the request's creation time.
-  it("states the decision time as approved_at in the token response and the agent token", async () => {
+  it("states a manual agent approval in the token response only", async () => {
     const createdAt = new Date("2026-11-15T10:00:00.000Z");
     const decidedAt = new Date(createdAt.getTime() + 60_000);
     vi.useFakeTimers({ toFake: ["Date"] });
@@ -705,17 +688,18 @@ describe("CIBA decision record", () => {
         method: "session",
         approved_at: approvedAt,
       });
+      // A manual approval records no capability; the request's scopes name
+      // the one it covers.
+      expect(json.capabilities).toEqual([{ action: "check_compliance" }]);
+      expect(json.delegation).toEqual({ depth: 0, max_depth: 1 });
+      expect(json.aap_claims_version).toBe(2);
       const accessToken = json.access_token as string;
       const tokenClaims =
         accessToken.split(".").length === 3
           ? decodeJwt(accessToken)
           : (await findStoredOpaqueAccessToken(accessToken))?.accessTokenClaims;
-      expect(tokenClaims?.oversight).toEqual(
-        expect.objectContaining({
-          approved_at: approvedAt,
-          method: "session",
-        })
-      );
+      expect(tokenClaims).not.toHaveProperty("oversight");
+      expect(tokenClaims).not.toHaveProperty("capabilities");
     } finally {
       vi.useRealTimers();
     }

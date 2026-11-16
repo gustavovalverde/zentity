@@ -1,6 +1,7 @@
-export const AAP_CLAIMS_VERSION = 1 as const;
+export const AAP_CLAIMS_VERSION = 2 as const;
 export const AGENT_DID_METHODS_SUPPORTED = ["did:key"] as const;
-export const ACT_DID_EMISSION_POLICY = "attested_hosts_only" as const;
+/** No token carries a host's DID; `act.sub` is the only actor identifier. */
+export const ACT_DID_EMISSION_POLICY = "never" as const;
 
 export type SdkErrorCode =
 	| "compliance_insufficient"
@@ -29,43 +30,29 @@ export interface CapabilityClaim {
 	constraints?: unknown;
 }
 
+/**
+ * The RFC 8693 actor of an agent-backed token: a pairwise identifier for the
+ * agent session in the token's own sector, so each audience sees its own
+ * value. Session, host, and key identifiers stay with the authorization
+ * server.
+ */
 export interface AccessTokenActClaim {
 	sub: string;
 	/** RFC 8693 actor profile: the agent is a service, not a user. */
 	sub_profile?: "service";
-	did?: string;
-	host_attestation: HostAttestationTier;
-	session_id: string;
-	host_id?: string;
-	operator?: string;
-	type?: string;
 }
 
-export interface AccessTokenTaskClaim {
-	constraints?: unknown;
-	created_at: number;
-	description: string;
-	expires_at: number;
-	hash: string;
-}
-
+/** How the user approved a CIBA request, as Zentity recorded it. */
 export interface AccessTokenOversightClaim {
-	approval_id: string;
+	/** When the decision was recorded, in seconds since the epoch. */
 	approved_at: number;
 	method: OversightMethod;
 }
 
-export interface AccessTokenAuditClaim {
-	ciba_request_id?: string;
-	context_id: string;
-	release_id: string;
-	request_id?: string;
-}
-
+/** The depth of a delegated token; no delegation chain forms in this version. */
 export interface AccessTokenDelegationClaim {
 	depth: number;
 	max_depth: number;
-	parent_jti: string | null;
 }
 
 export interface ConfirmationClaim {
@@ -92,16 +79,20 @@ export interface StandardAccessTokenClaims {
 	sub: string;
 }
 
-export interface AapAccessTokenClaims {
-	act: AccessTokenActClaim;
+/**
+ * What an agent-backed CIBA approval authorizes. The CIBA token response and
+ * agent introspection carry it; the access token does not, because a client
+ * must not read its access token (RFC 9068 §6).
+ */
+export interface AgentAuthorization {
 	aap_claims_version: typeof AAP_CLAIMS_VERSION;
-	audit: AccessTokenAuditClaim;
 	capabilities: CapabilityClaim[];
 	delegation: AccessTokenDelegationClaim;
 	oversight: AccessTokenOversightClaim;
-	task: AccessTokenTaskClaim;
 }
 
-export interface AccessTokenClaims
-	extends StandardAccessTokenClaims,
-		AapAccessTokenClaims {}
+/** The claims a resource server reads from a Zentity JWT access token. */
+export interface AccessTokenClaims extends StandardAccessTokenClaims {
+	act?: AccessTokenActClaim;
+	authorization_details?: unknown[];
+}

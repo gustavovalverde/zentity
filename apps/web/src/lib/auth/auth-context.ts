@@ -18,10 +18,11 @@ import { db } from "@/lib/db/connection";
 import { agentSessions } from "@/lib/db/schema/agent";
 import { authenticationContexts, sessions } from "@/lib/db/schema/auth";
 import { cibaApprovals, cibaRequests } from "@/lib/db/schema/ciba";
-import { oauthRefreshTokens } from "@/lib/db/schema/oauth-provider";
+import {
+  oauthAccessTokens,
+  oauthRefreshTokens,
+} from "@/lib/db/schema/oauth-provider";
 import { credentialBindingCommitments } from "@/lib/db/schema/privacy";
-
-export const AUTHENTICATION_CONTEXT_CLAIM = "zentity_auth_context_id";
 
 type AuthenticationReferenceType =
   | "session"
@@ -367,6 +368,7 @@ export async function deleteUnreferencedAuthenticationContext(
   const unreferenced = (
     rows:
       | typeof sessions
+      | typeof oauthAccessTokens
       | typeof oauthRefreshTokens
       | typeof agentSessions
       | typeof cibaRequests
@@ -385,6 +387,7 @@ export async function deleteUnreferencedAuthenticationContext(
       and(
         eq(authenticationContexts.id, authContextId),
         unreferenced(sessions),
+        unreferenced(oauthAccessTokens),
         unreferenced(oauthRefreshTokens),
         unreferenced(agentSessions),
         unreferenced(cibaRequests),

@@ -49,12 +49,16 @@ import {
   twoFactor,
 } from "better-auth/plugins";
 import { organization } from "better-auth/plugins/organization";
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, isNull } from "drizzle-orm";
 import { decodeJwt, jwtVerify } from "jose";
 import { PHASE_PRODUCTION_BUILD } from "next/constants";
 
 import { env } from "@/env";
 import { evaluateSessionGrants } from "@/lib/agents/approval-evaluate";
+import {
+  agentApprovalFor,
+  recordApprovalToken,
+} from "@/lib/agents/approval-record";
 import {
   type ApprovalPolicy,
   approvalPolicy,
@@ -63,10 +67,6 @@ import {
 import { buildCibaPushPayload, sendWebPush } from "@/lib/agents/push-sender";
 import { bindAgentAssertionToCibaRequest } from "@/lib/agents/session";
 import {
-  buildCibaAgentContribution,
-  persistTokenSnapshot,
-} from "@/lib/agents/token-snapshot";
-import {
   ACR_VALUES_SUPPORTED,
   buildNamespacedAssuranceClaim,
   computeAcr,
@@ -74,7 +74,6 @@ import {
 } from "@/lib/assurance/oidc-claims";
 import { getAccountAssurance } from "@/lib/assurance/posture";
 import {
-  AUTHENTICATION_CONTEXT_CLAIM,
   createSessionAuthenticationContext,
   deleteUnreferencedAuthenticationContext,
   getAuthenticationStateBySessionId,
@@ -149,6 +148,8 @@ import {
 import {
   findPairwiseClient,
   keepsSector,
+  pairwiseRedirectUriProblem,
+  rememberAccessTokenIssuance,
   resolveSubForClientId,
   resolveUserIdFromSub,
 } from "@/lib/auth/oidc/pairwise";
@@ -170,6 +171,10 @@ import {
 import { resolveSybilNullifier } from "@/lib/auth/oidc/sybil";
 import { tokenExchangePlugin } from "@/lib/auth/oidc/token-exchange";
 import { recordRevokedAccessToken } from "@/lib/auth/oidc/token-revocation";
+import {
+  authorizeWalletCredentialOffer,
+  refusePairwiseCredentialToken,
+} from "@/lib/auth/oidc/wallet-dcr";
 import {
   discoveryMetadataExtension,
   getAuthIssuer,
@@ -659,6 +664,33 @@ async function validateDcrRegistration(
 
 type HookCtx = Parameters<Parameters<typeof createAuthMiddleware>[0]>[0];
 
+const FORM_CONTENT_TYPE = "application/x-www-form-urlencoded";
+
+/**
+ * Gives a before-hook every `resource` value of a form body. Hooks see one
+ * value per key, and the endpoint restores the repeated values afterwards
+ * unless a hook replaced the value, so a check on the collapsed body would
+ * miss all but the last indicator (RFC 8707 §2 allows repeats). Interim until
+ * hooks see repeated values (U26 in docs/adr/platform/0002-better-auth-patches.md).
+ */
+async function readRepeatedFormResources(ctx: HookCtx): Promise<void> {
+  const request = ctx.request;
+  if (
+    !(
+      ctx.body &&
+      request?.headers.get("content-type")?.includes(FORM_CONTENT_TYPE)
+    )
+  ) {
+    return;
+  }
+  const values = new URLSearchParams(await request.clone().text())
+    .getAll("resource")
+    .filter(Boolean);
+  if (values.length > 1) {
+    ctx.body.resource = values;
+  }
+}
+
 const ACCESS_TOKEN_SCHEME_RE = /^(Bearer|DPoP)\s+/i;
 
 const USER_TOKEN_GRANT_TYPES = new Set<unknown>([
@@ -690,15 +722,61 @@ function inferNativeApplicationType(body: Record<string, unknown>) {
   }
 }
 
+function invalidClientMetadata(description: string): APIError {
+  return new APIError("BAD_REQUEST", {
+    error: "invalid_client_metadata",
+    error_description: description,
+  });
+}
+
+// Anyone may register, so a client never chooses public subjects, which would
+// name every user by the same id at every client.
 async function beforeDcrRegister(ctx: HookCtx) {
   await validateDcrRegistration(ctx.body);
   if (!ctx.body) {
     return;
   }
   inferNativeApplicationType(ctx.body);
-  if (!ctx.body.subject_type) {
-    ctx.body.subject_type = "pairwise";
+  if (ctx.body.subject_type === "public") {
+    throw invalidClientMetadata(
+      'subject_type "public" is not supported; clients receive pairwise subject identifiers'
+    );
   }
+  ctx.body.subject_type ??= "pairwise";
+}
+
+// `/oauth2/create-client` takes no `subject_type` and would register a public
+// client (U24 in docs/adr/platform/0002-better-auth-patches.md). Its
+// redirect URIs must satisfy the provider's pairwise rules, and the after-hook
+// makes the new client pairwise.
+function beforeCreateClientRequirePairwiseRedirects(ctx: HookCtx) {
+  const redirectUris: unknown = ctx.body?.redirect_uris;
+  if (!Array.isArray(redirectUris)) {
+    return;
+  }
+  const problem = pairwiseRedirectUriProblem(
+    redirectUris.filter((uri): uri is string => typeof uri === "string")
+  );
+  if (problem) {
+    throw invalidClientMetadata(problem);
+  }
+}
+
+async function afterCreateClientMakePairwise(ctx: HookCtx) {
+  const created = await readReturnedResponseBody(
+    (ctx.context as { returned?: unknown }).returned
+  );
+  const clientId = created?.client_id;
+  if (typeof clientId !== "string") {
+    return;
+  }
+  await db
+    .update(oauthClients)
+    .set({ subjectType: "pairwise" })
+    .where(
+      and(eq(oauthClients.clientId, clientId), isNull(oauthClients.subjectType))
+    )
+    .run();
 }
 
 // The provider recomputes a client's sector when its redirect URIs change but
@@ -806,7 +884,8 @@ async function readReturnedResponseBody(
   return returned as Record<string, unknown>;
 }
 
-// JWT access tokens already carry the issuing client's subject; the provider would project it a second time.
+// A JWT access token carries its own audience-scoped subject; the provider
+// would present the issuing client's subject instead.
 async function afterIntrospectKeepJwtSubject(ctx: HookCtx) {
   const token =
     typeof ctx.body?.token === "string"
@@ -828,23 +907,11 @@ async function afterIntrospectKeepJwtSubject(ctx: HookCtx) {
   return ctx.json({ ...introspection, sub });
 }
 
-function accessTokenJti(token: string): string | undefined {
-  if (token.split(".").length !== 3) {
-    return undefined;
-  }
-  try {
-    const jti = decodeJwt(token).jti;
-    return typeof jti === "string" ? jti : undefined;
-  } catch {
-    return undefined;
-  }
-}
-
 /**
- * Loads what a CIBA token poll needs from the request row before the plugin
- * consumes (deletes) it: the step-up re-check, the staged identity release,
- * the verified agent context, the approval-time authentication context, and
- * the approval record's oversight.
+ * Loads what a CIBA token poll needs before the plugin consumes (deletes) the
+ * request row: the step-up re-check, the staged identity release, and the
+ * approval-time authentication context from the request, and from the
+ * approval record its oversight and any verified agent with what it may do.
  * The result is stashed for the claim contributors and the after-hook of the
  * same request. A refusal here leaves the approved request in place for
  * another poll.
@@ -882,13 +949,10 @@ async function beforeCibaTokenLoadRequest(ctx: HookCtx) {
   }
 
   const approval = await findCibaApproval(authReqIdHash);
-  const contribution = await buildCibaAgentContribution(
-    row as unknown as Record<string, unknown>,
-    row.clientId,
-    approval
-  );
+  const agent = approval ? agentApprovalFor(approval) : null;
   await setPendingCibaToken({
-    agentClaims: contribution?.claims ?? null,
+    agentSessionId: agent?.sessionId ?? null,
+    authorization: agent?.authorization ?? null,
     authContextId: row.authContextId ?? "",
     authReqIdHash,
     oversight: approval?.approvalMethod
@@ -897,16 +961,17 @@ async function beforeCibaTokenLoadRequest(ctx: HookCtx) {
           approved_at: Math.floor(approval.decidedAt.getTime() / 1000),
         }
       : null,
-    snapshot: contribution?.snapshot ?? null,
   });
 }
 
 /**
- * Drains the CIBA token stash after `/oauth2/token` by persisting the agent
- * snapshot keyed by the minted token's identity. Every CIBA token references
- * the stored auth_req_id hash, set as the request's `referenceId` at approval.
- * The snapshot is keyed by the JWT's jti (the AS owns it) or, for opaque
- * tokens, by that referenceId, which introspection looks up.
+ * Drains the CIBA token stash after `/oauth2/token`: writes the approval-time
+ * authentication context onto the issued access token record (a Zentity
+ * extension column the upstream issuance does not set, so no token or
+ * introspection response carries it), and records the issued token on the
+ * approval, whose `reference_id` every CIBA token carries as its own.
+ * Introspection finds the approval of a JWT by that `jti` and of an opaque
+ * token by its `reference_id`.
  */
 async function afterCibaTokenPersist(ctx: HookCtx) {
   const pending = await getPendingCibaToken();
@@ -915,21 +980,20 @@ async function afterCibaTokenPersist(ctx: HookCtx) {
   }
   const { authReqIdHash } = pending;
 
-  const audienceClientId = ctx.body?.client_id as string | undefined;
-  if (pending.snapshot && audienceClientId) {
-    const responseBody = await readReturnedResponseBody(
-      (ctx.context as { returned?: unknown }).returned
-    );
-    const accessToken = responseBody?.access_token;
-    const tokenJti =
-      typeof accessToken === "string"
-        ? (accessTokenJti(accessToken) ?? authReqIdHash)
-        : authReqIdHash;
-    await persistTokenSnapshot({
-      tokenJti,
-      audienceClientId,
-      snapshot: pending.snapshot,
-    });
+  if (pending.authContextId) {
+    await db
+      .update(oauthAccessTokens)
+      .set({ authContextId: pending.authContextId })
+      .where(eq(oauthAccessTokens.referenceId, authReqIdHash))
+      .run();
+  }
+
+  const responseBody = await readReturnedResponseBody(
+    (ctx.context as { returned?: unknown }).returned
+  );
+  const accessToken = responseBody?.access_token;
+  if (typeof accessToken === "string") {
+    await recordApprovalToken({ accessToken, referenceId: authReqIdHash });
   }
 }
 
@@ -1066,24 +1130,7 @@ async function buildIdTokenDisclosureClaims(input: {
 
   let assuranceClaims: Record<string, unknown> = {};
   if (scopeList.includes("openid")) {
-    // For refresh-token grants the original CIBA request may have been
-    // deleted. Fall back to the refresh token's stored authContextId.
-    let resolvedAuth = auth;
-    if (!resolvedAuth && input.referenceId) {
-      const refreshRow = await db
-        .select({ authContextId: oauthRefreshTokens.authContextId })
-        .from(oauthRefreshTokens)
-        .where(eq(oauthRefreshTokens.referenceId, input.referenceId))
-        .limit(1)
-        .get();
-      if (refreshRow?.authContextId) {
-        resolvedAuth = await resolveAuthenticationContext({
-          authContextId: refreshRow.authContextId,
-          sessionId: null,
-        });
-      }
-    }
-    if (!resolvedAuth) {
+    if (!auth) {
       throw invalidGrantDisclosureError(
         "Authentication context required for ID token issuance"
       );
@@ -1092,13 +1139,10 @@ async function buildIdTokenDisclosureClaims(input: {
       isAuthenticated: true,
     });
     assuranceClaims = {
-      ...buildNamespacedAssuranceClaim(assurance, resolvedAuth),
+      ...buildNamespacedAssuranceClaim(assurance, auth),
     };
   }
 
-  const authContextClaims = auth
-    ? { [AUTHENTICATION_CONTEXT_CLAIM]: auth.id }
-    : {};
   const releaseContext =
     input.referenceId && input.clientId
       ? await loadReleaseContext(
@@ -1111,12 +1155,11 @@ async function buildIdTokenDisclosureClaims(input: {
   );
 
   // The claims-request parameter filters the standard/proof claims it can name.
-  // The namespaced zentity_assurance and auth-context claims are always included
-  // when they apply, like any zentity-owned claim a client cannot opt out of.
+  // The namespaced zentity_assurance claim is always included when it applies,
+  // like any zentity-owned claim a client cannot opt out of.
   return {
     ...filterClaimsByRequest(proofClaims, idTokenFilter),
     ...assuranceClaims,
-    ...authContextClaims,
   };
 }
 
@@ -1127,26 +1170,36 @@ async function buildAccessTokenDisclosureClaims(
   if (!userId) {
     return {};
   }
+  // signJwt reads it to give a JWT its audience's subject.
+  await rememberAccessTokenIssuance({
+    userId,
+    client: {
+      clientId: info.client.clientId,
+      redirectUris: info.client.redirectUris ?? [],
+      sectorIdentifier: info.client.sectorIdentifier ?? null,
+    },
+  });
   const clientId = info.client?.clientId;
   const referenceId = info.referenceId;
-  const sessionId = info.sessionId;
   const scopeList = toScopeList(info.scopes);
   const claims: Record<string, unknown> = {};
-  // Non-empty when this is a CIBA-issued token whose approval captured an
-  // authentication context. Agent AAP and payment claims are added by the
-  // CIBA-only contributor below; at opaque introspection they come from the
-  // durable snapshot keyed by the token reference instead.
-  const cibaAuthContextId = await pendingCibaAuthContextId(referenceId);
+  // Per-RP anti-abuse handles stay in tokens only Zentity reads (ADR
+  // privacy/0015 rule 5). Zentity-hosted resources are dropped before
+  // issuance, so a token with resources is a JWT for an outside audience.
+  const isOpaqueToken = (info.resources?.length ?? 0) === 0;
 
-  // Per-RP sybil nullifier
-  if (scopeList.includes("proof:sybil") && clientId) {
+  if (isOpaqueToken && scopeList.includes("proof:sybil") && clientId) {
     const nullifier = await resolveSybilNullifier(userId, clientId);
     if (nullifier) {
       claims.sybil_nullifier = nullifier;
     }
   }
 
-  if (scopeList.includes("proof:humanity:rp_unique") && clientId) {
+  if (
+    isOpaqueToken &&
+    scopeList.includes("proof:humanity:rp_unique") &&
+    clientId
+  ) {
     const credentials = await getActiveHumanityCredentials(userId);
     const humanity = resolveRpUniqueHumanityClaim({
       clientId,
@@ -1157,10 +1210,6 @@ async function buildAccessTokenDisclosureClaims(
     if (humanity) {
       claims.rp_unique_humanity_id = humanity.rp_unique_humanity_id;
     }
-  }
-
-  if (cibaAuthContextId) {
-    claims[AUTHENTICATION_CONTEXT_CLAIM] = cibaAuthContextId;
   }
 
   // Extend the identity-payload TTL whenever a token is minted for a
@@ -1178,41 +1227,7 @@ async function buildAccessTokenDisclosureClaims(
     }
   }
 
-  // sessionId-bound authentication context is only added when there is no
-  // session (CIBA / opaque introspection); the session-bound path derives it
-  // from the session directly.
-  if (!(sessionId || claims[AUTHENTICATION_CONTEXT_CLAIM]) && referenceId) {
-    const refreshRow = await db
-      .select({ authContextId: oauthRefreshTokens.authContextId })
-      .from(oauthRefreshTokens)
-      .where(eq(oauthRefreshTokens.referenceId, referenceId))
-      .limit(1)
-      .get();
-    if (refreshRow?.authContextId) {
-      claims[AUTHENTICATION_CONTEXT_CLAIM] = refreshRow.authContextId;
-    }
-  }
-
   return claims;
-}
-
-/**
- * The verified agent's AAP claims a token from the CIBA grant carries besides
- * its actor, which the grant stamps as `act` itself. The grant also issues the
- * request's RFC 9396 authorization details, which outrank every claim hook.
- */
-async function buildCibaAccessTokenClaims(
-  info: OAuthClaimExtensionInput
-): Promise<Record<string, unknown>> {
-  if (info.grantType !== CIBA_GRANT_TYPE) {
-    return {};
-  }
-  const pending = await getPendingCibaToken();
-  if (!pending || pending.authReqIdHash !== info.referenceId) {
-    return {};
-  }
-  const { act: _actor, ...agentClaims } = pending.agentClaims ?? {};
-  return agentClaims;
 }
 
 function exactDisclosureClaimsPlugin(): BetterAuthPlugin {
@@ -1245,10 +1260,8 @@ function exactDisclosureClaimsPlugin(): BetterAuthPlugin {
               user: { id: info.user.id },
             });
           },
-          accessToken: async (info: OAuthClaimExtensionInput) => ({
-            ...(await buildAccessTokenDisclosureClaims(info)),
-            ...(await buildCibaAccessTokenClaims(info)),
-          }),
+          accessToken: (info: OAuthClaimExtensionInput) =>
+            buildAccessTokenDisclosureClaims(info),
         },
       });
     },
@@ -1266,12 +1279,15 @@ function beforeConsentStripIdentityScopes(ctx: HookCtx) {
 }
 
 function beforeValidateResourceUri(ctx: HookCtx) {
-  const result = validateResourceUri(ctx.body?.resource);
-  if (!result.valid) {
-    throw new APIError("BAD_REQUEST", {
-      error: "invalid_request",
-      error_description: result.error,
-    });
+  const resource: unknown = ctx.body?.resource;
+  for (const value of Array.isArray(resource) ? resource : [resource]) {
+    const result = validateResourceUri(value);
+    if (!result.valid) {
+      throw new APIError("BAD_REQUEST", {
+        error: "invalid_request",
+        error_description: result.error,
+      });
+    }
   }
 }
 
@@ -1923,6 +1939,9 @@ export const auth = betterAuth({
       if (ctx.path === "/oauth2/register") {
         return beforeDcrRegister(ctx);
       }
+      if (ctx.path === "/oauth2/create-client") {
+        return beforeCreateClientRequirePairwiseRedirects(ctx);
+      }
       if (
         ctx.path === "/oauth2/update-client" ||
         ctx.path === "/admin/oauth2/update-client"
@@ -1933,6 +1952,7 @@ export const auth = betterAuth({
         return beforeMagicLinkProtectCredentials(ctx);
       }
       if (ctx.path === "/oauth2/bc-authorize") {
+        await readRepeatedFormResources(ctx);
         if (ctx.body) {
           pinPaymentRequest(ctx.body);
           normalizeUserTokenResources(ctx.body, { allowWalletAudience: true });
@@ -1943,6 +1963,7 @@ export const auth = betterAuth({
         await deleteExpiredFirstPartyRows().catch((error: unknown) =>
           logError(error, { operation: "first-party-row-cleanup" })
         );
+        await readRepeatedFormResources(ctx);
         if (ctx.body) {
           normalizeUserTokenResources(ctx.body, { allowWalletAudience: false });
         }
@@ -1952,6 +1973,7 @@ export const auth = betterAuth({
         // Before any hook stages state for the grant, so the client's retry
         // with the nonce redeems the same grant (RFC 9449 §8).
         await oauthProviderApi(ctx).challengeDpopNonce();
+        await readRepeatedFormResources(ctx);
         const isCibaGrant = ctx.body?.grant_type === CIBA_GRANT_TYPE;
         // Only a CIBA payment approval yields a wallet-audience token. The
         // per-grant checks below do not see every grant (client_credentials
@@ -1987,6 +2009,7 @@ export const auth = betterAuth({
               "resource parameter is required for PAR requests",
           });
         }
+        await readRepeatedFormResources(ctx);
         refuseWalletAudience(ctx.body.resource);
         beforeValidateResourceUri(ctx);
         normalizeUserTokenResources(ctx.body, { allowWalletAudience: false });
@@ -1994,6 +2017,9 @@ export const auth = betterAuth({
       }
       if (ctx.path === "/oauth2/authorize") {
         const request = authorizeRequestParameters(ctx);
+        if (request === ctx.body) {
+          await readRepeatedFormResources(ctx);
+        }
         redirectCibaInteraction(ctx, request);
         await enforceAuthorizeAcr(ctx, db);
         await beforeAuthorizeVerifyConsentHmac(ctx, request);
@@ -2017,6 +2043,9 @@ export const auth = betterAuth({
       }
       if (ctx.path === "/oauth2/introspect") {
         return afterIntrospectKeepJwtSubject(ctx);
+      }
+      if (ctx.path === "/oauth2/create-client") {
+        await afterCreateClientMakePairwise(ctx);
       }
       return;
     }),
@@ -2078,7 +2107,8 @@ export const auth = betterAuth({
       jwt: {
         issuer: authIssuer,
         // signJwt signs with the plugin's keys and adds what the provider
-        // cannot: EdDSA and pairwise subjects for every access token.
+        // cannot: EdDSA access tokens whose subject is pairwise for their
+        // audience (U4 in docs/adr/platform/0002-better-auth-patches.md).
         sign: signJwt,
       },
     }),
@@ -2108,9 +2138,10 @@ export const auth = betterAuth({
         (process.env.NEXT_PHASE === PHASE_PRODUCTION_BUILD
           ? "next-build-placeholder-pairwise-secret"
           : undefined),
-      // A pairwise client's JWT access tokens carry its ID-token `sub`, and
-      // the provider adds the user id encrypted in `ba_sub`, which UserInfo,
-      // introspection, and every `validateAccessToken` caller read back.
+      // A pairwise client's JWT access tokens get a pairwise `sub`, which
+      // signJwt scopes to the token's audience, and the provider adds the
+      // user id encrypted in `ba_sub`, which UserInfo, introspection, and
+      // every `validateAccessToken` caller read back.
       accessTokenSubject: "pairwise",
       scopes: [...OAUTH_SCOPES],
       grantTypes: [
@@ -2330,6 +2361,8 @@ export const auth = betterAuth({
       accessTokenJwksUrl: joinAuthIssuerPath(authIssuer, "oauth2/jwks"),
       authorizationServer: authIssuer,
       credentialConfigurations: oidc4vciCredentialConfigurations,
+      authorizeCredentialOffer: authorizeWalletCredentialOffer,
+      accessTokenValidator: refusePairwiseCredentialToken,
       // The credential endpoints require DPoP-bound tokens and ES256 proofs
       // through the haip plugin's defaults.
       ...(trustedWalletIssuers

@@ -110,7 +110,7 @@ Under this profile, pairwise subject identifiers are the default. Unless a clien
 
 ### 4.1 Default Posture
 
-All client registrations MUST default to `subject_type: "pairwise"`. Clients that require globally stable subject identifiers explicitly opt in via `subject_type: "public"` at registration.
+All client registrations MUST default to `subject_type: "pairwise"`. Clients that require globally stable subject identifiers explicitly opt in via `subject_type: "public"` at registration. An authorization server that lets anyone register SHOULD refuse that opt-in with `invalid_client_metadata` and reserve public subjects for clients an administrator creates; Zentity does.
 
 ### 4.2 Derivation
 

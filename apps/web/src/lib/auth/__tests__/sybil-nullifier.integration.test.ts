@@ -4,6 +4,8 @@ import { decodeJwt } from "jose";
 import { beforeEach, describe, expect, it } from "vitest";
 
 import { GET as authRouteGet } from "@/app/api/auth/[...all]/route";
+import { env } from "@/env";
+import { introspectZentityAccessToken } from "@/lib/auth/oidc/resource-principal";
 import { db } from "@/lib/db/connection";
 import {
   attachHumanityCredential,
@@ -30,7 +32,14 @@ const CIBA_GRANT_TYPE = "urn:openid:params:grant-type:ciba";
 const PRIMARY_CLIENT_ID = "sybil-client-primary";
 const SECONDARY_CLIENT_ID = "sybil-client-secondary";
 const USERINFO_URL = "http://localhost:3000/api/auth/oauth2/userinfo";
-const VALID_RESOURCE = "http://localhost:3000";
+
+/**
+ * The claims Zentity reads for an opaque token, which only it can resolve:
+ * the provider re-derives them at introspection.
+ */
+async function tokenClaims(accessToken: string) {
+  return (await introspectZentityAccessToken(accessToken)).payload;
+}
 
 async function createTestClient(clientId: string) {
   await db
@@ -64,11 +73,15 @@ async function createNfcVerification(
   await reconcileIdentityBundle(userId);
 }
 
-async function issueSybilToken(clientId: string, userId: string) {
+async function issueSybilToken(
+  clientId: string,
+  userId: string,
+  resources?: string[]
+) {
   const { authReqId } = await createTestCibaRequest({
     clientId,
     userId,
-    resources: JSON.stringify([VALID_RESOURCE]),
+    ...(resources ? { resources: JSON.stringify(resources) } : {}),
     scope: "openid proof:sybil",
     status: "approved",
   });
@@ -100,7 +113,6 @@ async function issueHumanityRpUniqueToken(clientId: string, userId: string) {
   const { authReqId } = await createTestCibaRequest({
     clientId,
     userId,
-    resources: JSON.stringify([VALID_RESOURCE]),
     scope: "openid proof:humanity:rp_unique",
     status: "approved",
   });
@@ -150,9 +162,11 @@ describe("sybil nullifier disclosure", () => {
     const secondPrimaryToken = await issueSybilToken(PRIMARY_CLIENT_ID, userId);
     const secondaryToken = await issueSybilToken(SECONDARY_CLIENT_ID, userId);
 
-    const firstPrimaryClaims = decodeJwt(firstPrimaryToken.accessToken);
-    const secondPrimaryClaims = decodeJwt(secondPrimaryToken.accessToken);
-    const secondaryClaims = decodeJwt(secondaryToken.accessToken);
+    const firstPrimaryClaims = await tokenClaims(firstPrimaryToken.accessToken);
+    const secondPrimaryClaims = await tokenClaims(
+      secondPrimaryToken.accessToken
+    );
+    const secondaryClaims = await tokenClaims(secondaryToken.accessToken);
 
     expect(typeof firstPrimaryClaims.sybil_nullifier).toBe("string");
     expect(firstPrimaryClaims.sybil_nullifier).toBe(
@@ -187,9 +201,27 @@ describe("sybil nullifier disclosure", () => {
     expect(userinfoBody).not.toContain("sybil_nullifier");
   });
 
+  // R13: a per-RP handle in a JWT would reach the token's audience, which
+  // could then join it across every client that sends it tokens.
+  it("keeps the per-RP nullifier out of a JWT for an outside audience", async () => {
+    const jwt = await issueSybilToken(PRIMARY_CLIENT_ID, userId, [
+      env.MCP_PUBLIC_URL,
+    ]);
+    const opaque = await issueSybilToken(PRIMARY_CLIENT_ID, userId);
+
+    expect(jwt.accessToken.split(".")).toHaveLength(3);
+    expect(decodeJwt(jwt.accessToken)).not.toHaveProperty("sybil_nullifier");
+    expect(
+      (await tokenClaims(jwt.accessToken)).sybil_nullifier
+    ).toBeUndefined();
+    expect((await tokenClaims(opaque.accessToken)).sybil_nullifier).toEqual(
+      expect.any(String)
+    );
+  });
+
   it("does not rotate the per-RP nullifier after a later credential is added", async () => {
     const firstPrimaryToken = await issueSybilToken(PRIMARY_CLIENT_ID, userId);
-    const firstPrimaryClaims = decodeJwt(firstPrimaryToken.accessToken);
+    const firstPrimaryClaims = await tokenClaims(firstPrimaryToken.accessToken);
 
     await createVerification({
       id: crypto.randomUUID(),
@@ -204,7 +236,9 @@ describe("sybil nullifier disclosure", () => {
     await reconcileIdentityBundle(userId);
 
     const secondPrimaryToken = await issueSybilToken(PRIMARY_CLIENT_ID, userId);
-    const secondPrimaryClaims = decodeJwt(secondPrimaryToken.accessToken);
+    const secondPrimaryClaims = await tokenClaims(
+      secondPrimaryToken.accessToken
+    );
 
     expect(firstPrimaryClaims.sybil_nullifier).toBe(
       secondPrimaryClaims.sybil_nullifier
@@ -213,7 +247,9 @@ describe("sybil nullifier disclosure", () => {
 
   it("issues a fresh per-RP nullifier after revocation and re-verification", async () => {
     const preRevocationToken = await issueSybilToken(PRIMARY_CLIENT_ID, userId);
-    const preRevocationClaims = decodeJwt(preRevocationToken.accessToken);
+    const preRevocationClaims = await tokenClaims(
+      preRevocationToken.accessToken
+    );
 
     await revokeIdentity(
       userId,
@@ -234,7 +270,9 @@ describe("sybil nullifier disclosure", () => {
       PRIMARY_CLIENT_ID,
       userId
     );
-    const postRevocationClaims = decodeJwt(postRevocationToken.accessToken);
+    const postRevocationClaims = await tokenClaims(
+      postRevocationToken.accessToken
+    );
 
     expect(typeof postRevocationClaims.sybil_nullifier).toBe("string");
     expect(postRevocationClaims.sybil_nullifier).not.toBe(
@@ -265,9 +303,11 @@ describe("sybil nullifier disclosure", () => {
       userId
     );
 
-    const firstPrimaryClaims = decodeJwt(firstPrimaryToken.accessToken);
-    const secondPrimaryClaims = decodeJwt(secondPrimaryToken.accessToken);
-    const secondaryClaims = decodeJwt(secondaryToken.accessToken);
+    const firstPrimaryClaims = await tokenClaims(firstPrimaryToken.accessToken);
+    const secondPrimaryClaims = await tokenClaims(
+      secondPrimaryToken.accessToken
+    );
+    const secondaryClaims = await tokenClaims(secondaryToken.accessToken);
 
     expect(typeof firstPrimaryClaims.rp_unique_humanity_id).toBe("string");
     expect(firstPrimaryClaims.rp_unique_humanity_id).toBe(
@@ -313,7 +353,7 @@ describe("sybil nullifier disclosure", () => {
       PRIMARY_CLIENT_ID,
       userId
     );
-    const linkedClaims = decodeJwt(linkedToken.accessToken);
+    const linkedClaims = await tokenClaims(linkedToken.accessToken);
     expect(typeof linkedClaims.rp_unique_humanity_id).toBe("string");
 
     await detachHumanityCredential({ userId, provider: "world_id_orb" });
@@ -322,7 +362,7 @@ describe("sybil nullifier disclosure", () => {
       PRIMARY_CLIENT_ID,
       userId
     );
-    const detachedClaims = decodeJwt(detachedToken.accessToken);
+    const detachedClaims = await tokenClaims(detachedToken.accessToken);
 
     expect(detachedClaims.rp_unique_humanity_id).toBeUndefined();
   });

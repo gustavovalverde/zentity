@@ -91,11 +91,11 @@ Rationale:
 
 #### 4. No client-readable artifact carries the real user id
 
-Pairwise subjects stop relying parties from correlating one user across clients. Every artifact a client can read therefore carries that client's subject identifier: its pairwise subject for a pairwise client, the user id for a public client.
+Pairwise subjects stop relying parties from correlating one user across clients. Every artifact a client can read therefore carries that client's subject identifier: its pairwise subject for a pairwise client, the user id for a public client. Registration cannot choose a public subject: dynamic registration refuses `subject_type: "public"`, and `/oauth2/create-client` clients are pairwise; only an administrator creates a public client.
 
 * `id_token`, `userinfo`, introspection, and proof-of-human responses project the client's subject.
 * Access tokens for endpoints Zentity serves (the app origin, the auth issuer, and every resource under it, including `userinfo`) are opaque reference tokens that Zentity resolves server-side. Zentity drops Zentity-hosted `resource` indicators from user token requests so the OAuth provider issues opaque tokens. Token exchange mints opaque tokens for the app only, never a JWT and never for another audience, with no actor or delegation claims; the only claim such a token stores is the agent bootstrap marker (token use), which introspection returns. A subject token that carries an actor, a CIBA approval, or `authorization_details` is refused, so an approval reaches only the audience the user approved.
-* JWT access tokens exist only for resource servers outside Zentity (the MCP server, an agent wallet) and for the OID4VCI credential endpoint. Their `sub` is the requesting client's subject identifier, which the OAuth provider writes (`accessTokenSubject: "pairwise"`) together with `ba_sub`, the user id encrypted under a provider key. UserInfo, introspection, and every Zentity endpoint that validates one through the provider, such as token exchange and agent introspection, read the user from `ba_sub`.
+* JWT access tokens exist only for resource servers outside Zentity (the MCP server, an agent wallet) and for the OID4VCI credential endpoint. A JWT names at most one audience outside Zentity, and a request for two is refused with `invalid_target`. For a pairwise client its `sub` is pairwise for the client and that audience together, from the token sector `sector + " " + audience`, so one client's MCP token, wallet token, and ID token carry three different values. A JWT whose audiences are all Zentity-hosted keeps the client's subject. The OAuth provider makes the subject pairwise (`accessTokenSubject: "pairwise"`) and writes `ba_sub`, the user id encrypted under a provider key; Zentity's signer replaces the client-level value with the audience's. UserInfo, introspection, and every Zentity endpoint that validates one through the provider, such as token exchange and agent introspection, read the user from `ba_sub`.
 * Every JWT Zentity signs is explicitly typed (`at+jwt` access tokens, `logout+jwt` logout tokens, `secevent+jwt` validity notices, `JWT` ID tokens), and Zentity endpoints that accept one require the expected type. JWT access tokens are also refused once their `jti` is revoked, or once the refresh token of their grant is revoked; opaque access tokens are refused once the stored token is marked revoked. A JWT access token of a grant that can be revoked carries `grant_id`, a hash the OAuth provider derives per grant. It links the tokens of one grant, which already share the client and the subject.
 * A client names the user back to Zentity with the subject it received, for example as a CIBA `login_hint`. That is the only `login_hint` form CIBA accepts: an email address or a user id the client was not issued resolves to `unknown_user_id`, the same answer as an identifier that matches no account.
 
@@ -105,9 +105,9 @@ Rationale:
 * `userinfo` and Zentity's resource servers look the user up by the token; an opaque token resolves to the user server-side without exposing the id.
 * Resource servers outside Zentity verify JWTs locally and need an identifier for the user, not the user id itself.
 
-#### 5. `proof:sybil` is access-token-only
+#### 5. `proof:sybil` is opaque-access-token-only
 
-`proof:sybil` is the only proof scope whose claim (`sybil_nullifier`) is delivered in the access token only.
+`proof:sybil` and `proof:humanity:rp_unique` are the only proof scopes whose claims (`sybil_nullifier`, `rp_unique_humanity_id`) are delivered in an access token only, and only in an opaque one: Zentity resolves them when the token is introspected or presented to a Zentity endpoint. A JWT access token for a resource server outside Zentity never carries them, whatever its scopes.
 
 Rationale:
 
@@ -115,6 +115,7 @@ Rationale:
 * Putting it in `id_token` would spread a per-RP pseudonym into client/session surfaces that are often cached and logged.
 * Putting it in `userinfo` would make developers treat it like ordinary profile data and persist it alongside claims.
 * The access token is audience-bound and sender-constrained, so it is the correct place for an operational per-RP nullifier.
+* A JWT access token reaches its audience, such as the MCP server or the agent wallet, which serves many clients. A per-RP handle there would let that audience join the user across those clients, so the handle stays in tokens only Zentity reads.
 
 In other words, `proof:sybil` remains in the proof family because it is non-PII, but its delivery surface follows the logic of an operational anti-abuse artifact.
 
@@ -189,3 +190,6 @@ What does not change by channel:
 * 2026-11-15: Introspection of an opaque exchanged token returns the claims stored with it (token use, task, oversight, audit, capabilities, and delegation), as a JWT access token would carry them.
 * 2026-11-16: Token exchange mints only opaque tokens for the app, without actor or delegation claims, and refuses agent-backed, CIBA, and `authorization_details` subjects.
 * 2026-11-16: The OAuth provider writes the pairwise `sub` of JWT access tokens and the encrypted `ba_sub`, so UserInfo and introspection resolve a pairwise client's JWT. Zentity no longer rewrites the subject or maps it back through the pairwise subject index.
+* 2026-11-16: Rule 4: a JWT access token names at most one audience outside Zentity, and its `sub` is pairwise per client and audience (token sector `sector + " " + audience`), so the client's resource servers and its ID tokens see different subjects for one user.
+* 2026-11-16: Rule 5: per-RP anti-abuse handles (`sybil_nullifier`, `rp_unique_humanity_id`) appear only in opaque access tokens, never in a JWT for an outside audience.
+* 2026-11-16: Rule 4: dynamic registration refuses `subject_type: "public"`, and clients from `/oauth2/create-client` are pairwise.

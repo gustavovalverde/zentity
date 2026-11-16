@@ -1,12 +1,12 @@
+import { decodeJwt } from "jose";
 import { NextResponse } from "next/server";
 
-import { getAapClaimsFromPayload } from "@/lib/agents/claims";
-import { observeSessionLifecycle } from "@/lib/agents/session";
-import { resolveTokenSnapshotForTokenJti } from "@/lib/agents/token-snapshot";
 import {
-  findPairwiseClient,
-  resolveSubForClient,
-} from "@/lib/auth/oidc/pairwise";
+  agentApprovalFor,
+  findApprovalForToken,
+} from "@/lib/agents/approval-record";
+import { observeSessionLifecycle } from "@/lib/agents/session";
+import { resolveSubForClientId } from "@/lib/auth/oidc/pairwise";
 import {
   introspectZentityAccessToken,
   withNextDpopNonce,
@@ -18,16 +18,9 @@ import {
 
 export const runtime = "nodejs";
 
-function serializeLifecycle(
-  lifecycle: NonNullable<Awaited<ReturnType<typeof observeSessionLifecycle>>>
-) {
-  return {
-    created_at: Math.floor(lifecycle.createdAt.getTime() / 1000),
-    idle_expires_at: Math.floor(lifecycle.idleExpiresAt.getTime() / 1000),
-    last_active_at: Math.floor(lifecycle.lastActiveAt.getTime() / 1000),
-    max_expires_at: Math.floor(lifecycle.maxExpiresAt.getTime() / 1000),
-    status: lifecycle.status,
-  };
+/** RFC 7662 §2.2: an inactive answer says nothing else. */
+function inactive(): Response {
+  return NextResponse.json({ active: false });
 }
 
 async function extractToken(request: Request): Promise<string | null> {
@@ -60,93 +53,74 @@ export async function POST(request: Request) {
   );
 }
 
+/**
+ * The subjects the token itself presents. A JWT names the user and the agent
+ * for its audience; the provider's payload restores the user id instead. An
+ * opaque token, which only its issuing client may introspect, names the user
+ * by that client's subject and stores its own `act`.
+ */
+async function ownSubjects(
+  token: string,
+  format: "jwt" | "opaque",
+  payload: Record<string, unknown>,
+  clientId: string
+): Promise<{ act: unknown; sub: string | null }> {
+  if (format === "jwt") {
+    const claims = decodeJwt(token);
+    return { sub: claims.sub ?? null, act: claims.act };
+  }
+  const sub =
+    typeof payload.sub === "string"
+      ? await resolveSubForClientId(payload.sub, clientId)
+      : null;
+  return { sub, act: payload.act };
+}
+
 async function introspect(
   request: Request,
   principal: ClientCredentialsPrincipal
 ): Promise<Response> {
   const token = await extractToken(request);
   if (!token) {
-    return NextResponse.json({ active: false });
+    return inactive();
   }
 
-  const presented = await introspectZentityAccessToken(token);
-  const { payload } = presented;
-  if (payload.active !== true) {
-    return NextResponse.json({ active: false });
-  }
-  const isJwt = presented.format === "jwt";
-
-  const tokenClientId =
-    typeof payload.client_id === "string" ? payload.client_id : undefined;
-  if (!tokenClientId) {
-    return NextResponse.json({ active: false });
+  const { format, payload } = await introspectZentityAccessToken(
+    token,
+    principal.clientId
+  );
+  const tokenClientId = payload.client_id;
+  if (payload.active !== true || typeof tokenClientId !== "string") {
+    return inactive();
   }
 
-  const callerClient = await findPairwiseClient(principal.clientId);
-
-  const tokenScopes =
-    typeof payload.scope === "string" ? payload.scope : undefined;
-
-  // The provider reports the user id for both formats: it restores a pairwise
-  // JWT's user from `ba_sub`.
-  const rawUserId = typeof payload.sub === "string" ? payload.sub : null;
-
-  let projectedSub: string | undefined;
-  if (rawUserId) {
-    projectedSub = callerClient
-      ? await resolveSubForClient(rawUserId, callerClient)
-      : rawUserId;
+  const key = format === "jwt" ? payload.jti : payload.reference_id;
+  const approval =
+    typeof key === "string"
+      ? await findApprovalForToken(
+          format === "jwt" ? { jti: key } : { referenceId: key }
+        )
+      : null;
+  const agent = approval ? agentApprovalFor(approval) : null;
+  if (!agent) {
+    return inactive();
+  }
+  const lifecycle = await observeSessionLifecycle(agent.sessionId);
+  if (lifecycle?.status !== "active") {
+    return inactive();
   }
 
-  let tokenSnapshot: Awaited<
-    ReturnType<typeof resolveTokenSnapshotForTokenJti>
-  > = null;
-  const snapshotKey = isJwt ? payload.jti : payload.reference_id;
-  if (typeof snapshotKey === "string") {
-    tokenSnapshot = await resolveTokenSnapshotForTokenJti(
-      snapshotKey,
-      principal.clientId
-    );
-  }
-  if (!tokenSnapshot) {
-    return NextResponse.json({ active: false });
-  }
-
-  const embeddedAccessTokenClaims = isJwt
-    ? getAapClaimsFromPayload(payload as Record<string, unknown>)
-    : {};
-  const responseAccessTokenClaims =
-    Object.keys(embeddedAccessTokenClaims).length > 0
-      ? embeddedAccessTokenClaims
-      : tokenSnapshot.claims;
-
-  const lifecycle = await observeSessionLifecycle(tokenSnapshot.sessionId);
-  if (!lifecycle) {
-    return NextResponse.json({ active: false });
-  }
-
-  if (lifecycle.status !== "active") {
-    return NextResponse.json({
-      active: false,
-      client_id: tokenClientId,
-      ...(tokenScopes ? { scope: tokenScopes } : {}),
-      zentity: {
-        attestation: tokenSnapshot.attestation,
-        lifecycle: serializeLifecycle(lifecycle),
-      },
-    });
-  }
-
+  const own = await ownSubjects(token, format, payload, tokenClientId);
   return NextResponse.json({
     active: true,
     client_id: tokenClientId,
-    ...(tokenScopes ? { scope: tokenScopes } : {}),
-    ...(projectedSub ? { sub: projectedSub } : {}),
-    ...(isJwt && payload.aud ? { aud: payload.aud } : {}),
-    ...responseAccessTokenClaims,
-    zentity: {
-      attestation: tokenSnapshot.attestation,
-      lifecycle: serializeLifecycle(lifecycle),
-    },
+    ...(typeof payload.scope === "string" ? { scope: payload.scope } : {}),
+    ...(own.sub ? { sub: own.sub } : {}),
+    ...(format === "jwt" && payload.aud ? { aud: payload.aud } : {}),
+    ...(typeof payload.iat === "number" ? { iat: payload.iat } : {}),
+    ...(typeof payload.exp === "number" ? { exp: payload.exp } : {}),
+    ...(own.act ? { act: own.act } : {}),
+    ...agent.authorization,
+    zentity: { attestation: agent.attestation, lifecycle: lifecycle.status },
   });
 }

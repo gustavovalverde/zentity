@@ -501,7 +501,8 @@ describe("userinfo disclosure binding", () => {
     const idTokenSub = decodeJwt(tokenResponse.json.id_token as string).sub;
     const claims = decodeJwt(accessToken);
     expect(idTokenSub).not.toBe(userId);
-    expect(claims.sub).toBe(idTokenSub);
+    // The JWT names the user for its audience, UserInfo for the client.
+    expect(claims.sub).not.toBe(idTokenSub);
     expect(claims.ba_sub).toEqual(expect.any(String));
 
     const userInfo = await fetchUserInfo({

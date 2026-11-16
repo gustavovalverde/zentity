@@ -181,50 +181,6 @@ export const agentSessionGrants = sqliteTable(
   ]
 );
 
-export const agentTokenSnapshots = sqliteTable(
-  "agent_token_snapshot",
-  {
-    tokenJti: text("token_jti").primaryKey(),
-    authReqId: text("auth_req_id"),
-    clientId: text("client_id")
-      .notNull()
-      .references(() => oauthClients.clientId, { onDelete: "cascade" }),
-    hostId: text("host_id").references(() => agentHosts.id, {
-      onDelete: "set null",
-    }),
-    agentSessionId: text("agent_session_id")
-      .notNull()
-      .references(() => agentSessions.id, { onDelete: "cascade" }),
-    displayName: text("display_name"),
-    runtime: text("runtime"),
-    model: text("model"),
-    version: text("version"),
-    taskId: text("task_id"),
-    taskHash: text("task_hash"),
-    approvalMethod: text("approval_method"),
-    approvedCapabilityName: text("approved_capability_name"),
-    approvedConstraints: text("approved_constraints", { mode: "json" }).$type<
-      GrantConstraint[]
-    >(),
-    approvedGrantId: text("approved_grant_id"),
-    approvedHostPolicyId: text("approved_host_policy_id"),
-    approvalStrength: text("approval_strength"),
-    attestationProvider: text("attestation_provider"),
-    attestationTier: text("attestation_tier").notNull().default("unverified"),
-    assertionVerified: integer("assertion_verified", { mode: "boolean" })
-      .notNull()
-      .default(false),
-    createdAt: integer("created_at", { mode: "timestamp_ms" })
-      .notNull()
-      .default(sql`(unixepoch() * 1000)`),
-  },
-  (table) => [
-    index("agent_token_snapshot_client_id_idx").on(table.clientId),
-    index("agent_token_snapshot_session_id_idx").on(table.agentSessionId),
-    index("agent_token_snapshot_auth_req_id_idx").on(table.authReqId),
-  ]
-);
-
 export const usedAgentAssertionJtis = sqliteTable(
   "used_agent_assertion_jti",
   {
@@ -251,7 +207,6 @@ export type NewAgentSession = typeof agentSessions.$inferInsert;
 export type AgentCapability = typeof agentCapabilities.$inferSelect;
 export type AgentHostPolicy = typeof agentHostPolicies.$inferSelect;
 export type AgentSessionGrant = typeof agentSessionGrants.$inferSelect;
-export type AgentTokenSnapshot = typeof agentTokenSnapshots.$inferSelect;
 
 // ── Capability usage tracking ────────────────────────────
 

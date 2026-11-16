@@ -1,49 +1,13 @@
 import type {
-  AapAccessTokenClaims,
+  AgentAuthorization,
   CapabilityClaim,
-  HostAttestationTier,
   OversightMethod,
 } from "@zentity/sdk/protocol";
+import type { CibaApproval } from "@/lib/db/schema/ciba";
 
 import { AAP_CLAIMS_VERSION } from "@zentity/sdk/protocol";
 
-interface BuildAapClaimsInput {
-  act: {
-    did?: string | null;
-    hostAttestation: HostAttestationTier;
-    hostId?: string | null;
-    operator?: string | null;
-    sessionId: string;
-    sub: string;
-    type?: string | null;
-  };
-  audit: {
-    cibaRequestId?: string | null;
-    contextId: string;
-    releaseId: string;
-    requestId?: string | null;
-  };
-  capabilities?: CapabilityClaim[] | null;
-  delegation?: AapAccessTokenClaims["delegation"] | null;
-  oversight: {
-    approvalId: string;
-    approvedAt: number;
-    method: OversightMethod;
-  };
-  task: {
-    constraints?: unknown;
-    createdAt: number;
-    description: string;
-    expiresAt: number;
-    hash: string;
-  };
-}
-
-function asRecord(value: unknown): Record<string, unknown> | undefined {
-  return value && typeof value === "object" && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : undefined;
-}
+import { requestCapabilities } from "./capability";
 
 /** The recorded approval method, or null when none was recorded. */
 export function resolveOversightMethod(
@@ -59,182 +23,51 @@ export function resolveOversightMethod(
   }
 }
 
-function normalizeCapabilityClaims(
-  capabilities: CapabilityClaim[] | null | undefined
-): CapabilityClaim[] {
-  return (capabilities ?? [])
-    .filter(
-      (capability) =>
-        typeof capability.action === "string" && capability.action.length > 0
-    )
-    .toSorted((left, right) => left.action.localeCompare(right.action));
+/**
+ * The capabilities an approval covers. A grant approval names the grant's
+ * capability with the constraints it was evaluated against. A manual
+ * approval names the capabilities the approval policy maps the stored
+ * request to, without constraints: the user approved the request's own
+ * scopes and details, which the token carries.
+ */
+function approvedCapabilities(approval: CibaApproval): CapabilityClaim[] {
+  if (approval.approvalMethod === "capability_grant") {
+    if (!approval.capability) {
+      return [];
+    }
+    const constraints = approval.constraints ?? undefined;
+    return [
+      {
+        action: approval.capability,
+        ...(constraints === undefined ? {} : { constraints }),
+      },
+    ];
+  }
+  return requestCapabilities({
+    scope: approval.scope ?? "",
+    authorizationDetails: approval.authorizationDetails,
+  }).map((action) => ({ action }));
 }
 
-export function buildAapClaims(
-  input: BuildAapClaimsInput
-): AapAccessTokenClaims {
-  const capabilities = normalizeCapabilityClaims(input.capabilities);
-
+/**
+ * What an agent-backed approval authorizes, for the CIBA token response and
+ * agent introspection; access tokens no longer carry it. Null when the
+ * record holds no approval.
+ */
+export function buildAgentAuthorization(
+  approval: CibaApproval
+): AgentAuthorization | null {
+  const method = resolveOversightMethod(approval.approvalMethod);
+  if (approval.decision !== "approved" || !method) {
+    return null;
+  }
   return {
-    act: {
-      sub: input.act.sub,
-      // Already pairwise for the client, so the provider presents it as is.
-      sub_profile: "service",
-      host_attestation: input.act.hostAttestation,
-      session_id: input.act.sessionId,
-      ...(input.act.hostAttestation === "attested" && input.act.did
-        ? { did: input.act.did }
-        : {}),
-      ...(input.act.hostId ? { host_id: input.act.hostId } : {}),
-      ...(input.act.operator ? { operator: input.act.operator } : {}),
-      ...(input.act.type ? { type: input.act.type } : {}),
-    },
-    task: {
-      hash: input.task.hash,
-      description: input.task.description,
-      created_at: input.task.createdAt,
-      expires_at: input.task.expiresAt,
-      ...(input.task.constraints === undefined
-        ? {}
-        : { constraints: input.task.constraints }),
-    },
+    capabilities: approvedCapabilities(approval),
     oversight: {
-      approval_id: input.oversight.approvalId,
-      approved_at: input.oversight.approvedAt,
-      method: input.oversight.method,
+      method,
+      approved_at: Math.floor(approval.decidedAt.getTime() / 1000),
     },
-    audit: {
-      release_id: input.audit.releaseId,
-      context_id: input.audit.contextId,
-      ...(input.audit.requestId ? { request_id: input.audit.requestId } : {}),
-      ...(input.audit.cibaRequestId
-        ? { ciba_request_id: input.audit.cibaRequestId }
-        : {}),
-    },
-    delegation: input.delegation ?? {
-      depth: 0,
-      max_depth: 1,
-      parent_jti: null,
-    },
-    capabilities,
+    delegation: { depth: 0, max_depth: 1 },
     aap_claims_version: AAP_CLAIMS_VERSION,
   };
-}
-
-export function getAapClaimsFromPayload(
-  payload: Record<string, unknown>
-): Partial<AapAccessTokenClaims> {
-  const parsedClaims: Partial<AapAccessTokenClaims> = {};
-
-  const act = asRecord(payload.act);
-  if (
-    act &&
-    typeof act.sub === "string" &&
-    typeof act.host_attestation === "string" &&
-    typeof act.session_id === "string"
-  ) {
-    parsedClaims.act = {
-      sub: act.sub,
-      ...(act.sub_profile === "service" ? { sub_profile: "service" } : {}),
-      host_attestation: act.host_attestation as HostAttestationTier,
-      session_id: act.session_id,
-      ...(typeof act.did === "string" ? { did: act.did } : {}),
-      ...(typeof act.host_id === "string" ? { host_id: act.host_id } : {}),
-      ...(typeof act.operator === "string" ? { operator: act.operator } : {}),
-      ...(typeof act.type === "string" ? { type: act.type } : {}),
-    };
-  }
-
-  const task = asRecord(payload.task);
-  if (
-    task &&
-    typeof task.hash === "string" &&
-    typeof task.description === "string" &&
-    typeof task.created_at === "number" &&
-    typeof task.expires_at === "number"
-  ) {
-    parsedClaims.task = {
-      hash: task.hash,
-      description: task.description,
-      created_at: task.created_at,
-      expires_at: task.expires_at,
-      ...(task.constraints === undefined
-        ? {}
-        : { constraints: task.constraints }),
-    };
-  }
-
-  const oversight = asRecord(payload.oversight);
-  if (
-    oversight &&
-    typeof oversight.approval_id === "string" &&
-    typeof oversight.approved_at === "number" &&
-    typeof oversight.method === "string"
-  ) {
-    parsedClaims.oversight = {
-      approval_id: oversight.approval_id,
-      approved_at: oversight.approved_at,
-      method: oversight.method as OversightMethod,
-    };
-  }
-
-  const audit = asRecord(payload.audit);
-  if (
-    audit &&
-    typeof audit.release_id === "string" &&
-    typeof audit.context_id === "string"
-  ) {
-    parsedClaims.audit = {
-      release_id: audit.release_id,
-      context_id: audit.context_id,
-      ...(typeof audit.request_id === "string"
-        ? { request_id: audit.request_id }
-        : {}),
-      ...(typeof audit.ciba_request_id === "string"
-        ? { ciba_request_id: audit.ciba_request_id }
-        : {}),
-    };
-  }
-
-  const delegation = asRecord(payload.delegation);
-  if (
-    delegation &&
-    typeof delegation.depth === "number" &&
-    typeof delegation.max_depth === "number" &&
-    ("parent_jti" in delegation
-      ? delegation.parent_jti === null ||
-        typeof delegation.parent_jti === "string"
-      : true)
-  ) {
-    parsedClaims.delegation = {
-      depth: delegation.depth,
-      max_depth: delegation.max_depth,
-      parent_jti:
-        delegation.parent_jti === undefined
-          ? null
-          : (delegation.parent_jti as string | null),
-    };
-  }
-
-  if (Array.isArray(payload.capabilities)) {
-    const capabilities = payload.capabilities
-      .map((capability) => asRecord(capability))
-      .filter((capability): capability is Record<string, unknown> =>
-        Boolean(capability && typeof capability.action === "string")
-      )
-      .map((capability) => ({
-        action: capability.action as string,
-        ...(capability.constraints === undefined
-          ? {}
-          : { constraints: capability.constraints }),
-      }));
-
-    parsedClaims.capabilities = normalizeCapabilityClaims(capabilities);
-  }
-
-  if (payload.aap_claims_version === AAP_CLAIMS_VERSION) {
-    parsedClaims.aap_claims_version = AAP_CLAIMS_VERSION;
-  }
-
-  return parsedClaims;
 }

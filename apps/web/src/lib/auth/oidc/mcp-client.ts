@@ -18,6 +18,7 @@ import {
   oauthClientResources,
   oauthClients,
 } from "@/lib/db/schema/oauth-provider";
+import { validateOutboundUrl } from "@/lib/http/url-safety";
 
 const CIBA_GRANT_TYPE = "urn:openid:params:grant-type:ciba";
 
@@ -34,6 +35,47 @@ export const MCP_CLIENT_SCOPES = [
   "proof:nationality",
   "poh",
 ];
+
+/** What a provisioning run writes to: the MCP resource and the database. */
+export interface McpProvisioningTarget {
+  database: string;
+  resource: string;
+}
+
+/** The database URL without credentials or query parameters. */
+function describeDatabase(url: string): string {
+  if (!URL.canParse(url) || url.startsWith("file:")) {
+    return url;
+  }
+  const parsed = new URL(url);
+  parsed.username = "";
+  parsed.password = "";
+  parsed.search = "";
+  return parsed.toString();
+}
+
+/**
+ * The resource and database a provisioning run targets. A production run
+ * refuses an `MCP_PUBLIC_URL` that is not HTTPS to a public host, such as the
+ * loopback URL an unset variable defaults to, because the client would be
+ * linked to a resource no remote host can reach.
+ */
+export function mcpProvisioningTarget(
+  resource: string = env.MCP_PUBLIC_URL
+): McpProvisioningTarget {
+  if (process.env.NODE_ENV === "production") {
+    const problem = validateOutboundUrl(resource);
+    if (problem) {
+      throw new Error(
+        `MCP_PUBLIC_URL is ${resource} and ${problem}; set it to the MCP server's public URL before provisioning in production`
+      );
+    }
+  }
+  return {
+    resource,
+    database: describeDatabase(process.env.TURSO_DATABASE_URL ?? ""),
+  };
+}
 
 export interface McpClientCredentials {
   clientId: string;
@@ -136,6 +178,7 @@ export async function provisionMcpClient(options: {
   clientId?: string | undefined;
   rotateSecret?: boolean;
 }): Promise<McpClientCredentials> {
+  mcpProvisioningTarget();
   const { clientId } = options;
   const ownerId = clientId ? await findProvisionedOwner(clientId) : null;
   if (!(clientId && ownerId)) {

@@ -4,8 +4,8 @@ import { calculateJwkThumbprint } from "jose";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { GET as trpcGet } from "@/app/api/trpc/[trpc]/route";
-import { AUTHENTICATION_CONTEXT_CLAIM } from "@/lib/auth/auth-context";
 import { mintOpaqueAccessToken } from "@/lib/auth/oidc/haip/opaque-access-token";
+import { introspectZentityAccessToken } from "@/lib/auth/oidc/resource-principal";
 import { TOKEN_EXCHANGE_GRANT_TYPE } from "@/lib/auth/oidc/token-exchange";
 import { db } from "@/lib/db/connection";
 import {
@@ -157,7 +157,7 @@ describe("tRPC context", () => {
     // is a login token stored with the same authentication and no session.
     it("keeps its subject token's authentication through token exchange", async () => {
       const subjectToken = await mintOpaqueAccessToken({
-        accessTokenClaims: { [AUTHENTICATION_CONTEXT_CLAIM]: authContextId },
+        authContextId,
         clientId: AGENT_CLIENT_ID,
         dpopJkt: await calculateJwkThumbprint(keyPair.jwk),
         expiresAt: new Date(Date.now() + 3_600_000),
@@ -183,6 +183,10 @@ describe("tRPC context", () => {
 
       expect(context.session?.user.id).toBe(userId);
       expect(context.authContext?.id).toBe(authContextId);
+      // Introspection answers every caller allowed to see the token, so the
+      // context id stays on the server.
+      const { payload } = await introspectZentityAccessToken(exchangedToken);
+      expect(JSON.stringify(payload)).not.toContain(authContextId);
     });
   });
 

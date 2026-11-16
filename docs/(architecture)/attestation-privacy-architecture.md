@@ -213,7 +213,7 @@ The vault is a server-stored encrypted blob (`encrypted_secrets` + `secret_wrapp
 7. **DPoP token binding**: access tokens bound to client's ephemeral key pair, preventing replay of stolen tokens.
 8. **PAR prevents parameter leakage**: clients that push their authorization requests keep the parameters out of browser URLs. PAR is optional, so clients that send parameters directly to the authorize endpoint expose them in the URL.
 9. **JARM encrypted VP responses**: presentation responses encrypted to verifier's key, visible only to intended recipient.
-10. **Pairwise subject identifiers**: DCR clients default to `subject_type: "pairwise"`, preventing cross-RP user correlation.
+10. **Pairwise subject identifiers**: registered clients always get `subject_type: "pairwise"` (dynamic registration refuses `"public"`), preventing cross-RP user correlation. A JWT access token's subject is also pairwise per audience.
 11. **Transient OAuth linkage (ARCOM)**: consent records deleted after code issuance for pairwise proof-only flows; access token DB records deleted after JWT issuance; session IP/UA metadata scrubbed.
 12. **Consent HMAC integrity**: consent scope lists are HMAC-tagged; any DB-level scope widening is detected and the consent is invalidated.
 13. **FHE ciphertext integrity binding**: every FHE ciphertext is HMAC-bound to its owner and attribute type; ciphertext swap attacks are detected before use.

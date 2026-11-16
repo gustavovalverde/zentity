@@ -5,7 +5,6 @@ import { beforeEach, describe, expect, it } from "vitest";
 
 import { auth } from "@/lib/auth/auth-config";
 import {
-  AUTHENTICATION_CONTEXT_CLAIM,
   createAuthenticationContext,
   resolveAuthenticationContext,
 } from "@/lib/auth/auth-context";
@@ -137,7 +136,7 @@ describe("assurance claims in ID tokens", () => {
     expect(assurance.acr).toBe("urn:zentity:assurance:tier-1");
     expect(assurance.acr_eidas).toBe("http://eidas.europa.eu/LoA/low");
     expect(assurance.amr).toEqual(["pop", "user"]);
-    expect(claims[AUTHENTICATION_CONTEXT_CLAIM]).toBe(authContext.id);
+    expect(claims).not.toHaveProperty("zentity_auth_context_id");
     expect(claims.auth_time).toBeDefined();
     expect(typeof claims.auth_time).toBe("number");
     const now = Math.floor(Date.now() / 1000);

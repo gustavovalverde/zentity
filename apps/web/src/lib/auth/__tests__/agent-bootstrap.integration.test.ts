@@ -11,10 +11,8 @@ import {
 import { beforeEach, describe, expect, it } from "vitest";
 
 import { AGENT_BOOTSTRAP_TOKEN_USE } from "@/lib/agents/session";
-import {
-  AUTHENTICATION_CONTEXT_CLAIM,
-  createAuthenticationContext,
-} from "@/lib/auth/auth-context";
+import { createAuthenticationContext } from "@/lib/auth/auth-context";
+import { introspectZentityAccessToken } from "@/lib/auth/oidc/resource-principal";
 import { TOKEN_EXCHANGE_GRANT_TYPE } from "@/lib/auth/oidc/token-exchange";
 import { db } from "@/lib/db/connection";
 import { agentSessions } from "@/lib/db/schema/agent";
@@ -111,9 +109,7 @@ describe("agent bootstrap token exchange", () => {
     await db
       .insert(oauthAccessTokens)
       .values({
-        accessTokenClaims: JSON.stringify({
-          [AUTHENTICATION_CONTEXT_CLAIM]: authContextId,
-        }),
+        authContextId,
         clientId: CLIENT_ID,
         confirmation: JSON.stringify({ jkt: dpopJkt }),
         expiresAt: new Date(Date.now() + 3_600_000),
@@ -144,12 +140,12 @@ describe("agent bootstrap token exchange", () => {
     expect(stored?.accessTokenClaims.zentity_token_use).toBe(
       AGENT_BOOTSTRAP_TOKEN_USE
     );
+    const validated = await introspectZentityAccessToken(bootstrapToken);
+    expect(validated.payload.zentity_token_use).toBe(AGENT_BOOTSTRAP_TOKEN_USE);
     expect(stored?.scopes.join(" ")).toBe(BOOTSTRAP_SCOPE);
     expect(stored?.userId).toBe(userId);
     expect(stored?.dpopJkt).toBe(dpopJkt);
-    expect(stored?.accessTokenClaims[AUTHENTICATION_CONTEXT_CLAIM]).toBe(
-      authContextId
-    );
+    expect(stored?.authContextId).toBe(authContextId);
 
     const hostKeys = await generateKeyPair("EdDSA", {
       crv: "Ed25519",
@@ -251,9 +247,7 @@ describe("agent bootstrap token exchange", () => {
     await db
       .insert(oauthAccessTokens)
       .values({
-        accessTokenClaims: JSON.stringify({
-          [AUTHENTICATION_CONTEXT_CLAIM]: authContextId,
-        }),
+        authContextId,
         clientId: CLIENT_ID,
         expiresAt: new Date(Date.now() + 3_600_000),
         scopes: JSON.stringify(["openid"]),
@@ -298,9 +292,7 @@ describe("agent bootstrap token exchange", () => {
     await db
       .insert(oauthAccessTokens)
       .values({
-        accessTokenClaims: JSON.stringify({
-          [AUTHENTICATION_CONTEXT_CLAIM]: authContextId,
-        }),
+        authContextId,
         clientId: CLIENT_ID,
         confirmation: JSON.stringify({
           jkt: await calculateJwkThumbprint(dpopKeyPair.jwk, "sha256"),
@@ -371,9 +363,7 @@ describe("agent bootstrap token exchange", () => {
     await db
       .insert(oauthAccessTokens)
       .values({
-        accessTokenClaims: JSON.stringify({
-          [AUTHENTICATION_CONTEXT_CLAIM]: authContextId,
-        }),
+        authContextId,
         clientId: WEB_CLIENT_ID,
         confirmation: JSON.stringify({ jkt: dpopJkt }),
         expiresAt: new Date(Date.now() + 3_600_000),

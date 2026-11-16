@@ -31,6 +31,8 @@ The question: is admin scope-gating at registration time a meaningful security c
 
 All OAuth clients register via RFC 7591 DCR. No admin pre-approval is required for registration or scope access.
 
+Because anyone may register, a registration cannot choose public subject identifiers. A client gets a pairwise subject; `subject_type: "public"` is refused with `invalid_client_metadata`, and a client created through `/oauth2/create-client`, which takes no `subject_type`, is made pairwise as well.
+
 ### Three-layer data access control
 
 Removing admin scope-gating does not mean "anything goes." Data access is enforced through three independent layers, each of which must pass for an RP to receive claims:
@@ -183,3 +185,4 @@ Ownership is fixed at registration. A client registered while an organization is
 
 * 2026-09-27: Added client type and redirect URI rules. Loopback-only registrations without `application_type` register as `native`; `localhost` loopback redirects are accepted in every environment.
 * 2026-09-27: Removed client adoption (`/api/rp-admin/clients/approve`, `/api/rp-admin/clients/unowned`, `/api/internal/oauth/clients/attach`). Ownership is fixed at registration, and only organization owners and admins manage organization clients.
+* 2026-11-16: Registrations cannot choose public subjects. Dynamic registration refuses `subject_type: "public"`, and `/oauth2/create-client` clients are pairwise.

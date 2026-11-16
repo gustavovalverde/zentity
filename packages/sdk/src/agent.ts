@@ -1,13 +1,12 @@
-import { decodeJwt } from "jose";
 import {
   type CibaPendingApproval,
   type CibaRequest,
   type CibaTokenSet,
   requestCibaApproval,
 } from "./ciba";
+import { stableStringify } from "./fpa/client";
 import { createDiscoveryResolver } from "./fpa/discovery";
 import { truncateBindingMessage } from "./protocol/binding-message";
-import type { AccessTokenClaims, CapabilityClaim } from "./protocol/index";
 import type { DpopClient } from "./rp/dpop-client";
 import {
   identityStrengthTier,
@@ -59,16 +58,10 @@ export interface ProveHumanOptions {
 }
 
 export interface Agent {
-  decodeAccessToken(token: string): AccessTokenClaims & Record<string, unknown>;
   fetch: X402Fetch;
   proveHuman(options: ProveHumanOptions): Promise<string>;
   requestApproval(options: RequestApprovalOptions): Promise<CibaTokenSet>;
   requestCapability(options: RequestCapabilityOptions): Promise<CibaTokenSet>;
-}
-
-interface CachedCapabilityToken {
-  accessToken: string;
-  expiresAt: number;
 }
 
 export class ComplianceInsufficientError extends Error {
@@ -91,46 +84,40 @@ export class ComplianceInsufficientError extends Error {
   }
 }
 
-function decodeAccessToken(
-  token: string
-): AccessTokenClaims & Record<string, unknown> {
-  return decodeJwt(token) as AccessTokenClaims & Record<string, unknown>;
-}
-
 function buildCapabilityCacheKey(input: {
   action: string;
   audience: string;
+  authorizationDetails?: unknown[] | undefined;
   clientId: string;
+  resource: string;
+  scope: string;
 }): string {
-  return [input.clientId, input.audience, input.action].join("\u0000");
+  return [
+    input.clientId,
+    input.audience,
+    input.action,
+    input.scope,
+    input.resource,
+    stableStringify(input.authorizationDetails ?? []),
+  ].join("\u0000");
 }
 
-function readCapabilityClaims(token: string): CapabilityClaim[] {
-  const claims = decodeAccessToken(token);
-  return Array.isArray(claims.capabilities)
-    ? claims.capabilities.filter(
-        (capability): capability is CapabilityClaim =>
-          Boolean(capability) &&
-          typeof capability === "object" &&
-          typeof (capability as CapabilityClaim).action === "string"
-      )
-    : [];
-}
-
-function tokenHasCapability(token: string, action: string): boolean {
-  return readCapabilityClaims(token).some(
-    (capability) => capability.action === action
+/**
+ * Whether the token set can answer later requests for `action`. Only a
+ * capability grant approves more than the one request the user saw; a
+ * manual approval binds exactly that request and is never reused.
+ */
+function reusableForCapability(
+  tokenSet: CibaTokenSet,
+  action: string
+): boolean {
+  return (
+    tokenSet.oversight?.method === "capability_grant" &&
+    (tokenSet.capabilities?.some(
+      (capability) => capability.action === action
+    ) ??
+      false)
   );
-}
-
-function resolveTokenExpiresAt(
-  token: string,
-  fallbackExpiresAt: number
-): number {
-  const claims = decodeAccessToken(token);
-  return typeof claims.exp === "number"
-    ? Math.min(claims.exp * 1000, fallbackExpiresAt)
-    : fallbackExpiresAt;
 }
 
 function resolveProofOfHumanUrl(
@@ -154,7 +141,7 @@ export function createAgent(config: AgentConfig): Agent {
     fetch: fetchFn,
     issuerUrl: config.issuerUrl,
   });
-  const capabilityTokensByKey = new Map<string, CachedCapabilityToken>();
+  const capabilityTokensByKey = new Map<string, CibaTokenSet>();
 
   async function requestApproval(
     options: RequestApprovalOptions
@@ -197,44 +184,35 @@ export function createAgent(config: AgentConfig): Agent {
   async function requestCapability(
     options: RequestCapabilityOptions
   ): Promise<CibaTokenSet> {
+    const resource = options.resource ?? options.audience;
     const cacheKey = buildCapabilityCacheKey({
       action: options.action,
       audience: options.audience,
+      authorizationDetails: options.authorizationDetails,
       clientId: config.clientId,
+      resource,
+      scope: options.scope,
     });
     const cached = capabilityTokensByKey.get(cacheKey);
     if (cached && cached.expiresAt > Date.now()) {
-      return {
-        accessToken: cached.accessToken,
-        expiresAt: cached.expiresAt,
-      };
+      return cached;
     }
 
-    const capabilityTokenSet = await requestApproval({
-      ...options,
-      resource: options.resource ?? options.audience,
-    });
-    if (tokenHasCapability(capabilityTokenSet.accessToken, options.action)) {
-      capabilityTokensByKey.set(cacheKey, {
-        accessToken: capabilityTokenSet.accessToken,
-        expiresAt: resolveTokenExpiresAt(
-          capabilityTokenSet.accessToken,
-          capabilityTokenSet.expiresAt
-        ),
-      });
+    const capabilityTokenSet = await requestApproval({ ...options, resource });
+    if (reusableForCapability(capabilityTokenSet, options.action)) {
+      capabilityTokensByKey.set(cacheKey, capabilityTokenSet);
     }
 
     return capabilityTokenSet;
   }
 
   function invalidateCapability(action: string, audience: string): void {
-    capabilityTokensByKey.delete(
-      buildCapabilityCacheKey({
-        action,
-        audience,
-        clientId: config.clientId,
-      })
-    );
+    const prefix = [config.clientId, audience, action, ""].join("\u0000");
+    for (const key of capabilityTokensByKey.keys()) {
+      if (key.startsWith(prefix)) {
+        capabilityTokensByKey.delete(key);
+      }
+    }
   }
 
   async function proveHuman(options: ProveHumanOptions): Promise<string> {
@@ -308,7 +286,6 @@ export function createAgent(config: AgentConfig): Agent {
   });
 
   const agent: Agent = {
-    decodeAccessToken,
     fetch(input: RequestInfo | URL, init?: X402FetchOptions) {
       if (init?.x402?.autoPayWithProofOfHuman) {
         return fetchWithX402(input, init);

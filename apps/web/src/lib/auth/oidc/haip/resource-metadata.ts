@@ -9,7 +9,8 @@ import { getAuthIssuer } from "@/lib/auth/oidc/well-known";
 
 const TRAILING_SLASHES = /\/+$/;
 
-function normalizeResource(value: string): string {
+/** A resource identifier in its registered form, without trailing slashes. */
+export function normalizeResource(value: string): string {
   return value.replace(TRAILING_SLASHES, "");
 }
 
@@ -94,7 +95,7 @@ const zentityOrigins = [
  * access tokens for these endpoints are opaque reference tokens (ADR
  * privacy/0015).
  */
-function isZentityHostedResource(resource: string): boolean {
+export function isZentityHostedResource(resource: string): boolean {
   const normalized = normalizeResource(resource);
   return zentityOrigins.some(
     (origin) => normalized === origin || normalized.startsWith(`${origin}/`)
@@ -105,8 +106,10 @@ function isZentityHostedResource(resource: string): boolean {
  * Prepares the resource indicators of a user token request: each one takes the
  * registered form (no trailing slash, so `https://mcp.example/` names
  * `https://mcp.example`), and Zentity-hosted ones are dropped so the OAuth
- * provider issues an opaque token for them. The wallet audience is refused
- * unless the caller allows it.
+ * provider issues an opaque token for them. A JWT access token names at most
+ * one audience outside Zentity, because its subject is pairwise for that
+ * audience (RFC 8707 §2). The wallet audience is refused unless the caller
+ * allows it.
  */
 export function normalizeUserTokenResources(
   params: Record<string, unknown>,
@@ -116,10 +119,20 @@ export function normalizeUserTokenResources(
   if (!options.allowWalletAudience) {
     refuseWalletAudience(resource);
   }
-  const external = (Array.isArray(resource) ? resource : [resource])
-    .filter((value): value is string => typeof value === "string")
-    .map(normalizeResource)
-    .filter((value) => !isZentityHostedResource(value));
+  const external = [
+    ...new Set(
+      (Array.isArray(resource) ? resource : [resource])
+        .filter((value): value is string => typeof value === "string")
+        .map(normalizeResource)
+        .filter((value) => !isZentityHostedResource(value))
+    ),
+  ];
+  if (external.length > 1) {
+    throw new APIError("BAD_REQUEST", {
+      error: "invalid_target",
+      error_description: "request one resource outside Zentity per token",
+    });
+  }
   if (external.length === 0) {
     Reflect.deleteProperty(params, "resource");
   } else {

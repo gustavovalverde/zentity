@@ -8,6 +8,7 @@ import { env } from "@/env";
 import { auth } from "@/lib/auth/auth-config";
 import {
   computePairwiseSub,
+  pairwiseValue,
   resolveSubForClientId,
   resolveUserIdFromSub,
 } from "@/lib/auth/oidc/pairwise";
@@ -92,6 +93,80 @@ describe("access token subjects", () => {
       .run();
   });
 
+  // R15
+  it("refuses a backchannel request for two resources outside Zentity", async () => {
+    const response = await auth.handler(
+      new Request(`${AUTH_URL}/oauth2/bc-authorize`, {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams([
+          ["client_id", CLIENT_ID],
+          ["scope", "openid"],
+          [
+            "login_hint",
+            (await resolveSubForClientId(userId, CLIENT_ID)) ?? "",
+          ],
+          ["resource", MCP_RESOURCE],
+          ["resource", "https://other-resource.example"],
+        ]),
+      })
+    );
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({
+      error: "invalid_target",
+      error_description: "request one resource outside Zentity per token",
+    });
+    expect(await db.select().from(cibaRequests).all()).toHaveLength(0);
+  });
+
+  it("refuses an authorization request for two resources outside Zentity", async () => {
+    const query = new URLSearchParams([
+      ["client_id", CLIENT_ID],
+      ["response_type", "code"],
+      ["redirect_uri", REDIRECT_URI],
+      ["scope", "openid"],
+      ["code_challenge", "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM"],
+      ["code_challenge_method", "S256"],
+      ["resource", MCP_RESOURCE],
+      ["resource", "https://other-resource.example"],
+    ]);
+    const response = await auth.handler(
+      new Request(`${AUTH_URL}/oauth2/authorize?${query}`)
+    );
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({
+      error: "invalid_target",
+      error_description: "request one resource outside Zentity per token",
+    });
+  });
+
+  it("refuses a form-encoded authorization request for two resources outside Zentity", async () => {
+    const response = await auth.handler(
+      new Request(`${AUTH_URL}/oauth2/authorize`, {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams([
+          ["client_id", CLIENT_ID],
+          ["response_type", "code"],
+          ["redirect_uri", REDIRECT_URI],
+          ["scope", "openid"],
+          ["code_challenge", "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM"],
+          ["code_challenge_method", "S256"],
+          ["resource", "https://other-resource.example"],
+          ["resource", MCP_RESOURCE],
+        ]),
+      })
+    );
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({
+      error: "invalid_target",
+      error_description: "request one resource outside Zentity per token",
+    });
+  });
+
   it("drops Zentity-hosted resources from backchannel requests", async () => {
     const pairwiseSub = await resolveSubForClientId(userId, CLIENT_ID);
     for (const [resource, stored] of [
@@ -167,23 +242,29 @@ describe("access token subjects", () => {
     expect((json.access_token as string).split(".")).toHaveLength(1);
   });
 
-  it("carries the client's pairwise subject in JWT access tokens", async () => {
+  it("carries the audience's pairwise subject in JWT access tokens", async () => {
     const payload = decodeJwt(await mintMcpAccessToken(userId));
-    const pairwiseSub = await computePairwiseSub(
+    const clientSub = await computePairwiseSub(
       userId,
       new URL(REDIRECT_URI).host,
       env.PAIRWISE_SECRET
     );
 
     expect(payload.aud).toContain(MCP_RESOURCE);
-    expect(payload.sub).toBe(pairwiseSub);
-    expect(payload.sub).not.toBe(userId);
+    expect(payload.sub).toBe(
+      await pairwiseValue(
+        `${new URL(REDIRECT_URI).host} ${MCP_RESOURCE}`,
+        userId
+      )
+    );
+    expect(payload.sub).not.toBe(clientSub);
     // The provider writes the user id encrypted, for its own endpoints.
     expect(payload.ba_sub).toEqual(expect.any(String));
     expect(JSON.stringify(payload)).not.toContain(userId);
-    await expect(resolveUserIdFromSub(pairwiseSub, CLIENT_ID)).resolves.toBe(
-      userId
-    );
+    // Only the client's own subject names the user back.
+    await expect(
+      resolveUserIdFromSub(payload.sub as string, CLIENT_ID)
+    ).resolves.toBeNull();
   });
 
   it("introspects a JWT access token with its own subject", async () => {

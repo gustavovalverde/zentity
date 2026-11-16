@@ -67,7 +67,6 @@ export const cibaRequests = sqliteTable(
     taskHash: text("task_hash"),
     agentClaims: text("agent_claims"),
     assertionVerified: integer("assertion_verified", { mode: "boolean" }),
-    pairwiseActSub: text("pairwise_act_sub"),
     attestationProvider: text("attestation_provider"),
     attestationTier: text("attestation_tier"),
     authContextId: text("auth_context_id").references(
@@ -91,7 +90,9 @@ export type NewCibaRequest = typeof cibaRequests.$inferInsert;
  * request and kept until the user is deleted. `referenceId` is the stored
  * `auth_req_id` hash every token of the approval references, and its unique
  * index lets only one decision win. The request fields are copies, because
- * the request row does not survive token issuance.
+ * the request row does not survive token issuance. The `token*` columns
+ * describe the one access token the approval issued: a JWT's `jti` (null for
+ * an opaque token, found by `referenceId`), its audience, and its issue time.
  */
 export const cibaApprovals = sqliteTable(
   "ciba_approval",
@@ -137,6 +138,9 @@ export const cibaApprovals = sqliteTable(
     requestedAt: integer("requested_at", { mode: "timestamp_ms" }).notNull(),
     decidedAt: integer("decided_at", { mode: "timestamp_ms" }).notNull(),
     expiresAt: integer("expires_at", { mode: "timestamp_ms" }).notNull(),
+    tokenJti: text("token_jti").unique(),
+    tokenAudience: text("token_audience"),
+    tokenIssuedAt: integer("token_issued_at", { mode: "timestamp_ms" }),
   },
   (table) => [
     index("ciba_approval_user_decided_idx").on(table.userId, table.decidedAt),

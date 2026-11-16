@@ -6,13 +6,12 @@ import type {
   OAuthTokenIssueParams,
 } from "@better-auth/oauth-provider";
 import type {
-  AapAccessTokenClaims,
   AccountAssurance,
+  AgentAuthorization,
   AuthenticationState,
 } from "@zentity/sdk/protocol";
 import type { BetterAuthPlugin } from "better-auth";
 import type { GrantConstraint } from "@/lib/agents/approval-evaluate";
-import type { StoredTokenSnapshot } from "@/lib/agents/token-snapshot";
 
 import { CIBA_GRANT_TYPE } from "@better-auth/ciba";
 import { defineRequestState } from "@better-auth/core/context";
@@ -25,12 +24,12 @@ import {
 import { and, eq } from "drizzle-orm";
 import { z } from "zod";
 
+import { resolveAgentSub } from "@/lib/agents/actor-subject";
 import { resolveCibaApprovalData } from "@/lib/agents/approval-resolve";
 import { approvalPolicy, requiredCeremony } from "@/lib/agents/capability";
 import { computeAcr, loginMethodToAmr } from "@/lib/assurance/oidc-claims";
 import { getAccountAssurance } from "@/lib/assurance/posture";
 import {
-  AUTHENTICATION_CONTEXT_CLAIM,
   createAuthenticationContext,
   getAuthenticationStateBySessionId,
 } from "@/lib/auth/auth-context";
@@ -39,6 +38,11 @@ import {
   releaseIdFor,
 } from "@/lib/auth/oidc/disclosure/context";
 import { oauthProviderOptions } from "@/lib/auth/oidc/oauth-provider";
+import {
+  clientSector,
+  externalAudience,
+  tokenSector,
+} from "@/lib/auth/oidc/pairwise";
 import { findSatisfiedAcr } from "@/lib/auth/oidc/step-up";
 import {
   hasPasskey,
@@ -77,16 +81,16 @@ import {
  * are built.
  */
 export interface PendingCibaToken {
-  /** Agent AAP claims for a verified agent session, embedded in the JWT. */
-  agentClaims: AapAccessTokenClaims | null;
+  /** The verified agent session the token's `act` names. */
+  agentSessionId: string | null;
   /** Approval-time authentication context, "" when none was captured. */
   authContextId: string;
+  /** What the verified agent's approval authorizes, for the token response. */
+  authorization: AgentAuthorization | null;
   /** The stored `auth_req_id` hash, which every CIBA token references. */
   authReqIdHash: string;
   /** How the approval happened, from `ciba_approval`, for the token response. */
   oversight: CibaOversight | null;
-  /** Durable agent snapshot, set only for verified agent sessions. */
-  snapshot: StoredTokenSnapshot | null;
 }
 
 /** The token response member that tells the client how the user approved. */
@@ -107,7 +111,7 @@ export function getPendingCibaToken(): Promise<PendingCibaToken | null> {
   return pendingCibaTokenState.get();
 }
 
-// ── Token grant actor and authentication ─────────────────────────────
+// ── Token grant actor ────────────────────────────────────────────────
 
 async function pendingCibaTokenFor(
   params: OAuthTokenIssueParams
@@ -120,27 +124,60 @@ async function pendingCibaTokenFor(
 
 /**
  * The RFC 8693 actor a CIBA token names: the verified agent session behind
- * the request, otherwise the client, which acts for the user.
+ * the request, pairwise in the token's own sector (the client and the one
+ * audience outside Zentity, or the client alone for an opaque token),
+ * otherwise the client, which acts for the user.
  */
-function resolveCibaActor(
+async function resolveCibaActor(
   params: OAuthTokenIssueParams,
   pending: PendingCibaToken | null
-): OAuthActorClaim {
-  const agentActor = pending?.agentClaims?.act;
-  return agentActor
-    ? { ...agentActor }
-    : { sub: params.client.clientId, sub_profile: "service" };
+): Promise<OAuthActorClaim> {
+  const sessionId = pending?.agentSessionId;
+  if (!sessionId) {
+    return { sub: params.client.clientId, sub_profile: "service" };
+  }
+  const client = {
+    redirectUris: params.client.redirectUris ?? [],
+    sectorIdentifier: params.client.sectorIdentifier ?? null,
+  };
+  const audience = externalAudience(params.resources);
+  const sector = audience
+    ? tokenSector(client, audience)
+    : clientSector(client);
+  return {
+    sub: await resolveAgentSub({ client: params.client, sector, sessionId }),
+    sub_profile: "service",
+  };
+}
+
+/**
+ * The token response members that describe the approval: `oversight` for
+ * every recorded approval, and for a verified agent what the approval
+ * authorizes. The access token carries none of them.
+ */
+function approvalTokenResponse(
+  pending: PendingCibaToken | null
+): Record<string, unknown> {
+  const authorization = pending?.authorization;
+  return {
+    ...(pending?.oversight ? { oversight: pending.oversight } : {}),
+    ...(authorization
+      ? {
+          capabilities: authorization.capabilities,
+          delegation: authorization.delegation,
+          aap_claims_version: authorization.aap_claims_version,
+        }
+      : {}),
+  };
 }
 
 /**
  * Better Auth owns a token's `act` and stamps only the one a grant passes to
  * `issueTokens`, which the `@better-auth/ciba` grant does not do, so the CIBA
  * grant issues through a provider that adds it, along with the approval's
- * authentication context and the `oversight` token response member. The
- * authentication context goes in the token's claims, which the provider
- * stores on an opaque token, because the token has no session to resolve it
- * from. Like any delegated issuance, a CIBA token then comes without a
- * refresh token, because a refreshed token would no longer name the actor.
+ * token response members. Like any delegated issuance, a CIBA token then
+ * comes without a refresh token, because a refreshed token would no longer
+ * name the actor.
  */
 function issueCibaTokensWithActor(context: AuthContext): void {
   const grants = oauthProviderOptions(context).extensions?.find(
@@ -159,23 +196,11 @@ function issueCibaTokensWithActor(context: AuthContext): void {
           const pending = await pendingCibaTokenFor(params);
           return input.provider.issueTokens({
             ...params,
-            act: resolveCibaActor(params, pending),
-            ...(pending?.authContextId
-              ? {
-                  accessTokenClaims: {
-                    ...params.accessTokenClaims,
-                    [AUTHENTICATION_CONTEXT_CLAIM]: pending.authContextId,
-                  },
-                }
-              : {}),
-            ...(pending?.oversight
-              ? {
-                  tokenResponse: {
-                    ...params.tokenResponse,
-                    oversight: pending.oversight,
-                  },
-                }
-              : {}),
+            act: await resolveCibaActor(params, pending),
+            tokenResponse: {
+              ...params.tokenResponse,
+              ...approvalTokenResponse(pending),
+            },
           });
         },
       },

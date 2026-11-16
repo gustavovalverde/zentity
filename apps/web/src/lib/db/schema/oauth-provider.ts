@@ -142,9 +142,6 @@ export const oauthAccessTokens = sqliteTable(
       .notNull()
       .references(() => oauthClients.clientId, { onDelete: "cascade" }),
     sessionId: text("session_id"),
-    // Nothing reads or writes this column. It stays declared because SQLite
-    // cannot drop a column that a foreign key names: `pnpm db:push` would emit
-    // `ALTER TABLE ... DROP COLUMN`, which fails and rolls back the whole push.
     authContextId: text("auth_context_id").references(
       () => authenticationContexts.id,
       { onDelete: "set null" }
@@ -320,9 +317,7 @@ export const pairwiseSubjects = sqliteTable(
   {
     sector: text("sector").notNull(),
     sub: text("sub").notNull(),
-    subjectType: text("subject_type", {
-      enum: ["user", "agent_session"],
-    }).notNull(),
+    subjectType: text("subject_type", { enum: ["user"] }).notNull(),
     subjectId: text("subject_id").notNull(),
     createdAt: integer("created_at", { mode: "timestamp_ms" })
       .notNull()

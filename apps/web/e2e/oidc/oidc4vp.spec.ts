@@ -3,12 +3,12 @@ import crypto from "node:crypto";
 import { type APIRequestContext, expect, test } from "@playwright/test";
 
 import {
+  BUILT_IN_WALLET_CLIENT_ID,
   createCredentialOffer,
   createDpopBinding,
   createIssuerSession,
   createKbJwt,
   createProofJwt,
-  createWalletClient,
   exchangePreAuthorizedCode,
   extractIssuedCredential,
   fetchCNonce,
@@ -20,7 +20,7 @@ import {
 
 async function issueCredentialForPresentation(request: APIRequestContext) {
   const { cookieHeader, userId } = await createIssuerSession(request);
-  const clientId = await createWalletClient(request, cookieHeader);
+  const clientId = BUILT_IN_WALLET_CLIENT_ID;
   const dpopBinding = await createDpopBinding();
   const { preAuthorizedCode } = await createCredentialOffer(request, {
     cookieHeader,

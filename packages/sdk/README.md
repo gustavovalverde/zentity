@@ -77,6 +77,10 @@ const bootstrap = await installedAuth.exchangeLoginToken({
 });
 ```
 
+## Agent Approvals
+
+`agent.requestApproval` and `requestCibaApproval` resolve to a `CibaTokenSet`. Treat its `accessToken` as opaque: Zentity's access tokens name the user and the agent by pairwise identifiers meant for their audience, and carry no approval details for the client. The token set states the approval instead. `oversight` says how and when the user approved, for every approval. When a verified agent made the request, `capabilities`, `delegation`, and `aapClaimsVersion` say what the approval authorizes. `agent.requestCapability` reuses a token set only when a capability grant approved it (`oversight.method` is `capability_grant`), its `capabilities` name the action, and the later request asks for the same audience, scope, resource, and authorization details. A token set from a manual approval answers only the request the user saw, so the next call asks again.
+
 ## Confidential Clients
 
 `exchangeToken` (`@zentity/sdk/fpa`), `beginCibaApproval`, `pollCibaTokenOnce`, and `requestCibaApproval` take an optional `clientSecret`. With it, the request authenticates with `client_secret_basic` (RFC 6749 §2.3.1) and sends no `client_id` in the body; without it, the client is public and sends `client_id`.
@@ -85,7 +89,7 @@ const bootstrap = await installedAuth.exchangeLoginToken({
 
 - `@zentity/sdk`: agent runtime helpers
 - `@zentity/sdk/rp`: relying-party token verification, DPoP, proof-of-human, x402 helpers
-- `@zentity/sdk/protocol`: shared protocol types such as `AccessTokenClaims`
+- `@zentity/sdk/protocol`: shared protocol types such as `AccessTokenClaims` (what a resource server reads from a Zentity JWT access token) and `AgentAuthorization`
 - `@zentity/sdk/agent-contract`: agent bootstrap scopes and the `agent-configuration` document schema shared by Zentity and agent runtimes
 - `@zentity/sdk/fpa`: first-party app auth
 - `@zentity/sdk/node`: Node/Bun installed-client helpers and file storage

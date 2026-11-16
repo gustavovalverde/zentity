@@ -3,10 +3,7 @@ import crypto from "node:crypto";
 import { calculateJwkThumbprint } from "jose";
 import { beforeEach, describe, expect, it } from "vitest";
 
-import {
-  AUTHENTICATION_CONTEXT_CLAIM,
-  createAuthenticationContext,
-} from "@/lib/auth/auth-context";
+import { createAuthenticationContext } from "@/lib/auth/auth-context";
 import { mintOpaqueAccessToken } from "@/lib/auth/oidc/haip/opaque-access-token";
 import { db } from "@/lib/db/connection";
 import { oauthClients } from "@/lib/db/schema/oauth-provider";
@@ -59,9 +56,9 @@ describe("requireBootstrapAccessToken", () => {
     overrides: Partial<Parameters<typeof mintOpaqueAccessToken>[0]> = {}
   ) {
     return mintOpaqueAccessToken({
-      accessTokenClaims: { zentity_token_use: "agent_bootstrap" },
       clientId: CLIENT_ID,
       dpopJkt: await calculateJwkThumbprint(keyPair.jwk),
+      accessTokenClaims: { zentity_token_use: "agent_bootstrap" },
       expiresAt: new Date(Date.now() + 60_000),
       referenceId: crypto.randomUUID(),
       scopes: SCOPES,
@@ -77,12 +74,7 @@ describe("requireBootstrapAccessToken", () => {
       sourceKind: "token_exchange",
       userId,
     });
-    const token = await mintBootstrapToken({
-      accessTokenClaims: {
-        zentity_token_use: "agent_bootstrap",
-        [AUTHENTICATION_CONTEXT_CLAIM]: authContextId,
-      },
-    });
+    const token = await mintBootstrapToken({ authContextId });
 
     const result = await requireBootstrapAccessToken(
       await bootstrapRequest(token, keyPair),
@@ -150,7 +142,8 @@ describe("requireBootstrapAccessToken", () => {
       userId,
     });
     const loginToken = await mintBootstrapToken({
-      accessTokenClaims: { [AUTHENTICATION_CONTEXT_CLAIM]: authContextId },
+      accessTokenClaims: {},
+      authContextId,
       scopes: ["openid", ...SCOPES],
     });
     const { POST } = await import("@/app/api/auth/agent/host/register/route");

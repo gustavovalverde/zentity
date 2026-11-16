@@ -8,9 +8,9 @@ function commitSha(value: string | undefined): string | undefined {
 }
 
 /**
- * The commit this build was made from. Telemetry `service.version`, the
- * build-info endpoint, and the agent token `audit.release_id` all report it, so
- * a trace, a deployment check, and a token can be matched to the same release.
+ * The commit this build was made from. Telemetry `service.version` and the
+ * build-info endpoint both report it, so a trace and a deployment check can be
+ * matched to the same release.
  */
 export function getReleaseId(): string {
   return (

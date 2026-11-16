@@ -12,6 +12,7 @@ import {
   registerPasskeyForUser,
 } from "../helpers/virtual-authenticator";
 import {
+  cibaLoginHint,
   createDpopBinding,
   findCibaRequestId,
   registerCibaClient,
@@ -57,7 +58,7 @@ async function requestApproval(
   const response = await request.post(`${AUTH_BASE_URL}/oauth2/bc-authorize`, {
     form: {
       client_id: input.clientId,
-      login_hint: input.userId,
+      login_hint: await cibaLoginHint(input.clientId, input.userId),
       scope: input.scope,
       binding_message: "Approval ceremony E2E",
       ...(input.authorizationDetails

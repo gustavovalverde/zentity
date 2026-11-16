@@ -8,7 +8,6 @@ import { and, eq, like, notLike } from "drizzle-orm";
 import { createAuthenticationContext } from "@/lib/auth/auth-context";
 import { parseStoredStringArray } from "@/lib/db/adapter-compat";
 import { db } from "@/lib/db/connection";
-import { agentTokenSnapshots } from "@/lib/db/schema/agent";
 import {
   accounts,
   authenticationContexts,
@@ -108,7 +107,6 @@ export async function resetDatabase(): Promise<void> {
     await tx.delete(cibaApprovals).run();
     await tx.delete(haipVpSessions).run();
     // OAuth tables (delete children before parents)
-    await tx.delete(agentTokenSnapshots).run();
     await tx.delete(pairwiseSubjects).run();
     await tx.delete(oauthAccessTokens).run();
     await tx.delete(oauthRefreshTokens).run();
@@ -311,6 +309,10 @@ export async function createTestCibaRequest(
         authContextId,
         agentSessionId: input.assertionVerified ? input.agentSessionId : null,
         hostId: input.assertionVerified ? input.hostId : null,
+        attestationTier: input.assertionVerified ? input.attestationTier : null,
+        attestationProvider: input.assertionVerified
+          ? input.attestationProvider
+          : null,
         ...approval,
       },
     });

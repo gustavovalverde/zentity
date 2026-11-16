@@ -54,12 +54,39 @@ function createDiscoveryResponse(): Response {
   );
 }
 
-function createCapabilityToken(action = "purchase"): string {
-  return encodeJwtPayload({
-    exp: FUTURE_EXP,
-    capabilities: [{ action }],
-  });
+function cibaAuthResponse(authReqId = "auth-1"): Response {
+  return new Response(
+    JSON.stringify({ auth_req_id: authReqId, expires_in: 300, interval: 0 }),
+    { status: 200 }
+  );
 }
+
+function cibaTokenResponse(
+  accessToken: string,
+  members: Record<string, unknown> = {}
+): Response {
+  return new Response(
+    JSON.stringify({
+      access_token: accessToken,
+      token_type: "DPoP",
+      expires_in: 3600,
+      ...members,
+    }),
+    { status: 200 }
+  );
+}
+
+const AGENT_AUTHORIZATION = {
+  capabilities: [{ action: "purchase" }],
+  delegation: { depth: 0, max_depth: 1 },
+  oversight: { method: "capability_grant", approved_at: 1_763_200_000 },
+  aap_claims_version: 2,
+};
+
+const MANUAL_AGENT_AUTHORIZATION = {
+  ...AGENT_AUTHORIZATION,
+  oversight: { method: "user_verification", approved_at: 1_763_200_000 },
+};
 
 function createPaymentRequiredHeader(): string {
   return Buffer.from(
@@ -88,30 +115,16 @@ function createPaymentRequiredHeader(): string {
 }
 
 describe("createAgent", () => {
-  it("caches capability tokens by client, audience, and action", async () => {
+  // R16: an opaque access token carries no capabilities to read, and a
+  // client must not read a JWT one either (RFC 9068 §6).
+  it("caches an opaque grant-approved token by the token response's capabilities", async () => {
     vi.useFakeTimers(FAKE_TIMERS);
     const fetchFn = vi
       .fn<typeof fetch>()
       .mockResolvedValueOnce(createDiscoveryResponse())
+      .mockResolvedValueOnce(cibaAuthResponse())
       .mockResolvedValueOnce(
-        new Response(
-          JSON.stringify({
-            auth_req_id: "auth-1",
-            expires_in: 300,
-            interval: 0,
-          }),
-          { status: 200 }
-        )
-      )
-      .mockResolvedValueOnce(
-        new Response(
-          JSON.stringify({
-            access_token: createCapabilityToken("purchase"),
-            token_type: "DPoP",
-            expires_in: 3600,
-          }),
-          { status: 200 }
-        )
+        cibaTokenResponse("opaque-capability-token", AGENT_AUTHORIZATION)
       );
 
     const agent = createAgent({
@@ -137,8 +150,133 @@ describe("createAgent", () => {
       scope: "openid poh",
     });
 
-    expect(secondResult.accessToken).toBe(firstResult.accessToken);
+    expect(firstResult).toEqual(
+      expect.objectContaining({
+        accessToken: "opaque-capability-token",
+        capabilities: [{ action: "purchase" }],
+        delegation: { depth: 0, max_depth: 1 },
+        aapClaimsVersion: 2,
+      })
+    );
+    expect(secondResult).toBe(firstResult);
     expect(fetchFn).toHaveBeenCalledTimes(3);
+    vi.useRealTimers();
+  });
+
+  // I4: a manual approval binds exactly the request the user saw.
+  it("never reuses a manually approved token", async () => {
+    vi.useFakeTimers(FAKE_TIMERS);
+    const fetchFn = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(createDiscoveryResponse())
+      .mockResolvedValueOnce(cibaAuthResponse("auth-1"))
+      .mockResolvedValueOnce(
+        cibaTokenResponse("manual-token-1", MANUAL_AGENT_AUTHORIZATION)
+      )
+      .mockResolvedValueOnce(cibaAuthResponse("auth-2"))
+      .mockResolvedValueOnce(
+        cibaTokenResponse("manual-token-2", MANUAL_AGENT_AUTHORIZATION)
+      );
+
+    const agent = createAgent({
+      issuerUrl: "https://issuer.example",
+      clientId: "client-1",
+      dpopClient: await createDpopClient(),
+      fetch: fetchFn,
+      loginHint: "user@example.com",
+    });
+    const options = {
+      action: "purchase",
+      audience: "https://merchant.example",
+      bindingMessage: "Authorize purchase",
+      scope: "openid poh",
+    };
+
+    const first = await settle(agent.requestCapability(options));
+    const second = await settle(agent.requestCapability(options));
+
+    expect(first.accessToken).toBe("manual-token-1");
+    expect(second.accessToken).toBe("manual-token-2");
+    expect(fetchFn).toHaveBeenCalledTimes(5);
+    vi.useRealTimers();
+  });
+
+  it("asks again when the authorization details differ from a cached grant approval", async () => {
+    vi.useFakeTimers(FAKE_TIMERS);
+    const fetchFn = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(createDiscoveryResponse())
+      .mockResolvedValueOnce(cibaAuthResponse("auth-1"))
+      .mockResolvedValueOnce(
+        cibaTokenResponse("grant-token-1", AGENT_AUTHORIZATION)
+      )
+      .mockResolvedValueOnce(cibaAuthResponse("auth-2"))
+      .mockResolvedValueOnce(
+        cibaTokenResponse("grant-token-2", AGENT_AUTHORIZATION)
+      );
+
+    const agent = createAgent({
+      issuerUrl: "https://issuer.example",
+      clientId: "client-1",
+      dpopClient: await createDpopClient(),
+      fetch: fetchFn,
+      loginHint: "user@example.com",
+    });
+    const request = (amount: string) => ({
+      action: "purchase",
+      audience: "https://merchant.example",
+      authorizationDetails: [{ type: "purchase", amount }],
+      bindingMessage: "Authorize purchase",
+      scope: "openid poh",
+    });
+
+    const first = await settle(agent.requestCapability(request("10")));
+    const second = await settle(agent.requestCapability(request("99")));
+    const repeated = await agent.requestCapability(request("10"));
+
+    expect(first.accessToken).toBe("grant-token-1");
+    expect(second.accessToken).toBe("grant-token-2");
+    expect(repeated).toBe(first);
+    expect(fetchFn).toHaveBeenCalledTimes(5);
+    const secondBody = fetchFn.mock.calls[3]?.[1]?.body as URLSearchParams;
+    expect(JSON.parse(secondBody.get("authorization_details") ?? "")).toEqual([
+      { type: "purchase", amount: "99" },
+    ]);
+    vi.useRealTimers();
+  });
+
+  it("does not read capabilities from the access token", async () => {
+    vi.useFakeTimers(FAKE_TIMERS);
+    const jwtClaimingCapability = encodeJwtPayload({
+      exp: FUTURE_EXP,
+      capabilities: [{ action: "purchase" }],
+    });
+    const fetchFn = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(createDiscoveryResponse())
+      .mockResolvedValueOnce(cibaAuthResponse("auth-1"))
+      .mockResolvedValueOnce(cibaTokenResponse(jwtClaimingCapability))
+      .mockResolvedValueOnce(cibaAuthResponse("auth-2"))
+      .mockResolvedValueOnce(cibaTokenResponse(jwtClaimingCapability));
+
+    const agent = createAgent({
+      issuerUrl: "https://issuer.example",
+      clientId: "client-1",
+      dpopClient: await createDpopClient(),
+      fetch: fetchFn,
+      loginHint: "user@example.com",
+    });
+    const options = {
+      action: "purchase",
+      audience: "https://merchant.example",
+      bindingMessage: "Authorize purchase",
+      scope: "openid poh",
+    };
+
+    await settle(agent.requestCapability(options));
+    await settle(agent.requestCapability(options));
+
+    expect(fetchFn).toHaveBeenCalledTimes(5);
     vi.useRealTimers();
   });
 
@@ -153,25 +291,9 @@ describe("createAgent", () => {
         })
       )
       .mockResolvedValueOnce(createDiscoveryResponse())
+      .mockResolvedValueOnce(cibaAuthResponse())
       .mockResolvedValueOnce(
-        new Response(
-          JSON.stringify({
-            auth_req_id: "auth-1",
-            expires_in: 300,
-            interval: 0,
-          }),
-          { status: 200 }
-        )
-      )
-      .mockResolvedValueOnce(
-        new Response(
-          JSON.stringify({
-            access_token: createCapabilityToken("purchase"),
-            token_type: "DPoP",
-            expires_in: 3600,
-          }),
-          { status: 200 }
-        )
+        cibaTokenResponse("opaque-capability-token", AGENT_AUTHORIZATION)
       )
       .mockResolvedValueOnce(
         new Response(

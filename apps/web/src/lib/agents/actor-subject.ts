@@ -1,82 +1,53 @@
-import { eq } from "drizzle-orm";
+import { pairwiseValue } from "@/lib/auth/oidc/pairwise";
 
-import { env } from "@/env";
-import {
-  clientSector,
-  computePairwiseSub,
-  type SectorClient,
-} from "@/lib/auth/oidc/pairwise";
-import { upsertPairwiseSubjectIndex } from "@/lib/auth/oidc/pairwise-subject-index";
-import { parseStoredStringArray } from "@/lib/db/adapter-compat";
-import { db } from "@/lib/db/connection";
-import { oauthClients } from "@/lib/db/schema/oauth-provider";
-
-interface ClientPairwiseConfig extends SectorClient {
+/** The client fields that decide how a token names its agent actor. */
+export interface AgentActorClient {
   clientId: string;
-  metadata: string | null;
+  metadata?: Record<string, unknown> | string | null | undefined;
 }
 
 type AgentSubjectType = "pairwise" | "public";
 
-function getAgentSubjectType(client: ClientPairwiseConfig): AgentSubjectType {
-  if (client.metadata) {
-    try {
-      const metadata = JSON.parse(client.metadata) as Record<string, unknown>;
-      const configured = metadata.agent_subject_type;
-      if (configured === "pairwise" || configured === "public") {
-        return configured;
-      }
-    } catch {
-      // Malformed metadata falls through to the privacy-preserving default.
-    }
+function parseMetadata(
+  metadata: AgentActorClient["metadata"]
+): Record<string, unknown> | null {
+  if (!metadata) {
+    return null;
   }
-
-  return "pairwise";
+  if (typeof metadata !== "string") {
+    return metadata;
+  }
+  try {
+    const parsed = JSON.parse(metadata) as unknown;
+    return parsed && typeof parsed === "object"
+      ? (parsed as Record<string, unknown>)
+      : null;
+  } catch {
+    return null;
+  }
 }
 
-async function getClientPairwiseConfig(
-  clientId: string
-): Promise<ClientPairwiseConfig | null> {
-  const client = await db
-    .select({
-      clientId: oauthClients.clientId,
-      metadata: oauthClients.metadata,
-      redirectUris: oauthClients.redirectUris,
-      sectorIdentifier: oauthClients.sectorIdentifier,
-    })
-    .from(oauthClients)
-    .where(eq(oauthClients.clientId, clientId))
-    .limit(1)
-    .get();
-
-  return client
-    ? {
-        ...client,
-        redirectUris: parseStoredStringArray(client.redirectUris),
-      }
-    : null;
+/**
+ * The client's `agent_subject_type`, which only an administrator sets.
+ * Absent or malformed metadata falls through to the pairwise default.
+ */
+function agentSubjectType(client: AgentActorClient): AgentSubjectType {
+  const configured = parseMetadata(client.metadata)?.agent_subject_type;
+  return configured === "public" ? "public" : "pairwise";
 }
 
-export async function resolveAgentSubForClient(
-  sessionId: string,
-  clientId: string
-): Promise<string> {
-  const client = await getClientPairwiseConfig(clientId);
-  if (!client) {
-    return sessionId;
-  }
-
-  if (getAgentSubjectType(client) === "public") {
-    return sessionId;
-  }
-
-  const sector = clientSector(client);
-  const sub = await computePairwiseSub(sessionId, sector, env.PAIRWISE_SECRET);
-  await upsertPairwiseSubjectIndex({
-    sector,
-    sub,
-    subjectId: sessionId,
-    subjectType: "agent_session",
-  });
-  return sub;
+/**
+ * The `act.sub` of a token for a verified agent session: pairwise in the
+ * token's own sector, so each audience sees its own value, or the session id
+ * for a client whose `agent_subject_type` is `public`. Nothing maps the value
+ * back to the session; the token's record does.
+ */
+export async function resolveAgentSub(input: {
+  client: AgentActorClient;
+  sector: string;
+  sessionId: string;
+}): Promise<string> {
+  return agentSubjectType(input.client) === "public"
+    ? input.sessionId
+    : await pairwiseValue(input.sector, input.sessionId);
 }

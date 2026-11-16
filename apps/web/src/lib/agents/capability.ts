@@ -506,25 +506,39 @@ function detailTypes(raw: unknown): (string | null)[] {
   });
 }
 
+function requestedScopes(request: ApprovalRequest): string[] {
+  return [...new Set(request.scope.split(" ").filter(Boolean))].filter(
+    (scope) => scope !== "openid"
+  );
+}
+
+function policyRows(request: ApprovalRequest) {
+  const scopes = requestedScopes(request);
+  const scopeRows = scopes.map(
+    (scope) => SCOPE_POLICY[scope] ?? unknownScopeRow(scope)
+  );
+  const detailRows = detailTypes(request.authorizationDetails).map((type) =>
+    type
+      ? (AUTHORIZATION_DETAILS_POLICY[type] ?? UNKNOWN_DETAIL_ROW)
+      : UNKNOWN_DETAIL_ROW
+  );
+  return { scopes, scopeRows, detailRows, rows: [...scopeRows, ...detailRows] };
+}
+
+/** The catalog capabilities a request asks for, by name. */
+export function requestCapabilities(request: ApprovalRequest): string[] {
+  const names = policyRows(request).rows.flatMap((row) =>
+    row.capability ? [row.capability] : []
+  );
+  return [...new Set(names)].toSorted();
+}
+
 /**
  * Derives what the whole request needs from what it asks for, never from
  * anything the agent asserts about itself.
  */
 export function approvalPolicy(request: ApprovalRequest): ApprovalPolicy {
-  const scopes = [...new Set(request.scope.split(" ").filter(Boolean))].filter(
-    (scope) => scope !== "openid"
-  );
-  const types = detailTypes(request.authorizationDetails);
-
-  const scopeRows = scopes.map(
-    (scope) => SCOPE_POLICY[scope] ?? unknownScopeRow(scope)
-  );
-  const detailRows = types.map((type) =>
-    type
-      ? (AUTHORIZATION_DETAILS_POLICY[type] ?? UNKNOWN_DETAIL_ROW)
-      : UNKNOWN_DETAIL_ROW
-  );
-  const rows = [...scopeRows, ...detailRows];
+  const { scopes, scopeRows, detailRows, rows } = policyRows(request);
 
   const ceremony: ApprovalCeremony = rows.some(
     (row) => row.ceremony === "user_verification"

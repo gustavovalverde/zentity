@@ -1,11 +1,4 @@
-import type { CibaApproval } from "@/lib/db/schema/ciba";
-
 import { afterEach, describe, expect, it, vi } from "vitest";
-
-vi.mock("@/lib/db/connection", () => ({ db: {} }));
-vi.mock("@/lib/agents/actor-subject", () => ({
-  resolveAgentSubForClient: () => Promise.resolve("pairwise-actor"),
-}));
 
 const RELEASE_VARS = [
   "GIT_SHA",
@@ -61,7 +54,7 @@ describe("getReleaseId", () => {
 describe("with only GIT_SHA set", () => {
   const sha = "0123456789abcdef0123456789abcdef01234567";
 
-  it("reports it as telemetry service.version, build-info gitSha, and token release_id", async () => {
+  it("reports it as telemetry service.version and build-info gitSha", async () => {
     setReleaseEnv({ GIT_SHA: sha });
     vi.stubEnv("APP_VERSION", "9.9.9");
 
@@ -71,30 +64,6 @@ describe("with only GIT_SHA set", () => {
     const { GET } = await import("@/app/api/status/build-info/route");
     const body = await (GET() as Response).json();
     expect(body.gitSha).toBe(sha);
-
-    const { buildCibaAgentContribution } = await import(
-      "@/lib/agents/token-snapshot"
-    );
-    const contribution = await buildCibaAgentContribution(
-      {
-        agentSessionId: "session-1",
-        assertionVerified: true,
-        authReqId: "req-1",
-        createdAt: new Date(),
-        expiresAt: new Date(Date.now() + 60_000),
-      },
-      "client-1",
-      // The token's agent claims come from the request's recorded approval.
-      {
-        approvalMethod: "session",
-        capability: null,
-        constraints: null,
-        decidedAt: new Date(),
-        grantId: null,
-        hostPolicyId: null,
-      } as CibaApproval
-    );
-    expect(contribution?.claims.audit.release_id).toBe(sha);
   });
 });
 

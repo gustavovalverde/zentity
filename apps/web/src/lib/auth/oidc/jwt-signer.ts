@@ -15,6 +15,7 @@ import { and, desc, eq, gt, inArray, isNull, lt, ne, or } from "drizzle-orm";
 import { importJWK, SignJWT } from "jose";
 
 import { env } from "@/env";
+import { projectAudienceSubject } from "@/lib/auth/oidc/pairwise";
 import { db } from "@/lib/db/connection";
 import { jwks } from "@/lib/db/schema/oauth-provider";
 
@@ -321,16 +322,22 @@ async function signWithAlg(
 // ---------------------------------------------------------------------------
 
 /**
- * Access tokens (payload has `scope`) are EdDSA for compact size. Every other
- * JWT, including ID tokens, is RS256: the OAuth provider computes `at_hash`
- * for the JWT plugin's configured algorithm and rejects a mismatched signer.
+ * Access tokens (payload has `scope`) are EdDSA for compact size, and a user
+ * token for an audience outside Zentity gets that audience's pairwise
+ * subject. Every other JWT, including ID tokens, is RS256: the OAuth provider
+ * computes `at_hash` for the JWT plugin's configured algorithm and rejects a
+ * mismatched signer.
  */
-export function signJwt(
+export async function signJwt(
   payload: Record<string, unknown>,
   header?: { typ?: string }
 ): Promise<string> {
   if (typeof payload.scope === "string") {
-    return signWithAlg(payload, "EdDSA", header?.typ);
+    return signWithAlg(
+      await projectAudienceSubject(payload),
+      "EdDSA",
+      header?.typ
+    );
   }
   return signWithAlg(payload, "RS256", header?.typ);
 }

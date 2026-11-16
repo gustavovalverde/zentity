@@ -1,4 +1,8 @@
 import crypto from "node:crypto";
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+import { parseEnv } from "node:util";
 
 import { createClient } from "@libsql/client";
 import {
@@ -7,6 +11,7 @@ import {
   expect,
   request as playwrightRequest,
 } from "@playwright/test";
+import { makeSignature } from "better-auth/crypto";
 import { eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/libsql";
 import {
@@ -277,6 +282,15 @@ export async function createIssuerSession(_request: APIRequestContext) {
 
 // --- OAuth/OIDC4VCI Helpers ---
 
+/**
+ * The wallet client the server creates for itself, which the dashboard's
+ * credential offer targets. It has public subjects, so it receives
+ * credentials. U25 in docs/adr/platform/0002-better-auth-patches.md covers
+ * pairwise wallets.
+ */
+export const BUILT_IN_WALLET_CLIENT_ID = "zentity-wallet";
+
+/** A wallet registered through `/oauth2/create-client`, which is pairwise. */
 export async function createWalletClient(
   request: APIRequestContext,
   cookieHeader: string
@@ -316,7 +330,6 @@ export async function registerCibaClient(
       grant_types: [CIBA_GRANT_TYPE],
       token_endpoint_auth_method: "none",
       backchannel_token_delivery_mode: "poll",
-      subject_type: "public",
       ...metadata,
     },
     headers: ORIGIN_HEADERS,
@@ -647,6 +660,59 @@ export async function seedVpSession(input: {
 }
 
 // --- CIBA Helpers ---
+
+const WEB_ENV_FILE = join(
+  typeof import.meta.dirname === "string"
+    ? import.meta.dirname
+    : dirname(fileURLToPath(import.meta.url)),
+  "..",
+  "..",
+  ".env"
+);
+
+/** The server's `PAIRWISE_SECRET`, from the environment or `apps/web/.env`. */
+function pairwiseSecret(): string {
+  const secret =
+    process.env.PAIRWISE_SECRET ??
+    parseEnv(readFileSync(WEB_ENV_FILE, "utf8")).PAIRWISE_SECRET;
+  if (!secret) {
+    throw new Error("PAIRWISE_SECRET is not configured for the E2E server");
+  }
+  return secret;
+}
+
+/**
+ * The CIBA `login_hint` for a client: the pairwise subject it would have
+ * received in an ID token, recorded as issued so Zentity can name the user
+ * back, as an ID token does.
+ */
+export async function cibaLoginHint(
+  clientId: string,
+  userId: string
+): Promise<string> {
+  const client = openE2eDatabase();
+  try {
+    const result = await client.execute({
+      sql: "SELECT sector_identifier FROM oauth_client WHERE client_id = ?",
+      args: [clientId],
+    });
+    const sector = result.rows[0]?.sector_identifier;
+    if (typeof sector !== "string") {
+      throw new Error(`Client ${clientId} has no pairwise sector`);
+    }
+    const sub = await makeSignature(`${sector}.${userId}`, pairwiseSecret());
+    // The running server writes to the same file; wait for its lock.
+    await client.execute("PRAGMA busy_timeout = 5000");
+    await client.execute({
+      sql: `INSERT OR IGNORE INTO pairwise_subject (sector, sub, subject_type, subject_id)
+        VALUES (?, ?, 'user', ?)`,
+      args: [sector, sub, userId],
+    });
+    return sub;
+  } finally {
+    client.close();
+  }
+}
 
 /**
  * The request id the approval page and `/ciba/decision` take. The provider

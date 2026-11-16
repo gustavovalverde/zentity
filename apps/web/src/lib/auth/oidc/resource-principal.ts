@@ -84,13 +84,16 @@ export async function verifyResourceRequest(
 
 /**
  * Introspects a token the caller presents (not the caller's own credential).
- * The payload is `{ active: false }` for an unknown, expired, or revoked token.
+ * The payload is `{ active: false }` for an unknown, expired, or revoked
+ * token, and, when `callerClientId` is given, for a token that client neither
+ * holds nor serves as a linked resource server.
  */
 export async function introspectZentityAccessToken(
-  token: string
+  token: string,
+  callerClientId?: string
 ): Promise<VerifiedAccessToken> {
   return (await auth.api.introspectZentityAccessToken({
-    body: { token },
+    body: { token, ...(callerClientId ? { clientId: callerClientId } : {}) },
   })) as VerifiedAccessToken;
 }
 

@@ -121,9 +121,11 @@ ${c.dim}Usage:${c.reset}
   pnpm exec tsx scripts/ciba-cli-test.ts --login-hint <subject> [options]
 
 ${c.dim}Options:${c.reset}
-  --login-hint <subject>    Subject identifier this client received for the
-                            user. A client this script registers uses public
-                            subjects, so pass the user id. Required.
+  --login-hint <subject>    Subject identifier the client received for the
+                            user: its pairwise sub from an ID token or
+                            UserInfo. A client this script registers has not
+                            received one, so pass --client-id for a client
+                            that signed the user in. Required.
   --base-url <url>          Server URL (default: http://localhost:3000)
   --client-id <id>          Skip DCR, use existing client
   --scope <scope>           Scope string (default: openid)
@@ -267,7 +269,6 @@ async function step1Dcr(
       token_endpoint_auth_method: "none",
       grant_types: ["urn:openid:params:grant-type:ciba"],
       backchannel_token_delivery_mode: "poll",
-      subject_type: "public",
     }),
   });
 

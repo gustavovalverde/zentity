@@ -234,7 +234,7 @@ sequenceDiagram
 
   User->>AS: Approve via dashboard / push notification
   Agent->>AS: POST /oauth2/token + DPoP proof
-  AS-->>Agent: 200 { access_token, id_token, token_type: "DPoP", act: { sub: pairwise_agent_session_sub } }
+  AS-->>Agent: 200 { access_token, id_token, token_type: "DPoP", oversight }
 
   Note over Agent,RS: Use tokens
   Agent->>RS: Authorization: DPoP <token> + DPoP proof (with ath)
@@ -252,7 +252,7 @@ sequenceDiagram
 
 **`login_hint`**: the subject identifier the client received for the user from Zentity (its pairwise `sub` for a pairwise client, the user id for a public client). Zentity does not accept email addresses. A hint that is not a subject issued to the requesting client gets `unknown_user_id`, whether or not an account exists, so a client cannot probe for accounts or prompt users who never authorized it.
 
-CIBA requests support `authorization_details` (RFC 9396) for structured action metadata such as purchase amounts and merchant info. Registered agent runtimes do not send self-declared `agent_claims`. They send an `Agent-Assertion` header signed by the live session key. When that assertion verifies, the server snapshots the registered session metadata onto `ciba_request` and later emits an AAP-profiled delegated token with `agent`, `task`, `capabilities`, `oversight`, and `audit` claims alongside the standard pairwise `act.sub` actor identifier. Unverified JWT payloads used to route agent assertions are parsed with duplicate-key rejection before issuer/session selection, so JSON parser ambiguity cannot change which key or session is used for verification. See [Agent Architecture](<../(architecture)/agent-architecture.md>) for the host registration and session lifecycle model.
+CIBA requests support `authorization_details` (RFC 9396) for structured action metadata such as purchase amounts and merchant info. Registered agent runtimes do not send self-declared `agent_claims`. They send an `Agent-Assertion` header signed by the live session key. When that assertion verifies, the server snapshots the registered session metadata onto `ciba_request` and later issues a token whose `act` is `{ sub, sub_profile: "service" }`, with `act.sub` pairwise for the agent session in the token's sector. The token response adds `capabilities`, `delegation`, and `aap_claims_version: 2` next to `oversight`; the token itself carries no agent control-plane claim. Unverified JWT payloads used to route agent assertions are parsed with duplicate-key rejection before issuer/session selection, so JSON parser ambiguity cannot change which key or session is used for verification. See [Agent Architecture](<../(architecture)/agent-architecture.md>) for the host registration and session lifecycle model.
 
 The user is notified through three channels: web push notifications, email with an approval link, and a dashboard listing at `/dashboard/agents` (Requests tab). Push notifications and emails route to the standalone approval page at `/approve/[requestId]` (no dashboard chrome). The request id in that link is not the `auth_req_id`. The client's `auth_req_id` is stored only as a hash and never appears in a URL.
 
@@ -330,7 +330,7 @@ Discovery publishes `delegation_chains: false`: an exchanged token names no acto
 
 Clients cannot claim a resource themselves: a `zentity_protected_resource` registration field is ignored.
 
-**Scopes:** the requested scopes must be a subset of the subject token's scopes and of the exchanging client's registered scopes. A requested `offline_access` gets `invalid_scope`, because token exchange never issues a refresh token. Without `scope`, the exchanged token gets the subject's scopes the client registered, except `offline_access` and the agent bootstrap scopes, which it carries only when requested; a subject with no such scope gets `invalid_scope`. `openid` carries over, because the MCP HTTP server reads its pairwise subject from UserInfo with the exchanged token. Bootstrap scopes may not be mixed with other scopes.
+**Scopes:** the requested scopes must be a subset of the subject token's scopes and of the exchanging client's registered scopes. A requested `offline_access` gets `invalid_scope`, because token exchange never issues a refresh token. Without `scope`, the exchanged token gets the subject's scopes the client registered, except `offline_access` and the agent bootstrap scopes, which it carries only when requested; a subject with no such scope gets `invalid_scope`. `openid` carries over, because the MCP HTTP server reads its pairwise subject from UserInfo with the exchanged token. Bootstrap scopes may not be mixed with other scopes, and only a client exchanging its own DPoP-bound token may request them, so a resource server that holds a user's token cannot obtain a bootstrap token for that user (`invalid_scope` for both).
 
 **Subjects the grant refuses** (`invalid_request` unless noted):
 
@@ -344,7 +344,7 @@ Clients cannot claim a resource themselves: a `zentity_protected_resource` regis
 | No authentication context resolves for it | `subject_token has no authentication context` |
 | Expires before the exchanged token could be issued | `the token this grant derives from has expired` |
 
-The authentication context comes from the server, never from a claim the client presents: the subject's session, or for an opaque subject without a session, the context stored with its claims. A JWT subject without a session has no context and is refused. An exchanged token issued without a session stores that context as `zentity_auth_context_id` among its access-token claims, which introspection returns, as it does for a CIBA token.
+The authentication context comes from the server, never from a claim: the subject's session, or for an opaque subject without a session, its stored context. A JWT subject without a session has no context and is refused. An exchanged token issued without a session keeps that context in a column of its token record that introspection does not return, as a CIBA token does.
 
 A remote MCP host's grant ends with the user's browser session. Once the user signs out or the session expires, the host's MCP-audience token is inactive, so the exchange refuses it. Its `offline_access` refresh token survives sign-out, but the refresh does not restore access: an `openid` refresh is refused with `invalid_grant` because no authentication context remains for the ID token, and any access token a refresh issues carries the ended `sid`, which the OAuth provider treats as revoked. The host must authorize its MCP connector again.
 
@@ -438,7 +438,9 @@ The `ath` claim is only included when presenting the access token at a resource 
 | ID token | JWT | RS256 |
 | Token type | `"DPoP"` | n/a |
 
-Opaque access tokens keep the user and the DPoP binding server-side. A JWT access token carries the client's own subject identifier as `sub`, the same value as its ID tokens: the pairwise subject for a pairwise client. The OAuth provider writes that subject under `accessTokenSubject: "pairwise"` and adds `ba_sub`, the user id encrypted with a key only the provider holds. UserInfo, `/oauth2/introspect`, and Zentity's own endpoints that validate a JWT access token read the user from `ba_sub`. The ciphertext is randomized per token, so it does not link a user across clients.
+Opaque access tokens keep the user and the DPoP binding server-side. A JWT access token names at most one audience outside Zentity: a request for two such resources is refused with `invalid_target`, at the authorization, PAR, challenge, backchannel, and token endpoints alike. For a pairwise client, the token's `sub` is pairwise for that client and audience together, so the MCP server, the agent wallet, and the client's own ID tokens each see a different value for the same user (see [Pairwise subject identifiers](#pairwise-subject-identifiers)). The OAuth provider makes the subject pairwise under `accessTokenSubject: "pairwise"` and adds `ba_sub`, the user id encrypted with a key only the provider holds; Zentity's signer then replaces the provider's client-level `sub` with the audience's value. A token whose audiences are all Zentity-hosted, such as one for the OID4VCI credential endpoint, keeps the client-level value. UserInfo, `/oauth2/introspect`, and Zentity's own endpoints that validate a JWT access token read the user from `ba_sub`, so UserInfo still answers with the ID-token `sub`. The ciphertext is randomized per token, so it does not link a user across clients or audiences.
+
+Some values still repeat across one client's tokens for different audiences: `azp` and `client_id` (RFC 9068 requires them), `grant_id`, `reference_id`, the release binding claim, `cnf.jkt` when the client reuses its DPoP key, and the provider's `sid`. A client registered once per installation is identified by its `client_id` alone, so per-audience subjects separate audiences only for clients that serve many users.
 
 ### Token revocation
 
@@ -460,7 +462,7 @@ Signing keys are managed by the Better Auth `jwt` plugin. Each algorithm's key i
 
 ### Client registration
 
-Relying parties and agents register via RFC 7591 Dynamic Client Registration. CIBA clients register as public clients (`token_endpoint_auth_method: "none"`). The user-facing `subject_type` defaults to `"pairwise"` for DCR clients. The one confidential client Zentity operates itself, the MCP HTTP server's, is provisioned through the provider's administration APIs instead: `pnpm --filter @zentity/web mcp:provision` creates or updates it (token exchange and CIBA grants, `client_secret_basic`, `skip_consent`, a pairwise subject, and a link to `MCP_PUBLIC_URL`) and prints `MCP_CLIENT_ID` and, when new or rotated with `--rotate-secret`, `MCP_CLIENT_SECRET`. The provider's administration APIs act only for a signed-in user and change only clients that user owns, so the script creates a credential-less owner account with each client, under the reserved `zentity.invalid` domain that sign-up refuses, and signs it in only for each run. It never reuses an existing account as an owner, and it refuses an `MCP_CLIENT_ID` whose client it did not create.
+Relying parties and agents register via RFC 7591 Dynamic Client Registration. CIBA clients register as public clients (`token_endpoint_auth_method: "none"`). Every registered client gets pairwise subjects: dynamic registration sets `subject_type: "pairwise"` when it is absent and refuses `"public"` with `invalid_client_metadata`, and a client created through `/oauth2/create-client`, which takes no `subject_type`, is made pairwise after creation, with its redirect URIs held to the same pairwise rules. The one confidential client Zentity operates itself, the MCP HTTP server's, is provisioned through the provider's administration APIs instead: `pnpm --filter @zentity/web mcp:provision` creates or updates it (token exchange and CIBA grants, `client_secret_basic`, `skip_consent`, a pairwise subject, and a link to `MCP_PUBLIC_URL`) and prints the resource and database it targets, then `MCP_CLIENT_ID` and, when new or rotated with `--rotate-secret`, `MCP_CLIENT_SECRET`. In production it refuses an `MCP_PUBLIC_URL` that is not HTTPS to a public host, such as a loopback, private, or internal address. The provider's administration APIs act only for a signed-in user and change only clients that user owns, so the script creates a credential-less owner account with each client, under the reserved `zentity.invalid` domain that sign-up refuses, and signs it in only for each run. It never reuses an existing account as an owner, and it refuses an `MCP_CLIENT_ID` whose client it did not create.
 
 ```json
 {
@@ -472,7 +474,7 @@ Relying parties and agents register via RFC 7591 Dynamic Client Registration. CI
 }
 ```
 
-Optional metadata fields: `optionalScopes` (scopes selectable but not required at consent), `backchannel_client_notification_endpoint` (CIBA ping mode callback URL), `backchannel_logout_uri` (OIDC Back-Channel Logout endpoint), `subject_type` (`"pairwise"` default for the human `sub`, `"public"` available), and `agent_subject_type` (`"pairwise"` default for `act.sub`/`agent.id`, `"public"` available independently of the user setting). Clients an administrator marks `first_party` and `skip_consent` can use the Authorization Challenge Endpoint: headless authentication without redirects, and step-up `auth_session` tokens on authorization failure. Registration cannot set either field.
+Optional metadata fields: `optionalScopes` (scopes selectable but not required at consent), `backchannel_client_notification_endpoint` (CIBA ping mode callback URL), `backchannel_logout_uri` (OIDC Back-Channel Logout endpoint), and `subject_type` (only `"pairwise"`, also the default; `"public"` is refused). `agent_subject_type`, which makes `act.sub` the raw session id, is not a registration field: an administrator sets it in a client's metadata, independently of the user setting. Clients an administrator marks `first_party` and `skip_consent` can use the Authorization Challenge Endpoint: headless authentication without redirects, and step-up `auth_session` tokens on authorization failure. Registration cannot set either field.
 
 **`software_statement` validation:** If a `software_statement` is present in the DCR request, it must be a syntactically valid JWT (three base64url-encoded parts with a parseable JSON payload). Malformed statements return HTTP 400. The JSON payload is parsed with duplicate-key rejection before the issuer is read. The signature is not verified (no trusted SSA issuers configured), but strict structural validation prevents garbage data or parser-ambiguous issuer metadata from being accepted.
 
@@ -513,8 +515,8 @@ Proof claims are projected from the account identity snapshot. The issuer reads 
 | `proof:compliance` | `policy_version`, `verification_time`, `attestation_expires_at` |
 | `proof:chip` | `chip_verified`, `chip_verification_method` |
 | `proof:humanity` | `humanity_proven` — boolean (id_token + userinfo); provenance is intentionally not exposed |
-| `proof:sybil` | `sybil_nullifier` — per-RP pseudonymous nullifier from document/chip credentials (access tokens only) |
-| `proof:humanity:rp_unique` | `rp_unique_humanity_id` — per-RP pseudonym derived from the union of the user's humanity credentials (access tokens only) |
+| `proof:sybil` | `sybil_nullifier` — per-RP pseudonymous nullifier from document/chip credentials (opaque access tokens only) |
+| `proof:humanity:rp_unique` | `rp_unique_humanity_id` — per-RP pseudonym derived from the union of the user's humanity credentials (opaque access tokens only) |
 | `poh` | (no id_token/userinfo claims) — gates the [Proof of Human resource endpoint](#proof-of-human) |
 
 `proof:sybil` derives from the bundle-owned `nullifierSeed`. At credential write time the system derives the seed as `HMAC-SHA256(DEDUP_HMAC_SECRET, rawKey || source)` (where `rawKey` is the OCR `dedupKey` or the raw NFC chip nullifier, and `source` domain-separates the two inputs). Verification finalization seeds `nullifierSeed` from the authoritative verified credential, and token issuance derives `sybil_nullifier = HMAC-SHA256(DEDUP_HMAC_SECRET, nullifierSeed + "|rp|" + clientId)`. This keeps the nullifier stable across credential additions, prevents any raw ZKPassport chip identifier from reaching the bundle, and resets only after full identity revocation.
@@ -689,7 +691,7 @@ For the user, a linked humanity credential:
 
 A relying party requesting `proof:humanity` receives `humanity_proven: true` in id_token + userinfo. Provenance — the provider name, count, or per-credential metadata — is intentionally not exposed; that count would be a fingerprinting surface even as an integer.
 
-A relying party requesting `proof:humanity:rp_unique` receives `rp_unique_humanity_id` in the access token only:
+A relying party requesting `proof:humanity:rp_unique` receives `rp_unique_humanity_id` in an opaque access token only, by introspecting it; a JWT access token for an outside resource server never carries it:
 
 - **Per-RP** — derived from `HMAC(HUMANITY_HMAC_SECRET, "personhood:rp_unique:v1" || rpClientId || stable_humanity_id)`
 - **Aggregated** — `stable_humanity_id` commits to the **union** of the user's active provider-subject hashes (sorted then HMACed), so RPs cannot tell from the pseudonym alone how many providers backed it
@@ -743,6 +745,8 @@ The credential endpoint answers `{ "credentials": [{ "credential": "<SD-JWT VC>"
 **Deferred issuance**: When verification is pending, the issuer answers 202 with a `transaction_id` and a polling `interval`. The wallet polls `POST /api/auth/oidc4vci/credential/deferred` until ready.
 
 Credentials contain only derived claims (e.g., `verified`, `verification_level`, `age_verified`), never raw PII.
+
+**Known limitation:** the OIDC4VCI plugin looks the user up by the access token's `sub` and copies it into the credential's `sub`, so only a wallet client with public subjects receives credentials. The server creates its built-in wallet client, `zentity-wallet`, with public subjects, and the dashboard's credential offer targets it, so that journey works without administrator setup; its credentials carry the user id as `sub`. A wallet registered through dynamic registration, `/oauth2/create-client`, or a Client ID Metadata Document is pairwise, and Zentity refuses it with an explicit error: a credential offer for it answers 400 `invalid_client`, and the credential endpoint answers 400 `credential_request_denied` to its access token. Pairwise wallets need the plugin to resolve the user from the provider's `ba_sub` and keep the pairwise `sub` in the credential.
 
 ---
 
@@ -820,13 +824,21 @@ The privacy guarantees cluster by what they prevent: cross-RP user correlation (
 
 ### Pairwise subject identifiers
 
-All DCR clients use `subject_type: "pairwise"`. Each (user, client) pair gets a unique opaque `sub`:
+All registered clients use `subject_type: "pairwise"`; only an administrator can create a public client. Each (user, client) pair gets a unique opaque `sub`:
 
 ```text
 sub = Base64(HMAC-SHA256(PAIRWISE_SECRET, sectorId + "." + userId))
 ```
 
-`sectorId` is the sector the OAuth provider stores on the client at registration, and Zentity reads the same stored value everywhere it derives a subject (CIBA login hints, agent actors, validity notices). The provider's rule:
+`sectorId` is the sector the OAuth provider stores on the client at registration, and Zentity reads the same stored value everywhere it derives a subject (CIBA login hints, agent actors, validity notices). ID tokens, UserInfo, logout tokens, and CIBA login hints use it as is. A JWT access token for one audience `A` outside Zentity uses the token sector `sectorId + " " + A`, with `A` the resource identifier without a trailing slash:
+
+```text
+access-token sub = Base64(HMAC-SHA256(PAIRWISE_SECRET, sectorId + " " + A + "." + userId))
+```
+
+A space cannot occur in a host, a `client/<client_id>` sector, or a normalized resource, so a token sector never equals a client sector and an access-token `sub` never equals any client's ID-token `sub`. Token sectors are never indexed: a client names a user back only by its ID-token `sub`.
+
+The provider's rule for `sectorId`:
 
 | Client | `sectorId` |
 |---|---|
@@ -842,7 +854,7 @@ A metadata-document client never gets a host sector, because one host can serve 
 
 What registration does and does not validate: neither dynamic registration nor a metadata document proves control of a redirect host. A dynamically registered client's host sector is still safe for two reasons:
 
-- Dynamic registration defaults to pairwise before the provider checks the set, so the provider refuses pairwise clients whose redirect URIs span several hosts or use a custom scheme with a host. The authorization code is only ever delivered to the sector's host.
+- Dynamic registration makes every client pairwise before the provider checks the set, so the provider refuses clients whose redirect URIs span several hosts or use a custom scheme with a host; `/oauth2/create-client` applies the same refusal. The authorization code is only ever delivered to the sector's host.
 - CIBA names the user only by the subject the client already received (`login_hint`), so a CIBA request reveals nothing the client did not hold.
 
 CIBA Core 1.0 §4 derives a pairwise poll or ping client's sector from `jwks_uri` or `sector_identifier_uri` and requires a valid `jwks_uri`. Zentity's agents are DPoP clients without `jwks_uri`, and the two properties above replace that check. This is a recorded deviation. `sector_identifier_uri` is not supported.
