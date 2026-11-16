@@ -3,8 +3,7 @@ import crypto from "node:crypto";
 import { decodeJwt } from "jose";
 import { beforeEach, describe, expect, it } from "vitest";
 
-import { findActorClient, resolveAgentSub } from "@/lib/agents/actor-subject";
-import { clientSector } from "@/lib/auth/oidc/pairwise";
+import { pairwiseValue } from "@/lib/auth/oidc/pairwise";
 import { getAuthIssuer } from "@/lib/auth/oidc/well-known";
 import { db } from "@/lib/db/connection";
 import { agentHosts, agentSessions } from "@/lib/db/schema/agent";
@@ -12,7 +11,6 @@ import { oauthClients } from "@/lib/db/schema/oauth-provider";
 import {
   createTestCibaRequest,
   createTestUser,
-  hashCibaAuthReqId,
   resetDatabase,
 } from "@/test-utils/db-test-utils";
 import {
@@ -26,16 +24,6 @@ const TEST_CLIENT_ID = "ciba-test-agent";
 const INTROSPECTOR_CLIENT_ID = "agent-introspector";
 const TEST_RESOURCE = "http://localhost:3000/api/auth";
 const RP_API_AUDIENCE = `${getAuthIssuer()}/resource/rp-api`;
-const AAP_CLAIM_KEYS = [
-  "act",
-  "task",
-  "capabilities",
-  "oversight",
-  "audit",
-  "delegation",
-  "aap_claims_version",
-] as const;
-
 async function createOAuthClient(
   clientId: string,
   grantTypes: string[],
@@ -262,11 +250,7 @@ describe("Agent Introspection", () => {
 
   it("returns top-level AAP claims and zentity lifecycle metadata", async () => {
     const { hostId, sessionId } = await createRegisteredAgent(userId);
-    const { accessToken, authContextId, authReqId } = await issueAgentToken(
-      userId,
-      sessionId,
-      hostId
-    );
+    const { accessToken } = await issueAgentToken(userId, sessionId, hostId);
     const caller = await issueIntrospectorToken();
 
     const result = await introspect(accessToken, caller);
@@ -278,34 +262,15 @@ describe("Agent Introspection", () => {
     expect(result.body).not.toHaveProperty("zentity_context_id");
     expect(result.body).not.toHaveProperty("zentity_release_id");
 
-    if (accessToken.split(".").length === 3) {
-      const payload = decodeJwt(accessToken);
-      for (const claimKey of AAP_CLAIM_KEYS) {
-        expect(result.body[claimKey]).toEqual(payload[claimKey]);
-      }
-    }
-
-    const client = await findActorClient(TEST_CLIENT_ID);
-    const expectedActorId = client
-      ? await resolveAgentSub({
-          client,
-          sector: clientSector(client),
-          sessionId,
-        })
-      : sessionId;
-
-    expect(result.body.sub).toBe(userId);
+    // The token's own actor, and what the approval record authorizes.
+    expect(result.body.act).toEqual(decodeJwt(accessToken).act);
     expect(result.body.act).toEqual({
-      sub: expectedActorId,
+      sub: await pairwiseValue("agent-client.example.com", sessionId),
       sub_profile: "service",
     });
-    expect(result.body.task).toEqual({
-      constraints: [{ field: "merchant", op: "eq", value: "Test Store" }],
-      created_at: expect.any(Number),
-      description: "purchase",
-      expires_at: expect.any(Number),
-      hash: expect.any(String),
-    });
+    expect(result.body.sub).toBe(userId);
+    expect(result.body).not.toHaveProperty("task");
+    expect(result.body).not.toHaveProperty("audit");
     expect(result.body.capabilities).toEqual([
       {
         action: "purchase",
@@ -313,25 +278,11 @@ describe("Agent Introspection", () => {
       },
     ]);
     expect(result.body.oversight).toEqual({
-      approval_id: "grant-123",
       approved_at: expect.any(Number),
       method: "capability_grant",
     });
-    // auth_req_id is hashed at rest; the audit correlation claim carries the
-    // hash, never the raw bearer value.
-    const authReqIdHash = hashCibaAuthReqId(authReqId);
-    expect(result.body.audit).toEqual({
-      ciba_request_id: authReqIdHash,
-      context_id: authContextId,
-      release_id: "dev",
-      request_id: authReqIdHash,
-    });
-    expect(result.body.delegation).toEqual({
-      depth: 0,
-      max_depth: 1,
-      parent_jti: null,
-    });
-    expect(result.body.aap_claims_version).toBe(1);
+    expect(result.body.delegation).toEqual({ depth: 0, max_depth: 1 });
+    expect(result.body.aap_claims_version).toBe(2);
     expect(result.body.zentity).toEqual({
       attestation: {
         provider: "AgentPass",

@@ -6,8 +6,8 @@ import type {
   OAuthTokenIssueParams,
 } from "@better-auth/oauth-provider";
 import type {
-  AapAccessTokenClaims,
   AccountAssurance,
+  AgentAuthorization,
   AuthenticationState,
 } from "@zentity/sdk/protocol";
 import type { BetterAuthPlugin } from "better-auth";
@@ -83,12 +83,12 @@ import {
  * are built.
  */
 export interface PendingCibaToken {
-  /** Agent AAP claims for a verified agent session, embedded in the JWT. */
-  agentClaims: AapAccessTokenClaims | null;
   /** The verified agent session the token's `act` names. */
   agentSessionId: string | null;
   /** Approval-time authentication context, "" when none was captured. */
   authContextId: string;
+  /** What the verified agent's approval authorizes, for the token response. */
+  authorization: AgentAuthorization | null;
   /** The stored `auth_req_id` hash, which every CIBA token references. */
   authReqIdHash: string;
   /** How the approval happened, from `ciba_approval`, for the token response. */
@@ -155,14 +155,35 @@ async function resolveCibaActor(
 }
 
 /**
+ * The token response members that describe the approval: `oversight` for
+ * every recorded approval, and for a verified agent what the approval
+ * authorizes. The access token carries none of them.
+ */
+function approvalTokenResponse(
+  pending: PendingCibaToken | null
+): Record<string, unknown> {
+  const authorization = pending?.authorization;
+  return {
+    ...(pending?.oversight ? { oversight: pending.oversight } : {}),
+    ...(authorization
+      ? {
+          capabilities: authorization.capabilities,
+          delegation: authorization.delegation,
+          aap_claims_version: authorization.aap_claims_version,
+        }
+      : {}),
+  };
+}
+
+/**
  * Better Auth owns a token's `act` and stamps only the one a grant passes to
  * `issueTokens`, which the `@better-auth/ciba` grant does not do, so the CIBA
  * grant issues through a provider that adds it, along with the approval's
- * authentication context and the `oversight` token response member. The
- * authentication context goes in the token's claims, which the provider
- * stores on an opaque token, because the token has no session to resolve it
- * from. Like any delegated issuance, a CIBA token then comes without a
- * refresh token, because a refreshed token would no longer name the actor.
+ * authentication context and the token response members. The authentication
+ * context goes in the token's claims, which the provider stores on an opaque
+ * token, because the token has no session to resolve it from. Like any
+ * delegated issuance, a CIBA token then comes without a refresh token,
+ * because a refreshed token would no longer name the actor.
  */
 function issueCibaTokensWithActor(context: AuthContext): void {
   const grants = oauthProviderOptions(context).extensions?.find(
@@ -190,14 +211,10 @@ function issueCibaTokensWithActor(context: AuthContext): void {
                   },
                 }
               : {}),
-            ...(pending?.oversight
-              ? {
-                  tokenResponse: {
-                    ...params.tokenResponse,
-                    oversight: pending.oversight,
-                  },
-                }
-              : {}),
+            tokenResponse: {
+              ...params.tokenResponse,
+              ...approvalTokenResponse(pending),
+            },
           });
         },
       },

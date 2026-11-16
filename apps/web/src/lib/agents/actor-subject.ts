@@ -1,9 +1,4 @@
-import { eq } from "drizzle-orm";
-
-import { pairwiseValue, type SectorClient } from "@/lib/auth/oidc/pairwise";
-import { parseStoredStringArray } from "@/lib/db/adapter-compat";
-import { db } from "@/lib/db/connection";
-import { oauthClients } from "@/lib/db/schema/oauth-provider";
+import { pairwiseValue } from "@/lib/auth/oidc/pairwise";
 
 /** The client fields that decide how a token names its agent actor. */
 export interface AgentActorClient {
@@ -55,25 +50,4 @@ export async function resolveAgentSub(input: {
   return agentSubjectType(input.client) === "public"
     ? input.sessionId
     : await pairwiseValue(input.sector, input.sessionId);
-}
-
-/** The actor and sector fields of a stored client. */
-export async function findActorClient(
-  clientId: string
-): Promise<(AgentActorClient & SectorClient) | null> {
-  const client = await db
-    .select({
-      clientId: oauthClients.clientId,
-      metadata: oauthClients.metadata,
-      redirectUris: oauthClients.redirectUris,
-      sectorIdentifier: oauthClients.sectorIdentifier,
-    })
-    .from(oauthClients)
-    .where(eq(oauthClients.clientId, clientId))
-    .limit(1)
-    .get();
-
-  return client
-    ? { ...client, redirectUris: parseStoredStringArray(client.redirectUris) }
-    : null;
 }

@@ -427,84 +427,68 @@ A long-lived installation can therefore feel continuous while each runtime still
 
 ## Token Anatomy
 
-The Agent Auth Protocol authenticates and manages the runtime. The delegated OAuth token is shaped by the AAP claim profile together with standard OAuth fields such as `sub`, `act`, `authorization_details`, and `cnf`.
+The Agent Auth Protocol authenticates and manages the runtime. The delegated OAuth token says who acts for whom and what was approved, with standard fields only: `sub`, `act`, `authorization_details`, and `cnf`. How the approval happened and what it authorizes go to the client in the token response, because a client must not read its access token (RFC 9068 §6).
 
 ### CIBA access token
 
-After approval, the agent receives a CIBA access token that identifies both the human subject and the acting agent session.
+After approval, the agent receives a CIBA access token that identifies both the human subject and the acting agent session. A payment approval yields a JWT for the agent wallet:
 
 ```json
 {
   "iss": "https://app.zentity.xyz/api/auth",
-  "aud": "rp_client_id",
-  "sub": "user_pairwise_sub_for_rp",
+  "sub": "user_pairwise_sub_for_client_and_wallet",
+  "ba_sub": "provider_ciphertext",
+  "aud": ["urn:zentity:wallet:demo", "https://app.zentity.xyz/api/auth/oauth2/userinfo"],
+  "azp": "client_id",
+  "client_id": "client_id",
+  "scope": "openid",
   "act": {
-    "sub": "agent_pairwise_sub_for_rp"
+    "sub": "agent_pairwise_sub_for_client_and_wallet",
+    "sub_profile": "service"
   },
-  "agent": {
-    "id": "agent_pairwise_sub_for_rp",
-    "type": "mcp-agent",
-    "model": {
-      "id": "gpt-4",
-      "version": "1.0.0"
-    },
-    "runtime": {
-      "environment": "node",
-      "attested": true
-    }
-  },
-  "task": {
-    "id": "task-123",
-    "purpose": "purchase"
-  },
-  "capabilities": [
-    {
-      "action": "purchase",
-      "constraints": [
-        {
-          "field": "merchant",
-          "op": "eq",
-          "value": "Acme"
-        }
-      ]
-    }
-  ],
-  "oversight": {
-    "approval_id": "grant-123",
-    "approved_at": 1759996400,
-    "method": "capability_grant"
-  },
-  "audit": {
-    "trace_id": "auth_req_id",
-    "session_id": "agent_pairwise_sub_for_rp"
-  },
-  "scope": "openid identity.name identity.address",
   "authorization_details": [
     {
-      "type": "purchase",
-      "merchant": "Acme",
-      "item": "Widget",
-      "amount": {
-        "value": "29.99",
-        "currency": "USD"
-      }
+      "type": "payment_authorization",
+      "recipient": "zcash:test:utest1...",
+      "amount": { "currency": "ZEC", "value": "50000000", "unit": "base" },
+      "payment_id": "pay_123"
     }
   ],
-  "cnf": {
-    "jkt": "dpop_key_thumbprint"
-  },
-  "exp": 1760000000,
-  "iat": 1759996400
+  "cnf": { "jkt": "dpop_key_thumbprint" },
+  "reference_id": "auth_req_id_hash",
+  "grant_id": "grant_hash",
+  "jti": "random",
+  "exp": 1760000120,
+  "iat": 1760000000
+}
+```
+
+Every other CIBA approval yields an opaque token, which stores the same `act` server-side.
+
+### CIBA token response
+
+The token response tells the client how the user approved, and for a verified agent, what the approval authorizes:
+
+```json
+{
+  "access_token": "<the token above>",
+  "token_type": "DPoP",
+  "expires_in": 120,
+  "authorization_details": [{ "type": "payment_authorization", "...": "..." }],
+  "oversight": { "method": "user_verification", "approved_at": 1760000000 },
+  "capabilities": [{ "action": "payment_authorization:sign" }],
+  "delegation": { "depth": 0, "max_depth": 1 },
+  "aap_claims_version": 2
 }
 ```
 
 Key points:
 
-- `sub` identifies the human for the target client.
-- `act.sub` and `agent.id` identify the acting session for the target client.
-- `agent`, `task`, `capabilities`, `oversight`, and `audit` are the AAP-profiled token sections.
-- `oversight.method` and `oversight.approved_at` come from the request's `ciba_approval` record: the method the user approved with (`session`, `user_verification`, or `capability_grant`) and the decision time. The CIBA token response carries the same `oversight` member for every approval, agent-backed or not.
-- `authorization_details` preserves what was approved.
+- `sub` identifies the human, and `act.sub` the acting session, for the client and the token's audience together, so the wallet and the MCP server see different values for the same user and session.
+- `act` has exactly `sub` and `sub_profile`. No token carries the session id, host id, host DID, task, or audit identifiers.
+- `oversight` comes from the request's `ciba_approval` record: the method the user approved with (`session`, `user_verification`, or `capability_grant`) and the decision time. Every approval's token response carries it, agent-backed or not.
+- `capabilities`, `delegation`, and `aap_claims_version` appear only when a verified Agent-Assertion bound the request. A grant approval names the grant's capability and constraints; a manual approval names the capabilities the approval policy maps the request to.
+- `authorization_details` preserves what was approved, and the wallet reads it from the token.
 - `cnf.jkt` sender-constrains the token when DPoP is in play.
 
 ### Token exchange never carries agent claims
@@ -622,9 +606,9 @@ The delegated access token carries:
 
 - `sub` for the human principal
 - `act.sub` for the acting agent session
-- AAP `agent`, `task`, `capabilities`, `oversight`, and `audit`
+- the approved `authorization_details`
 
-Token exchange refuses agent-backed and CIBA tokens as subjects, so none of these claims reach another audience through it.
+Its token response adds `oversight`, `capabilities`, and `delegation` for the client. Token exchange refuses agent-backed and CIBA tokens as subjects, so none of these reach another audience through it.
 
 The full binding chain is:
 
@@ -659,6 +643,7 @@ The document publishes:
 - `jwks_uri`
 - `supported_algorithms`
 - `approval_methods`
+- `aap_claims_version` (`2`) and `act_did_emission_policy` (`"never"`)
 - `supported_features`
 
 The bootstrap contract implied by the document is narrow: the client requests the bootstrap scopes at sign-in, exchanges its login token for a dedicated DPoP-bound bootstrap token, then uses that token for host/session registration and revocation. The raw login token is not the bootstrap credential.
@@ -699,13 +684,13 @@ The route:
 2. verifies the presented Zentity access token
 3. resolves the acting session from server-owned token snapshot metadata
 4. computes current lifecycle state
-5. returns the AAP token profile for the introspecting client plus Zentity lifecycle metadata
+5. returns the token's actor and the approval's authorization plus Zentity lifecycle metadata
 
 The response includes:
 
 - `active`
 - caller-projected `sub` when the server can safely project the user identifier for the introspecting client
-- top-level `agent`, `task`, `capabilities`, `oversight`, `audit`
+- the token's own `act`, and the approval record's `capabilities`, `oversight`, `delegation`, and `aap_claims_version`
 - `zentity.attestation`
 - `zentity.lifecycle`
 
@@ -859,15 +844,15 @@ Once consent is obtained, the question shifts from "does the human approve?" to 
 
 **Token introspection** (RFC 7662) provides the verification channel. A downstream RP that receives an agent-presented token can query whether it is still active, who the actor is, and what trust level it carries. Introspection re-evaluates session lifecycle at query time, so an agent session that expired between token issuance and introspection reports `active: false` even if the JWT itself has not expired. This makes the lifecycle model operational rather than theoretical.
 
-**Pairwise subject identifiers** (OIDC Core) extend to both `act.sub` and the AAP `agent.id`, applying the same derivation that prevents RP-to-RP user correlation to agent correlation.
+**Pairwise subject identifiers** (OIDC Core) extend to `act.sub`, applying the same derivation that prevents RP-to-RP user correlation to agent correlation, and per audience as well as per client.
 
-**The Agent Authorization Profile** (AAP draft) provides the JWT claim vocabulary: `agent`, `task`, `capabilities`, `oversight`, `delegation`, and `audit`. Verified agent-backed CIBA tokens emit `agent`, `task`, `capabilities`, `oversight`, and `audit`. No exchanged token carries them, and discovery advertises `delegation_chains: false`.
+**The Agent Authorization Profile** (AAP draft) provides the vocabulary for describing an approval: `capabilities`, `oversight`, and `delegation`. Zentity's version 2 puts them in the CIBA token response and the introspection response rather than in the token, because the token's audience does not read them and the client must not read the token. No exchanged token carries them, and discovery advertises `delegation_chains: false`.
 
 ### Where the specs meet
 
 Two convergence points tie the five concerns together rather than letting them exist as parallel tracks.
 
-The `assertionVerified` flag on the CIBA request row is the first. It is set when the `Agent-Assertion` from the control plane passes verification inside the consent channel. If verification fails, three downstream effects cascade: the AAP profile builder returns nothing (no agent claims enter the token), introspection returns `active: false` for agent consumers, and the token reverts to a standard CIBA token without agent semantics.
+The `assertionVerified` flag on the CIBA request row is the first. It is set when the `Agent-Assertion` from the control plane passes verification inside the consent channel. If verification fails, three downstream effects cascade: the token's `act` names the client, the token response carries no agent authorization, and introspection returns `active: false` for agent consumers.
 
 The `authorization_details` payload is the second. It enters at the structured intent layer, drives capability matching in the consent channel, and survives into the CIBA access token and its token response, where the CIBA plugin issues the details it stored at bc-authorize. Token exchange refuses a subject that carries it. The same structured data flows across these specs without transformation, which is evidence that the specs compose cleanly rather than fighting over data representation.
 
@@ -887,7 +872,7 @@ The `authorization_details` payload is the second. It enters at the structured i
 | Token exchange | Token semantics | [RFC 8693](https://datatracker.ietf.org/doc/html/rfc8693) | Agent bootstrap and the MCP HTTP server's opaque token for the app |
 | Token introspection | Token semantics | [RFC 7662](https://datatracker.ietf.org/doc/html/rfc7662) | Runtime session status for downstream RPs |
 | Pairwise subject identifiers | Token semantics | [OIDC Core 1.0](https://openid.net/specs/openid-connect-core-1_0-18.html) | Privacy for both `sub` and `act.sub` across RPs |
-| Agent authorization claims | Token semantics | [AAP draft](https://datatracker.ietf.org/doc/draft-aap-oauth-profile/) | JWT claim vocabulary for delegation, task, and capabilities |
+| Agent authorization members | Token semantics | [AAP draft](https://datatracker.ietf.org/doc/draft-aap-oauth-profile/) | Vocabulary for oversight, delegation, and capabilities, in the token response |
 | `Agent-Assertion` on CIBA | Zentity-specific | [Agent Architecture](agent-architecture.md) | Runtime proof through CIBA rather than the protocol's standard execution shape |
 | Host policy / session grant split | Zentity-specific | Agent schema | Durable host defaults and session-scoped grants as separate records |
 | Delegated subjects refused at token exchange | PACT | Token exchange handler | Refuses agent-backed, CIBA, and `authorization_details` subjects (PACT §8) |

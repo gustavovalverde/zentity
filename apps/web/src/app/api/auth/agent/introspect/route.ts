@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
 
-import { getAapClaimsFromPayload } from "@/lib/agents/claims";
 import { observeSessionLifecycle } from "@/lib/agents/session";
 import { resolveTokenSnapshotForTokenJti } from "@/lib/agents/token-snapshot";
 import {
@@ -103,22 +102,11 @@ async function introspect(
   > = null;
   const snapshotKey = isJwt ? payload.jti : payload.reference_id;
   if (typeof snapshotKey === "string") {
-    tokenSnapshot = await resolveTokenSnapshotForTokenJti(
-      snapshotKey,
-      principal.clientId
-    );
+    tokenSnapshot = await resolveTokenSnapshotForTokenJti(snapshotKey);
   }
   if (!tokenSnapshot) {
     return NextResponse.json({ active: false });
   }
-
-  const embeddedAccessTokenClaims = isJwt
-    ? getAapClaimsFromPayload(payload as Record<string, unknown>)
-    : {};
-  const responseAccessTokenClaims =
-    Object.keys(embeddedAccessTokenClaims).length > 0
-      ? embeddedAccessTokenClaims
-      : tokenSnapshot.claims;
 
   const lifecycle = await observeSessionLifecycle(tokenSnapshot.sessionId);
   if (!lifecycle) {
@@ -143,7 +131,8 @@ async function introspect(
     ...(tokenScopes ? { scope: tokenScopes } : {}),
     ...(projectedSub ? { sub: projectedSub } : {}),
     ...(isJwt && payload.aud ? { aud: payload.aud } : {}),
-    ...responseAccessTokenClaims,
+    ...(payload.act ? { act: payload.act } : {}),
+    ...tokenSnapshot.authorization,
     zentity: {
       attestation: tokenSnapshot.attestation,
       lifecycle: serializeLifecycle(lifecycle),

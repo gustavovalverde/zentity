@@ -474,6 +474,75 @@ describe("CIBA", () => {
     expect(result.oversight).toEqual(expected);
   });
 
+  it("reads a verified agent's authorization from the token response", async () => {
+    vi.spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({ auth_req_id: "req-ag", expires_in: 300, interval: 0 }),
+          { status: 200 }
+        )
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            access_token: "opaque-agent-token",
+            token_type: "DPoP",
+            oversight: { method: "capability_grant", approved_at: 1 },
+            capabilities: [
+              { action: "check_compliance" },
+              { action: "purchase", constraints: [{ field: "x", op: "max", value: 5 }] },
+            ],
+            delegation: { depth: 0, max_depth: 1 },
+            aap_claims_version: 2,
+          }),
+          { status: 200 }
+        )
+      );
+
+    const result = await settle(requestCibaApproval(BASE_PARAMS));
+
+    expect(result).toEqual(
+      expect.objectContaining({
+        accessToken: "opaque-agent-token",
+        capabilities: [
+          { action: "check_compliance" },
+          {
+            action: "purchase",
+            constraints: [{ field: "x", op: "max", value: 5 }],
+          },
+        ],
+        delegation: { depth: 0, max_depth: 1 },
+        aapClaimsVersion: 2,
+      })
+    );
+  });
+
+  it("ignores agent members of another claims version", async () => {
+    vi.spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({ auth_req_id: "req-v1", expires_in: 300, interval: 0 }),
+          { status: 200 }
+        )
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            access_token: "token",
+            token_type: "DPoP",
+            capabilities: "purchase",
+            aap_claims_version: 1,
+          }),
+          { status: 200 }
+        )
+      );
+
+    const result = await settle(requestCibaApproval(BASE_PARAMS));
+
+    expect(result).not.toHaveProperty("capabilities");
+    expect(result).not.toHaveProperty("aapClaimsVersion");
+  });
+
   it("pollCibaToken completes approval with an immediate token response", async () => {
     vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
       new Response(

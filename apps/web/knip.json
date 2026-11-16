@@ -21,6 +21,7 @@
       "exports"
     ],
     "src/components/vault-unlock.tsx": ["exports", "types"],
+    "src/lib/agents/claims.ts": ["exports"],
     "src/lib/auth/oidc/disclosure/delivery.ts": ["exports"],
     "src/lib/auth/oidc/jwt-signer.ts": ["exports"],
     "src/lib/auth/oidc/pairwise.ts": ["exports"],

@@ -1,25 +1,18 @@
 import "server-only";
 
 import type {
-  AapAccessTokenClaims,
-  CapabilityClaim,
+  AgentAuthorization,
   HostAttestationTier,
 } from "@zentity/sdk/protocol";
 import type { CibaApproval } from "@/lib/db/schema/ciba";
-import type { GrantConstraint } from "./approval-evaluate";
-
-import { createHash } from "node:crypto";
 
 import { eq } from "drizzle-orm";
 
-import { clientSector } from "@/lib/auth/oidc/pairwise";
 import { db } from "@/lib/db/connection";
 import { findCibaApproval } from "@/lib/db/queries/ciba";
 import { agentTokenSnapshots } from "@/lib/db/schema/agent";
-import { getReleaseId } from "@/lib/observability/release";
 
-import { findActorClient, resolveAgentSub } from "./actor-subject";
-import { buildAapClaims, resolveOversightMethod } from "./claims";
+import { buildAgentAuthorization } from "./claims";
 
 interface LoadedTokenSnapshot {
   assertionVerified: boolean;
@@ -28,8 +21,8 @@ interface LoadedTokenSnapshot {
     tier: HostAttestationTier;
     verified: boolean;
   };
+  authorization: AgentAuthorization;
   authReqId: string;
-  claims: AapAccessTokenClaims;
   hostId: string | null;
   sessionId: string;
 }
@@ -43,11 +36,7 @@ export interface StoredTokenSnapshot {
   assertionVerified: boolean | null;
   attestationProvider: string | null;
   attestationTier: string | null;
-  authContextId?: string | null;
   authReqId: string | null;
-  bindingMessage?: string | null;
-  createdAt?: Date | null;
-  expiresAt?: Date | null;
   hostId: string | null;
   model: string | null;
   runtime: string | null;
@@ -69,72 +58,13 @@ function asHostAttestationTier(
   }
 }
 
-function toUnixSeconds(value: Date | null | undefined, fallback = new Date()) {
-  return Math.floor((value ?? fallback).getTime() / 1000);
-}
-
-function buildApprovalId(
-  row: StoredTokenSnapshot,
-  approval: CibaApproval
-): string {
-  return (
-    approval.grantId ??
-    approval.hostPolicyId ??
-    row.authReqId ??
-    row.agentSessionId ??
-    "agent-approval"
-  );
-}
-
-function buildTaskDescription(
-  row: StoredTokenSnapshot,
-  approval: CibaApproval
-): string {
-  return (
-    row.bindingMessage ??
-    approval.capability ??
-    row.taskId ??
-    row.authReqId ??
-    "agent-request"
-  );
-}
-
-function buildTaskHash(
-  row: StoredTokenSnapshot,
-  approval: CibaApproval
-): string {
-  if (row.taskHash) {
-    return row.taskHash;
-  }
-
-  return createHash("sha256")
-    .update(buildTaskDescription(row, approval))
-    .digest("hex");
-}
-
-function buildCapabilitiesFromConstraints(
-  capabilityName: string | null,
-  constraints: GrantConstraint[] | undefined
-): CapabilityClaim[] | null {
-  if (!capabilityName) {
-    return null;
-  }
-
-  return [
-    {
-      action: capabilityName,
-      ...(constraints === undefined ? {} : { constraints }),
-    },
-  ];
-}
-
 /**
- * Agent claims for a token, or null when the request had no verified agent
- * or no recorded approval. Pass `approval` when the caller already loaded it.
+ * The agent behind a token and what its approval authorizes, or null when
+ * the request had no verified agent or no recorded approval. Pass `approval`
+ * when the caller already loaded it.
  */
 async function resolveTokenSnapshot(
   row: StoredTokenSnapshot | undefined,
-  audienceClientId: string,
   loadedApproval?: CibaApproval | null
 ): Promise<LoadedTokenSnapshot | null> {
   if (!(row?.agentSessionId && row.assertionVerified)) {
@@ -144,18 +74,11 @@ async function resolveTokenSnapshot(
     loadedApproval === undefined && row.authReqId
       ? await findCibaApproval(row.authReqId)
       : loadedApproval;
-  const method = resolveOversightMethod(approval?.approvalMethod);
-  if (!(approval && method)) {
+  const authorization = approval ? buildAgentAuthorization(approval) : null;
+  if (!authorization) {
     return null;
   }
-
-  const sessionId = row.agentSessionId;
-  const client = await findActorClient(audienceClientId);
-  const pairwiseActorSub = client
-    ? await resolveAgentSub({ client, sector: clientSector(client), sessionId })
-    : sessionId;
   const hostAttestation = asHostAttestationTier(row.attestationTier);
-  const constraints = approval.constraints ?? undefined;
 
   return {
     authReqId: row.authReqId ?? row.agentSessionId,
@@ -167,31 +90,7 @@ async function resolveTokenSnapshot(
       tier: hostAttestation,
       verified: hostAttestation === "attested",
     },
-    claims: buildAapClaims({
-      act: { sub: pairwiseActorSub },
-      task: {
-        hash: buildTaskHash(row, approval),
-        description: buildTaskDescription(row, approval),
-        createdAt: toUnixSeconds(row.createdAt),
-        expiresAt: toUnixSeconds(row.expiresAt, row.createdAt ?? new Date()),
-        ...(constraints === undefined ? {} : { constraints }),
-      },
-      oversight: {
-        approvalId: buildApprovalId(row, approval),
-        approvedAt: toUnixSeconds(approval.decidedAt),
-        method,
-      },
-      audit: {
-        releaseId: getReleaseId(),
-        contextId: row.authContextId ?? row.authReqId ?? row.agentSessionId,
-        ...(row.authReqId ? { requestId: row.authReqId } : {}),
-        ...(row.authReqId ? { cibaRequestId: row.authReqId } : {}),
-      },
-      capabilities: buildCapabilitiesFromConstraints(
-        approval.capability,
-        constraints
-      ),
-    }),
+    authorization,
   };
 }
 
@@ -258,11 +157,7 @@ function toStoredSnapshot(row: Record<string, unknown>): StoredTokenSnapshot {
       typeof row.assertionVerified === "boolean" ? row.assertionVerified : null,
     attestationProvider: readString(row.attestationProvider),
     attestationTier: readString(row.attestationTier),
-    authContextId: readString(row.authContextId),
     authReqId: readString(row.authReqId),
-    bindingMessage: readString(row.bindingMessage),
-    createdAt: row.createdAt instanceof Date ? row.createdAt : null,
-    expiresAt: row.expiresAt instanceof Date ? row.expiresAt : null,
     hostId: readString(row.hostId),
     model: readString(row.model),
     runtime: readString(row.runtime),
@@ -273,33 +168,28 @@ function toStoredSnapshot(row: Record<string, unknown>): StoredTokenSnapshot {
 }
 
 interface CibaAgentContribution {
-  claims: AapAccessTokenClaims;
+  authorization: AgentAuthorization;
   snapshot: StoredTokenSnapshot;
 }
 
 /**
- * Builds the agent AAP claims embedded in a CIBA-issued access token from the
- * consumed request the grant handler holds. Returns `null` for plain (non-agent)
- * requests, where the token keeps the provider's `act: { sub: client_id }`. The
+ * What a verified agent's approval authorizes, for the CIBA token response,
+ * from the request the grant handler is about to consume. Returns `null` for
+ * plain (non-agent) requests, whose token names the client as its actor. The
  * caller stashes the returned `snapshot` so the `/oauth2/token` after-hook can
  * persist it keyed by the minted token's real jti (the AS owns jti; we cannot
  * know it at claim-build time).
  */
 export async function buildCibaAgentContribution(
   cibaRequest: Record<string, unknown>,
-  audienceClientId: string,
   approval: CibaApproval | undefined
 ): Promise<CibaAgentContribution | null> {
   const snapshot = toStoredSnapshot(cibaRequest);
-  const resolved = await resolveTokenSnapshot(
-    snapshot,
-    audienceClientId,
-    approval ?? null
-  );
+  const resolved = await resolveTokenSnapshot(snapshot, approval ?? null);
   if (!resolved) {
     return null;
   }
-  return { claims: resolved.claims, snapshot };
+  return { authorization: resolved.authorization, snapshot };
 }
 
 export async function persistTokenSnapshot(input: {
@@ -324,7 +214,6 @@ async function findStoredTokenSnapshotByJti(
       attestationProvider: agentTokenSnapshots.attestationProvider,
       attestationTier: agentTokenSnapshots.attestationTier,
       authReqId: agentTokenSnapshots.authReqId,
-      createdAt: agentTokenSnapshots.createdAt,
       hostId: agentTokenSnapshots.hostId,
       model: agentTokenSnapshots.model,
       runtime: agentTokenSnapshots.runtime,
@@ -341,9 +230,8 @@ async function findStoredTokenSnapshotByJti(
 }
 
 export async function resolveTokenSnapshotForTokenJti(
-  tokenJti: string,
-  audienceClientId: string
+  tokenJti: string
 ): Promise<LoadedTokenSnapshot | null> {
   const storedSnapshot = await findStoredTokenSnapshotByJti(tokenJti);
-  return resolveTokenSnapshot(storedSnapshot ?? undefined, audienceClientId);
+  return resolveTokenSnapshot(storedSnapshot ?? undefined);
 }

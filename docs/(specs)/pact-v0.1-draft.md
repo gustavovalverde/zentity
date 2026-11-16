@@ -100,7 +100,7 @@ flowchart TD
 
     CC -->|"approved token"| TS
 
-    TS["**Token Semantics**\nToken Exchange (RFC 8693)\nIntrospection (RFC 7662)\nPairwise identifiers\nPACT delegation claims"]
+    TS["**Token Semantics**\nToken Exchange (RFC 8693)\nIntrospection (RFC 7662)\nPairwise identifiers\nPACT delegation members"]
 ```
 
 **Secure Transport** sits beneath the other four concerns because removing any transport spec changes security properties, not the agent model. DPoP is the one transport spec that crosses into agent territory: every delegated token is bound to the caller's proof-of-possession key, and token exchange keeps a client's token bound to its key.
@@ -111,7 +111,7 @@ flowchart TD
 
 **Consent Channel** carries the human approval interaction. CIBA binds the runtime proof to a specific consent request. The CIBA `auth_req_id` serves as the trace identifier correlating agent identity, consent, and token issuance.
 
-**Token Semantics** encodes the authorized delegation. The CIBA access token carries it to the audience the user approved; token exchange never rebinds it for another audience (§8). Introspection re-evaluates session lifecycle at query time. The delegation claim vocabulary is defined in §7.
+**Token Semantics** encodes the authorized delegation. The CIBA access token carries the user, the actor, and the approved `authorization_details` to the audience the user approved; the token response describes the approval to the client; token exchange never rebinds either for another audience (§8). Introspection re-evaluates session lifecycle at query time. The delegation vocabulary is defined in §7.
 
 ### 3.2 Runtime Participants
 
@@ -602,94 +602,70 @@ An unknown scope is page only, not grantable, and needs a session. An unknown or
 
 ## 7. Delegation Evidence
 
-Approved delegations are encoded as JWT access tokens. The `sub` and `act` claims identify the user and agent principals. The `capabilities`, `oversight`, `audit`, and `delegation` claims describe the constraints and provenance.
+Approved delegations are encoded as access tokens that name the user and the acting agent, and as a description of the approval that the AS gives to the client and to authorized introspectors. The token carries only what its audience needs: `sub`, `act`, `authorization_details`, and the confirmation key. The `capabilities`, `oversight`, and `delegation` members describe the approval for the client, so they travel in the CIBA token response and the introspection response (§10.3), never in the access token (RFC 9068 §6).
 
 ### 7.1 The Delegation Token Profile
 
-Access tokens issued after agent-verified CIBA approval carry the delegation claim set defined below. The `act` claim is used as specified in [RFC 8693] Section 4.1. The remaining claims (`agent`, `task`, `capabilities`, `oversight`, `audit`, `delegation`) are defined normatively in this document. The CIBA access token carries the approved `authorization_details` (RFC 9396) and is their only carrier (§8.1). Claim names align with draft-aap-oauth-profile (see §16, informative).
+This profile is version 2 (`aap_claims_version: 2`). An access token issued after an agent-verified CIBA approval carries `act` as specified in [RFC 8693] Section 4.1, with exactly two members. The CIBA access token carries the approved `authorization_details` (RFC 9396) and is their only carrier (§8.1).
 
 ```json
 {
   "iss": "https://as.example.com",
-  "sub": "<pairwise user id for RP>",
-  "aud": "<RP client_id>",
+  "sub": "<pairwise user id for the client and audience>",
+  "aud": "<the one resource outside the AS>",
+  "azp": "<client_id>",
+  "client_id": "<client_id>",
   "exp": 1711003600,
   "iat": 1711000000,
   "jti": "<unique>",
-  "scope": "openid purchase",
-
+  "scope": "openid",
   "act": {
-    "sub": "<pairwise agent id for RP>"
+    "sub": "<pairwise agent id for the client and audience>",
+    "sub_profile": "service"
   },
-
-  "agent": {
-    "id": "<pairwise agent id for RP>",
-    "type": "mcp-agent",
-    "model": {
-      "id": "claude-sonnet-4-20250514",
-      "version": "1.0.0"
-    },
-    "runtime": {
-      "environment": "node",
-      "attested": true
-    }
-  },
-
-  "task": {
-    "id": "task-uuid",
-    "purpose": "purchase"
-  },
-
-  "capabilities": [
-    {
-      "action": "purchase",
-      "constraints": [
-        { "field": "amount.value", "op": "max", "value": 100 }
-      ]
-    }
-  ],
-
-  "oversight": {
-    "method": "user_verification",
-    "approved_at": 1711000000
-  },
-
-  "audit": {
-    "trace_id": "<auth_req_id>",
-    "session_id": "<pairwise agent id for RP>"
-  },
-
-  "cnf": {
-    "jkt": "<DPoP key thumbprint>"
-  }
+  "authorization_details": [ { "type": "payment_authorization", "...": "..." } ],
+  "cnf": { "jkt": "<DPoP key thumbprint>" }
 }
 ```
 
-**Claim semantics:**
+The CIBA token response for the same approval adds the approval's description next to the token:
 
-| Claim | Semantics |
-|-------|-----------|
-| `sub` | Pairwise user identifier for the target RP |
-| `act.sub` | Pairwise agent session identifier for the target RP |
-| `agent.id` | Same as `act.sub`, pairwise agent identifier |
-| `agent.type` | Agent runtime type (e.g., `mcp-agent`) |
-| `agent.model` | Model metadata (informational, not security-critical) |
-| `agent.runtime.attested` | Whether the host passed vendor attestation |
-| `task.id` | Task identifier from the Agent-Assertion |
-| `task.purpose` | Category-level intent (not verbatim description) |
-| `capabilities` | Approved capabilities with their constraint snapshot |
-| `oversight.method` | How the approval happened: `capability_grant` (a grant approved it without the user), `session` (the user approved in an active session), or `user_verification` (the user approved with a user-verified WebAuthn assertion bound to the request) |
-| `oversight.approved_at` | When the decision was recorded, in seconds since the epoch |
-| `audit.trace_id` | CIBA `auth_req_id` for end-to-end correlation |
-| `cnf.jkt` | DPoP proof-of-possession key thumbprint |
+```json
+{
+  "access_token": "<the token above>",
+  "token_type": "DPoP",
+  "expires_in": 120,
+  "authorization_details": [ { "type": "payment_authorization", "...": "..." } ],
+  "oversight": { "method": "user_verification", "approved_at": 1711000000 },
+  "capabilities": [ { "action": "payment_authorization:sign" } ],
+  "delegation": { "depth": 0, "max_depth": 1 },
+  "aap_claims_version": 2
+}
+```
 
-**Conditional emission.** If `assertion_verified` is `false` on the CIBA request, delegation claims MUST NOT be emitted; the token is issued as a standard CIBA token without agent semantics.
+**Member semantics:**
+
+| Member | Where | Semantics |
+|-------|-------|-----------|
+| `sub` | token | Pairwise user identifier for the client and the token's audience (§4.3) |
+| `act.sub` | token | Pairwise agent session identifier in the same sector as `sub` |
+| `act.sub_profile` | token | `service`: the actor is a runtime, not a user |
+| `capabilities` | token response, introspection | What the approval covers. A capability grant approval names the grant's capability with the constraint snapshot it was evaluated against. A manual approval names the capabilities the AS's approval policy maps the request's scopes and `authorization_details` to, without constraints, because the user approved the request's own terms |
+| `oversight.method` | token response, introspection | How the approval happened: `capability_grant` (a grant approved it without the user), `session` (the user approved in an active session), or `user_verification` (the user approved with a user-verified WebAuthn assertion bound to the request) |
+| `oversight.approved_at` | token response, introspection | When the decision was recorded, in seconds since the epoch |
+| `delegation.depth`, `delegation.max_depth` | token response, introspection | The depth of this token alone (§7.2) |
+| `aap_claims_version` | token response, introspection, discovery | This profile's version, `2` |
+| `cnf.jkt` | token | DPoP proof-of-possession key thumbprint |
+
+**Conditional emission.** If `assertion_verified` is `false` on the CIBA request, `act` names the client (`{ "sub": "<client_id>", "sub_profile": "service" }`), and the token response carries no `capabilities`, `delegation`, or `aap_claims_version`.
 
 **Approval evidence for every client.** The AS records each decision durably before the token can be issued, and the CIBA token response for every approval, agent-backed or not, carries an `oversight` member with the same `method` and `approved_at`, so a client learns how its request was approved without reading the access token.
 
+**Not emitted.** Version 1 claims are gone from every token: `agent`, `task`, `audit`, `oversight.approval_id`, `delegation.parent_jti`, and the `act` members `session_id`, `host_id`, `did`, `operator`, `host_attestation`, and `type`. The task hash and description stay with the AS (§12.6).
+
 ### 7.2 Chain Tracking
 
-A delegated access token is never a token exchange subject (§8.1), so no delegation chain forms across an exchange in this version. A conforming AS MUST advertise `delegation_chains: false`. The `delegation` claim on a CIBA access token states the depth of that token alone.
+A delegated access token is never a token exchange subject (§8.1), so no delegation chain forms across an exchange in this version. A conforming AS MUST advertise `delegation_chains: false`. The `delegation` member of the CIBA token response states the depth of that token alone, and names no parent token.
 
 A later version that advertises `delegation_chains: true` would have to define how lineage is kept in canonical internal actor references, projected per audience (§4.3), bounded by `max_depth`, reduced in privilege at each hop, and revoked as a family. Those rules are out of scope for v0.1.
 
@@ -716,7 +692,7 @@ An exchange the AS permits MUST reduce privilege:
 
 - `scope` MUST be a subset of the subject token's scope and of the scopes registered for the exchanging client. `offline_access` MUST NOT carry over, and the response MUST NOT include a refresh token.
 - The issued token MUST NOT outlive the subject token, and it MUST end with the subject token's session.
-- The issued token MUST be for the AS's own resources and MUST NOT carry `act` or any delegation claim from §7.
+- The issued token MUST be for the AS's own resources and MUST NOT carry `act` or any delegation member from §7.
 - Only the client the subject token was issued to, or a confidential client the AS linked to the subject token's audience, MAY exchange it. A public client MAY exchange only its own sender-constrained token and MUST prove its key; a linked resource server binds its own key.
 
 ### 8.3 Request and Response
@@ -818,6 +794,9 @@ PACT exposes its agent authorization model through four machine-readable surface
   "supported_algorithms": ["EdDSA"],
   "approval_methods": ["ciba"],
   "approval_page_url_template": "https://as.example.com/approve/{auth_req_id}",
+  "aap_claims_version": 2,
+  "act_did_emission_policy": "never",
+  "delegation_chains": false,
   "supported_features": {
     "task_attestation": true,
     "pairwise_agents": true,
@@ -828,7 +807,7 @@ PACT exposes its agent authorization model through four machine-readable surface
 }
 ```
 
-The document SHOULD be served with `Cache-Control: public, max-age=3600`.
+The document SHOULD be served with `Cache-Control: public, max-age=3600`. `aap_claims_version` is the version of §7.1 the AS emits, and `act_did_emission_policy: "never"` states that no token carries a host's DID. A runtime that does not support the advertised version MUST NOT rely on the token response members of §7.1.
 
 ### 10.2 Capability Discovery
 
@@ -905,7 +884,7 @@ flowchart TD
     C["Agent Session Registration\nFresh Ed25519 key bound to host + runtime"] --> D
     D["Agent-Assertion on CIBA\nRuntime proof bound to specific consent request"] --> E
     E["Human Approval via CIBA\nConsent bound to scope + authorization_details"] --> F
-    F["Access Token\nsub + act.sub + PACT delegation claims\nnever exchanged for another audience"]
+    F["Access Token + token response\nsub + act.sub in the token, approval in the response\nnever exchanged for another audience"]
 ```
 
 ### 11.2 Session Binding
@@ -932,7 +911,7 @@ Identity release follows VEIL §6: PII is staged in an ephemeral single-consume 
 
 ### 11.7 Delegation Binding
 
-The delegated access token carries `sub` for the human principal, `act.sub` for the acting agent session, and the full PACT delegation claim set (§7). The AS refuses to exchange it (§8.1), so the binding chain ends at that token and its `authorization_details` reach only the audience the user approved.
+The delegated access token carries `sub` for the human principal, `act.sub` for the acting agent session, and the approved `authorization_details`; the token response describes the approval (§7.1). The AS refuses to exchange the token (§8.1), so the binding chain ends at that token and its `authorization_details` reach only the audience the user approved.
 
 ---
 
@@ -962,7 +941,7 @@ Session private keys MUST exist only in process memory. They MUST NOT be written
 
 ### 12.6 Task Description Sensitivity
 
-Task descriptions may contain user-specific context. They appear as `task.purpose` in tokens (category-level, not verbatim). The verbatim description is available only via introspection by authorized machine clients, not in the JWT body.
+Task descriptions may contain user-specific context. Neither the description nor its hash appears in any token or introspection response: the AS keeps both, with the binding message, on its own records. The binding message the user saw is shown only on the approval surfaces.
 
 ### 12.7 DPoP Binding
 
@@ -1026,18 +1005,16 @@ This document requests three registrations in the "Hypertext Transfer Protocol (
 
 The latter two fields are registered by their originating draft; PACT references them without redefinition.
 
-### 14.4 JWT Claim Registrations
+### 14.4 JWT Claim and Token Response Registrations
 
-This document requests registrations in the "JSON Web Token Claims" registry (RFC 7519) for the delegation claim vocabulary defined in §7.1:
+This profile defines no new JWT claim: its access tokens use `act`, `authorization_details`, `cnf`, `jti`, `iat`, `exp`, `iss`, `aud`, `azp`, `client_id`, `sub`, and `scope` per their originating specifications (RFC 8693 §4.1 for `act`, RFC 9396 for `authorization_details`, RFC 7800 for `cnf`, RFC 9068 and RFC 7519 for the common set).
 
-- `agent` — Object describing the acting agent runtime and attestation posture.
-- `task` — Object describing the task category under which delegation was authorized.
-- `capabilities` — Array of approved named actions with typed constraint snapshots.
+It requests registrations in the "OAuth Parameters" registry (RFC 6749 §11.2), for use in token responses, and in the "OAuth Token Introspection Response" registry (RFC 7662 §3.1), for the members defined in §7.1:
+
+- `capabilities` — Array of approved named actions, with the constraint snapshot of a grant approval.
 - `oversight` — Object stating how the approval happened (`method`) and when (`approved_at`).
-- `audit` — Object carrying a CIBA trace identifier and session reference.
-- `delegation` — Object tracking the delegation chain, as defined in §7.2.
-
-The `act`, `authorization_details`, `cnf`, `jti`, `iat`, `exp`, `iss`, `aud`, `sub`, and `scope` claims are referenced as already registered and are used per their originating specifications (RFC 8693 §4.1 for `act`, RFC 9396 for `authorization_details`, RFC 7800 for `cnf`, RFC 7519 for the common set).
+- `delegation` — Object stating the token's delegation depth, as defined in §7.2.
+- `aap_claims_version` — The version of this profile's members.
 
 ### 14.5 OAuth Extensions Error Registry
 
@@ -1060,7 +1037,7 @@ A conforming authorization server MUST:
 - Implement the capability registry and grant model (Section 5)
 - Route consent based on approval strength (Section 6.2)
 - Verify Agent-Assertions and bind them to CIBA requests (Section 6.3)
-- Issue tokens with PACT delegation claims only when assertions are verified (Section 7.1)
+- Name a verified agent only by a pairwise `act.sub`, and describe its approval in the token response only when assertions are verified (Section 7.1)
 - Publish the agent configuration document (Section 10.1)
 - Enforce JTI replay protection (Section 12.1)
 - Derive JWT algorithms from public keys, not headers (Section 12.2)
@@ -1107,7 +1084,7 @@ A conforming client SHOULD:
 | Token exchange | Token semantics | RFC 8693 | Tokens for the AS's own resources; delegated subjects refused |
 | Token introspection | Token semantics | RFC 7662 | Runtime lifecycle validation for downstream RPs |
 | Pairwise subject identifiers | Token semantics | OIDC Core 1.0 | Privacy for both `sub` and `act.sub` |
-| Agent authorization claims | Token semantics | PACT (this document) | JWT delegation claim vocabulary, §7 |
+| Agent authorization members | Token semantics | PACT (this document) | Token response and introspection vocabulary, §7 |
 | Agent-Assertion on CIBA | PACT | | Runtime proof binding to consent request |
 | Host policy / session grant split | PACT | | Durable defaults + ephemeral elevations |
 | Pairwise agent identifiers | PACT | | Cross-RP agent unlinkability |

@@ -1,174 +1,107 @@
-import { AAP_CLAIMS_VERSION } from "@zentity/sdk/protocol";
+import type { CibaApproval } from "@/lib/db/schema/ciba";
+
+import {
+  PAYMENT_AUTHORIZATION_CAPABILITY,
+  PAYMENT_AUTHORIZATION_TYPE,
+} from "@zentity/sdk/protocol";
 import { describe, expect, it } from "vitest";
 
-import { buildAapClaims, getAapClaimsFromPayload } from "@/lib/agents/claims";
+import { buildAgentAuthorization } from "@/lib/agents/claims";
 
-describe("AAP claims", () => {
-  it("builds canonical access token claims", () => {
-    const claims = buildAapClaims({
-      act: { sub: "agent-sub" },
-      audit: {
-        cibaRequestId: "ciba-1",
-        contextId: "context-1",
-        releaseId: "release-1",
-        requestId: "request-1",
-      },
-      capabilities: [
-        { action: "read_profile" },
-        { action: "" },
-        { action: "purchase", constraints: { max_amount: 50 } },
-      ],
-      oversight: {
-        approvalId: "approval-1",
-        approvedAt: 1_770_000_000,
-        method: "user_verification",
-      },
-      task: {
-        constraints: { merchant: "example" },
-        createdAt: 1_770_000_000,
-        description: "Buy wine",
-        expiresAt: 1_770_000_600,
-        hash: "task-hash",
-      },
-    });
+const DECIDED_AT = new Date(1_770_000_000_000);
 
-    expect(claims).toEqual({
-      aap_claims_version: AAP_CLAIMS_VERSION,
-      act: { sub: "agent-sub", sub_profile: "service" },
-      audit: {
-        ciba_request_id: "ciba-1",
-        context_id: "context-1",
-        release_id: "release-1",
-        request_id: "request-1",
-      },
-      capabilities: [
-        { action: "purchase", constraints: { max_amount: 50 } },
-        { action: "read_profile" },
-      ],
-      delegation: {
-        depth: 0,
-        max_depth: 1,
-        parent_jti: null,
-      },
-      oversight: {
-        approval_id: "approval-1",
-        approved_at: 1_770_000_000,
-        method: "user_verification",
-      },
-      task: {
-        constraints: { merchant: "example" },
-        created_at: 1_770_000_000,
-        description: "Buy wine",
-        expires_at: 1_770_000_600,
-        hash: "task-hash",
-      },
-    });
-  });
+function approval(overrides: Partial<CibaApproval> = {}): CibaApproval {
+  return {
+    id: "approval-1",
+    referenceId: "auth-req-hash",
+    requestId: "request-1",
+    userId: "user-1",
+    clientId: "client-1",
+    scope: "openid compliance:read",
+    bindingMessage: "Check compliance",
+    authorizationDetails: null,
+    acrValues: null,
+    decision: "approved",
+    approvalMethod: "session",
+    approvalChannel: "page",
+    capability: null,
+    grantId: null,
+    hostPolicyId: null,
+    constraints: null,
+    agentSessionId: "session-1",
+    hostId: "host-1",
+    attestationTier: "attested",
+    attestationProvider: "AgentPass",
+    authContextId: "context-1",
+    requestedAt: DECIDED_AT,
+    decidedAt: DECIDED_AT,
+    expiresAt: DECIDED_AT,
+    ...overrides,
+  };
+}
 
-  it("omits optional actor and task fields when they are not claimable", () => {
-    const claims = buildAapClaims({
-      act: { sub: "agent-sub" },
-      audit: {
-        contextId: "context-1",
-        releaseId: "release-1",
-      },
-      delegation: {
-        depth: 1,
-        max_depth: 2,
-        parent_jti: "parent-1",
-      },
-      oversight: {
-        approvalId: "approval-1",
-        approvedAt: 1_770_000_000,
-        method: "session",
-      },
-      task: {
-        createdAt: 1_770_000_000,
-        description: "Read profile",
-        expiresAt: 1_770_000_600,
-        hash: "task-hash",
-      },
-    });
-
-    expect(claims.act).toEqual({ sub: "agent-sub", sub_profile: "service" });
-    expect(claims.task).not.toHaveProperty("constraints");
-    expect(claims.audit).not.toHaveProperty("request_id");
-    expect(claims.delegation).toEqual({
-      depth: 1,
-      max_depth: 2,
-      parent_jti: "parent-1",
-    });
-  });
-
-  it("parses valid claims from a raw token payload", () => {
-    const claims = getAapClaimsFromPayload({
-      aap_claims_version: AAP_CLAIMS_VERSION,
-      act: {
-        did: "did:key:z6MkAgent",
-        host_attestation: "attested",
-        host_id: "host-1",
-        operator: "user-1",
-        session_id: "session-1",
-        sub: "agent-sub",
-        type: "agent",
-      },
-      audit: {
-        ciba_request_id: "ciba-1",
-        context_id: "context-1",
-        release_id: "release-1",
-        request_id: "request-1",
-      },
-      capabilities: [
-        { action: "read_profile" },
-        null,
-        { action: "purchase", constraints: { max_amount: 50 } },
-        { constraints: { ignored: true } },
-      ],
-      delegation: {
-        depth: 1,
-        max_depth: 2,
-      },
-      oversight: {
-        approval_id: "approval-1",
-        approved_at: 1_770_000_000,
-        method: "email",
-      },
-      task: {
-        constraints: { merchant: "example" },
-        created_at: 1_770_000_000,
-        description: "Buy wine",
-        expires_at: 1_770_000_600,
-        hash: "task-hash",
-      },
-    });
-
-    // R2: raw session, host, and key identifiers never reach the parsed actor.
-    expect(claims.act).toEqual({ sub: "agent-sub" });
-    expect(claims.audit?.ciba_request_id).toBe("ciba-1");
-    expect(claims.capabilities).toEqual([
-      { action: "purchase", constraints: { max_amount: 50 } },
-      { action: "read_profile" },
-    ]);
-    expect(claims.delegation).toEqual({
-      depth: 1,
-      max_depth: 2,
-      parent_jti: null,
-    });
-    expect(claims.task?.constraints).toEqual({ merchant: "example" });
-    expect(claims.aap_claims_version).toBe(AAP_CLAIMS_VERSION);
-  });
-
-  it("ignores malformed claim groups", () => {
-    expect(
-      getAapClaimsFromPayload({
-        aap_claims_version: "legacy",
-        act: { sub: 42 },
-        audit: { release_id: "release-1" },
-        capabilities: [{ constraints: { ignored: true } }],
-        delegation: { depth: 1, max_depth: "2", parent_jti: 42 },
-        oversight: { approval_id: "approval-1", approved_at: "now" },
-        task: { hash: "task-hash", description: "Task" },
+describe("buildAgentAuthorization", () => {
+  // R2: what an approval authorizes travels in the token response, with no
+  // task, audit, approval id, or parent token.
+  it("states a grant approval's capability and its constraints", () => {
+    const authorization = buildAgentAuthorization(
+      approval({
+        approvalMethod: "capability_grant",
+        approvalChannel: "grant",
+        capability: "check_compliance",
+        constraints: [{ field: "x", op: "eq", value: 1 }],
+        grantId: "grant-1",
+        hostPolicyId: "policy-1",
       })
-    ).toEqual({ capabilities: [] });
+    );
+
+    expect(authorization).toEqual({
+      capabilities: [
+        {
+          action: "check_compliance",
+          constraints: [{ field: "x", op: "eq", value: 1 }],
+        },
+      ],
+      oversight: { method: "capability_grant", approved_at: 1_770_000_000 },
+      delegation: { depth: 0, max_depth: 1 },
+      aap_claims_version: 2,
+    });
+  });
+
+  // A manual approval records no capability; the policy table names what the
+  // stored request asked for, so a client can tell what was approved.
+  it("names the capabilities a manual approval's request maps to", () => {
+    expect(
+      buildAgentAuthorization(
+        approval({
+          approvalMethod: "user_verification",
+          scope: "openid proof:age identity.name",
+          authorizationDetails: JSON.stringify([
+            { type: PAYMENT_AUTHORIZATION_TYPE },
+          ]),
+        })
+      )?.capabilities
+    ).toEqual(
+      [PAYMENT_AUTHORIZATION_CAPABILITY, "my_profile", "my_proofs"]
+        .toSorted()
+        .map((action) => ({ action }))
+    );
+  });
+
+  it("names no capability for a request the catalog does not cover", () => {
+    expect(
+      buildAgentAuthorization(approval({ scope: "openid email" }))?.capabilities
+    ).toEqual([]);
+  });
+
+  it("authorizes nothing for a denial or an unrecorded method", () => {
+    expect(
+      buildAgentAuthorization(
+        approval({ decision: "denied", approvalMethod: null })
+      )
+    ).toBeNull();
+    expect(
+      buildAgentAuthorization(approval({ approvalMethod: null }))
+    ).toBeNull();
   });
 });

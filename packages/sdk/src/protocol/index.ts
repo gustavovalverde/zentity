@@ -16,13 +16,11 @@ export {
 	truncateBindingMessage,
 } from "./binding-message";
 export type {
-	AapAccessTokenClaims,
 	AccessTokenActClaim,
-	AccessTokenAuditClaim,
 	AccessTokenClaims,
 	AccessTokenDelegationClaim,
 	AccessTokenOversightClaim,
-	AccessTokenTaskClaim,
+	AgentAuthorization,
 	CapabilityClaim,
 	ConfirmationClaim,
 	HostAttestationTier,

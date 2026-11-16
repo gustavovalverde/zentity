@@ -377,40 +377,34 @@ describe("CIBA token endpoint", () => {
         sub: await pairwiseValue("localhost", sessionId),
         sub_profile: "service",
       });
-      expect(tokenShape.payload.task).toEqual({
-        constraints: [{ field: "merchant", op: "eq", value: "Test Store" }],
-        created_at: expect.any(Number),
-        description: "purchase",
-        expires_at: expect.any(Number),
-        hash: expect.any(String),
-      });
-      expect(tokenShape.payload.capabilities).toEqual([
-        {
-          action: "purchase",
-          constraints: [{ field: "merchant", op: "eq", value: "Test Store" }],
-        },
-      ]);
-      expect(tokenShape.payload.oversight).toEqual({
-        approval_id: "grant-123",
-        approved_at: expect.any(Number),
-        method: "capability_grant",
-      });
-      // auth_req_id is hashed at rest (it is a bearer credential); the audit
-      // correlation claim carries the hash, never the raw value.
-      const authReqIdHash = hashCibaAuthReqId(authReqId);
-      expect(tokenShape.payload.audit).toEqual({
-        ciba_request_id: authReqIdHash,
-        context_id: defaultAuthContextId,
-        release_id: "dev",
-        request_id: authReqIdHash,
-      });
-      expect(tokenShape.payload.delegation).toEqual({
-        depth: 0,
-        max_depth: 1,
-        parent_jti: null,
-      });
-      expect(tokenShape.payload.aap_claims_version).toBe(1);
+      for (const claim of [
+        "task",
+        "audit",
+        "oversight",
+        "capabilities",
+        "delegation",
+        "aap_claims_version",
+      ]) {
+        expect(tokenShape.payload).not.toHaveProperty(claim);
+      }
     }
+    // The token response states what the approval authorizes.
+    expect(json).toEqual(
+      expect.objectContaining({
+        capabilities: [
+          {
+            action: "purchase",
+            constraints: [{ field: "merchant", op: "eq", value: "Test Store" }],
+          },
+        ],
+        oversight: {
+          method: "capability_grant",
+          approved_at: expect.any(Number),
+        },
+        delegation: { depth: 0, max_depth: 1 },
+        aap_claims_version: 2,
+      })
+    );
   });
 
   it("does not emit agent claims for plain CIBA requests", async () => {
@@ -445,6 +439,13 @@ describe("CIBA token endpoint", () => {
       expect(tokenShape.payload.oversight).toBeUndefined();
       expect(tokenShape.payload.audit).toBeUndefined();
       expect(tokenShape.payload.delegation).toBeUndefined();
+    }
+    expect(json.oversight).toEqual({
+      method: "session",
+      approved_at: expect.any(Number),
+    });
+    for (const member of ["capabilities", "delegation", "aap_claims_version"]) {
+      expect(json).not.toHaveProperty(member);
     }
   });
 
@@ -662,7 +663,7 @@ describe("CIBA decision record", () => {
   );
 
   // R8: approved_at is the decision time, not the request's creation time.
-  it("states the decision time as approved_at in the token response and the agent token", async () => {
+  it("states a manual agent approval in the token response only", async () => {
     const createdAt = new Date("2026-11-15T10:00:00.000Z");
     const decidedAt = new Date(createdAt.getTime() + 60_000);
     vi.useFakeTimers({ toFake: ["Date"] });
@@ -696,17 +697,18 @@ describe("CIBA decision record", () => {
         method: "session",
         approved_at: approvedAt,
       });
+      // A manual approval records no capability; the request's scopes name
+      // the one it covers.
+      expect(json.capabilities).toEqual([{ action: "check_compliance" }]);
+      expect(json.delegation).toEqual({ depth: 0, max_depth: 1 });
+      expect(json.aap_claims_version).toBe(2);
       const accessToken = json.access_token as string;
       const tokenClaims =
         accessToken.split(".").length === 3
           ? decodeJwt(accessToken)
           : (await findStoredOpaqueAccessToken(accessToken))?.accessTokenClaims;
-      expect(tokenClaims?.oversight).toEqual(
-        expect.objectContaining({
-          approved_at: approvedAt,
-          method: "session",
-        })
-      );
+      expect(tokenClaims).not.toHaveProperty("oversight");
+      expect(tokenClaims).not.toHaveProperty("capabilities");
     } finally {
       vi.useRealTimers();
     }

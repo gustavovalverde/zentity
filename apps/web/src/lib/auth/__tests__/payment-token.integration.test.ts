@@ -37,6 +37,8 @@ vi.mock("@/env", async (importOriginal) => {
 
 import crypto from "node:crypto";
 
+import { PAYMENT_AUTHORIZATION_CAPABILITY } from "@zentity/sdk/protocol";
+
 import { GET as listRevocations } from "@/app/api/auth/oauth2/revoked/route";
 import { env } from "@/env";
 import { auth } from "@/lib/auth/auth-config";
@@ -342,6 +344,8 @@ describe("payment_authorization token", () => {
           authContextId: approval.id,
           agentSessionId: input.agent.sessionId,
           hostId: input.agent.hostId,
+          approvalMethod: "user_verification",
+          authorizationDetails: JSON.stringify([PAYMENT_RAR]),
         },
       });
     }
@@ -489,12 +493,34 @@ describe("payment_authorization token", () => {
     );
   });
 
+  // R2: the wallet token names the agent only by its pairwise act.sub, and
+  // what the approval authorizes goes to the client in the token response.
   it("keeps the actor Zentity computed for a verified agent", async () => {
     const agent = await createRegisteredAgent(userId);
     const { authReqId } = await approvePayment({ agent });
 
-    const claims = decodeJwt(
-      (await pollToken(authReqId)).json.access_token as string
+    const response = (await pollToken(authReqId)).json;
+    const claims = decodeJwt(response.access_token as string);
+    for (const claim of [
+      "task",
+      "audit",
+      "oversight",
+      "capabilities",
+      "delegation",
+      "aap_claims_version",
+    ]) {
+      expect(claims).not.toHaveProperty(claim);
+    }
+    expect(response).toEqual(
+      expect.objectContaining({
+        capabilities: [{ action: PAYMENT_AUTHORIZATION_CAPABILITY }],
+        oversight: {
+          method: "user_verification",
+          approved_at: expect.any(Number),
+        },
+        delegation: { depth: 0, max_depth: 1 },
+        aap_claims_version: 2,
+      })
     );
     expect(claims.sub).toBe(
       await pairwiseValue(`client/${CLIENT_ID} ${WALLET_AUDIENCE}`, userId)

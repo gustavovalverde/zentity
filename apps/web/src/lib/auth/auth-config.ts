@@ -912,12 +912,11 @@ async function beforeCibaTokenLoadRequest(ctx: HookCtx) {
   const approval = await findCibaApproval(authReqIdHash);
   const contribution = await buildCibaAgentContribution(
     row as unknown as Record<string, unknown>,
-    row.clientId,
     approval
   );
   await setPendingCibaToken({
-    agentClaims: contribution?.claims ?? null,
     agentSessionId: contribution?.snapshot.agentSessionId ?? null,
+    authorization: contribution?.authorization ?? null,
     authContextId: row.authContextId ?? "",
     authReqIdHash,
     oversight: approval?.approvalMethod
@@ -1171,9 +1170,7 @@ async function buildAccessTokenDisclosureClaims(
   const scopeList = toScopeList(info.scopes);
   const claims: Record<string, unknown> = {};
   // Non-empty when this is a CIBA-issued token whose approval captured an
-  // authentication context. Agent AAP and payment claims are added by the
-  // CIBA-only contributor below; at opaque introspection they come from the
-  // durable snapshot keyed by the token reference instead.
+  // authentication context.
   const cibaAuthContextId = await pendingCibaAuthContextId(referenceId);
 
   // Per-RP sybil nullifier
@@ -1234,25 +1231,6 @@ async function buildAccessTokenDisclosureClaims(
   return claims;
 }
 
-/**
- * The verified agent's AAP claims a token from the CIBA grant carries besides
- * its actor, which the grant stamps as `act` itself. The grant also issues the
- * request's RFC 9396 authorization details, which outrank every claim hook.
- */
-async function buildCibaAccessTokenClaims(
-  info: OAuthClaimExtensionInput
-): Promise<Record<string, unknown>> {
-  if (info.grantType !== CIBA_GRANT_TYPE) {
-    return {};
-  }
-  const pending = await getPendingCibaToken();
-  if (!pending || pending.authReqIdHash !== info.referenceId) {
-    return {};
-  }
-  const { act: _actor, ...agentClaims } = pending.agentClaims ?? {};
-  return agentClaims;
-}
-
 function exactDisclosureClaimsPlugin(): BetterAuthPlugin {
   return {
     id: "exact-disclosure-claims",
@@ -1283,10 +1261,8 @@ function exactDisclosureClaimsPlugin(): BetterAuthPlugin {
               user: { id: info.user.id },
             });
           },
-          accessToken: async (info: OAuthClaimExtensionInput) => ({
-            ...(await buildAccessTokenDisclosureClaims(info)),
-            ...(await buildCibaAccessTokenClaims(info)),
-          }),
+          accessToken: (info: OAuthClaimExtensionInput) =>
+            buildAccessTokenDisclosureClaims(info),
         },
       });
     },

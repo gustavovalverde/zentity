@@ -1,5 +1,10 @@
 import { z } from "zod";
-import type { OversightMethod } from "./protocol/claims";
+import {
+	AAP_CLAIMS_VERSION,
+	type AccessTokenDelegationClaim,
+	type AccessTokenOversightClaim,
+	type CapabilityClaim,
+} from "./protocol/claims";
 import type { DpopClient } from "./rp/dpop-client";
 import { authenticateClientRequest } from "./rp/token-request";
 
@@ -17,12 +22,28 @@ const oversightSchema = z.object({
   method: z.enum(["capability_grant", "session", "user_verification"]),
 });
 
+const capabilitySchema = z.object({
+  action: z.string().min(1),
+  constraints: z.unknown().optional(),
+});
+
+const delegationSchema = z.object({
+  depth: z.number(),
+  max_depth: z.number(),
+});
+
+// A member this SDK does not understand must not fail the token response.
 const cibaTokenResponseSchema = z.object({
+  aap_claims_version: z
+    .literal(AAP_CLAIMS_VERSION)
+    .optional()
+    .catch(undefined),
   access_token: z.string().min(1),
   authorization_details: z.array(z.unknown()).optional(),
+  capabilities: z.array(capabilitySchema).optional().catch(undefined),
+  delegation: delegationSchema.optional().catch(undefined),
   expires_in: z.number().optional(),
   id_token: z.string().optional(),
-  // A member this SDK does not understand must not fail the token response.
   oversight: oversightSchema.optional().catch(undefined),
 });
 
@@ -78,15 +99,19 @@ export interface CibaRequest {
 }
 
 /** How the user approved the request, as Zentity recorded it. */
-export interface CibaOversight {
-  /** When the decision was recorded, in seconds since the epoch. */
-  approved_at: number;
-  method: OversightMethod;
-}
+export type CibaOversight = AccessTokenOversightClaim;
 
+/**
+ * A CIBA token response. `capabilities`, `delegation`, and `aapClaimsVersion`
+ * are present when a verified agent made the request; read them here rather
+ * than from the access token, which a client must treat as opaque.
+ */
 export interface CibaTokenSet {
+  aapClaimsVersion?: typeof AAP_CLAIMS_VERSION;
   accessToken: string;
   authorizationDetails?: unknown[];
+  capabilities?: CapabilityClaim[];
+  delegation?: AccessTokenDelegationClaim;
   expiresAt: number;
   idToken?: string;
   oversight?: CibaOversight;
@@ -334,6 +359,15 @@ async function parsePollResponse(
         ...(tokenResponse.id_token ? { idToken: tokenResponse.id_token } : {}),
         ...(tokenResponse.oversight
           ? { oversight: tokenResponse.oversight }
+          : {}),
+        ...(tokenResponse.capabilities
+          ? { capabilities: tokenResponse.capabilities }
+          : {}),
+        ...(tokenResponse.delegation
+          ? { delegation: tokenResponse.delegation }
+          : {}),
+        ...(tokenResponse.aap_claims_version
+          ? { aapClaimsVersion: tokenResponse.aap_claims_version }
           : {}),
       },
     };
