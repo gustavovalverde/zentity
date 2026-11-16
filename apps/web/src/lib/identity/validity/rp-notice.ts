@@ -7,6 +7,7 @@ import { and, eq, inArray } from "drizzle-orm";
 import { RP_VALIDITY_NOTICE_URI_FIELD } from "@/lib/auth/oidc/client-metadata";
 import { signJwt } from "@/lib/auth/oidc/jwt-signer";
 import {
+  type PairwiseClient,
   resolveSubForClient,
   resolveUserIdFromSub,
 } from "@/lib/auth/oidc/pairwise";
@@ -29,11 +30,9 @@ const RP_VALIDITY_EVENT_URI = "https://zentity.xyz/events/validity-change";
 const RP_NOTICE_EXPIRY_SECONDS = 5 * 60;
 const RP_NOTICE_JWT_TYP = "secevent+jwt";
 
-interface RpValidityNoticeClient {
+interface RpValidityNoticeClient extends PairwiseClient {
   clientId: string;
-  redirectUris: string[];
   rpValidityNoticeUri: string;
-  subjectType: string | null;
 }
 
 function parseClientMetadata(metadata: string | null): Record<string, unknown> {
@@ -97,6 +96,7 @@ export async function listRpValidityNoticeClients(
       clientId: oauthClients.clientId,
       metadata: oauthClients.metadata,
       redirectUris: oauthClients.redirectUris,
+      sectorIdentifier: oauthClients.sectorIdentifier,
       subjectType: oauthClients.subjectType,
     })
     .from(oauthClients)
@@ -118,6 +118,7 @@ export async function listRpValidityNoticeClients(
             clientId: row.clientId,
             redirectUris: parseStoredStringArray(row.redirectUris),
             rpValidityNoticeUri: uri,
+            sectorIdentifier: row.sectorIdentifier,
             subjectType: row.subjectType,
           },
         ]
@@ -142,10 +143,7 @@ async function buildRpValidityNoticeJwt(args: {
     );
   }
 
-  const sub = await resolveSubForClient(args.userId, {
-    subjectType: client.subjectType,
-    redirectUris: client.redirectUris,
-  });
+  const sub = await resolveSubForClient(args.userId, client);
   const issuer = getAuthIssuer();
   const now = Math.floor(Date.now() / 1000);
 

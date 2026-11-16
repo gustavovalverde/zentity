@@ -4,9 +4,7 @@ import { eq } from "drizzle-orm";
 import { exportJWK, generateKeyPair, importJWK, jwtVerify } from "jose";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 
-import { env } from "@/env";
 import { encryptPrivateKey } from "@/lib/auth/oidc/jwt-signer";
-import { computePairwiseSub } from "@/lib/auth/oidc/pairwise";
 import { db } from "@/lib/db/connection";
 import { jwks, oauthClients } from "@/lib/db/schema/oauth-provider";
 
@@ -111,71 +109,35 @@ describe("jwt-signer multi-algorithm dispatcher", () => {
         Buffer.from(token.split(".")[1] ?? "", "base64url").toString("utf-8")
       ) as Record<string, unknown>;
 
-    async function withClient(
-      subjectType: "pairwise" | "public",
-      run: (clientId: string) => Promise<void>
-    ) {
+    // The provider already gave a pairwise client its own subject (and
+    // `ba_sub`); hashing it again would break UserInfo and introspection.
+    it("signs the subject it is given", async () => {
       const clientId = `subject-${crypto.randomUUID()}`;
       await db
         .insert(oauthClients)
         .values({
           clientId,
           redirectUris: '["http://localhost:4100/callback"]',
-          subjectType,
+          subjectType: "pairwise",
         })
         .run();
       try {
-        await run(clientId);
+        const token = await signJwt({
+          scope: "openid",
+          azp: clientId,
+          sub: "pairwise-subject",
+          ba_sub: "ciphertext",
+        });
+        expect(decodePayload(token)).toMatchObject({
+          sub: "pairwise-subject",
+          ba_sub: "ciphertext",
+        });
       } finally {
         await db
           .delete(oauthClients)
           .where(eq(oauthClients.clientId, clientId))
           .run();
       }
-    }
-
-    it("carries a pairwise client's pairwise subject", async () => {
-      await withClient("pairwise", async (clientId) => {
-        const token = await signJwt({
-          scope: "openid",
-          azp: clientId,
-          sub: "user-1",
-        });
-        const expected = await computePairwiseSub(
-          "user-1",
-          ["http://localhost:4100/callback"],
-          env.PAIRWISE_SECRET
-        );
-        expect(decodePayload(token).sub).toBe(expected);
-      });
-    });
-
-    it("carries the user id for a public client", async () => {
-      await withClient("public", async (clientId) => {
-        const token = await signJwt({
-          scope: "openid",
-          azp: clientId,
-          sub: "user-1",
-        });
-        expect(decodePayload(token).sub).toBe("user-1");
-      });
-    });
-
-    it("keeps the client as the subject of client-credentials tokens", async () => {
-      await withClient("pairwise", async (clientId) => {
-        const token = await signJwt({
-          scope: "rp:api",
-          azp: clientId,
-          sub: clientId,
-        });
-        expect(decodePayload(token).sub).toBe(clientId);
-      });
-    });
-
-    it("refuses to sign for an unknown client", async () => {
-      await expect(
-        signJwt({ scope: "openid", azp: "unknown-client", sub: "user-1" })
-      ).rejects.toThrow("Unknown client");
     });
   });
 

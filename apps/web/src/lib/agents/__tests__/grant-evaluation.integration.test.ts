@@ -187,9 +187,7 @@ describe("evaluateSessionGrants", () => {
       })
       .run();
 
-    const result = await evaluateRequest("openid payment_authorization:sign", [
-      paymentRar(),
-    ]);
+    const result = await evaluateRequest("openid", [paymentRar()]);
 
     expect(result.approved).toBe(true);
     expect(result.capabilityName).toBe("payment_authorization:sign");
@@ -207,9 +205,7 @@ describe("evaluateSessionGrants", () => {
       })
       .run();
 
-    const result = await evaluateRequest("openid payment_authorization:sign", [
-      paymentRar(),
-    ]);
+    const result = await evaluateRequest("openid", [paymentRar()]);
 
     expect(result.approved).toBe(false);
   });
@@ -228,7 +224,7 @@ describe("evaluateSessionGrants", () => {
       })
       .run();
 
-    const result = await evaluateRequest("openid payment_authorization:sign", [
+    const result = await evaluateRequest("openid", [
       paymentRar({ value: "300000" }),
     ]);
 
@@ -256,7 +252,7 @@ describe("evaluateSessionGrants", () => {
     });
 
     function evaluate(detail: ReturnType<typeof paymentIn>) {
-      return evaluateRequest("openid payment_authorization:sign", [detail]);
+      return evaluateRequest("openid", [detail]);
     }
 
     it.each(["-50", "5abc", "1e3", ""])(
@@ -303,7 +299,7 @@ describe("evaluateSessionGrants", () => {
       })
       .run();
 
-    const result = await evaluateRequest("openid payment_authorization:sign", [
+    const result = await evaluateRequest("openid", [
       paymentRar({ recipient: "zcash:test:utest1qqattackeraddr9999" }),
     ]);
 
@@ -347,10 +343,7 @@ describe("evaluateSessionGrants", () => {
         })
         .run();
 
-      const result = await evaluateRequest(
-        "openid payment_authorization:sign",
-        [paymentRar()]
-      );
+      const result = await evaluateRequest("openid", [paymentRar()]);
 
       expect(result.approved).toBe(approved);
     }

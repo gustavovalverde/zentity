@@ -1,9 +1,11 @@
+import { decodeJwt } from "jose";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { auth } from "@/lib/auth/auth-config";
 import { db } from "@/lib/db/connection";
 import { oauthClients } from "@/lib/db/schema/oauth-provider";
-import { resetDatabase } from "@/test-utils/db-test-utils";
+import { redeemTestAuthorizationCode } from "@/test-utils/authorization-code-test-utils";
+import { createTestUser, resetDatabase } from "@/test-utils/db-test-utils";
 
 vi.mock("@better-auth/cimd/node", () => ({
   fetchClientMetadataResource: (input: RequestInfo | URL, init?: RequestInit) =>
@@ -279,6 +281,200 @@ describe("CIMD: Client ID Metadata Document Resolution", () => {
         where: (t, { eq }) => eq(t.clientId, cimdClientId),
       });
       expect(client?.name).toBe("Updated Name");
+    });
+  });
+
+  describe("pairwise sector", () => {
+    const RP_REDIRECT_URI = "https://rp.example/callback";
+    const RP_CLIENT_ID = "registered-rp";
+
+    async function idTokenSub(
+      clientId: string,
+      redirectUri: string,
+      userId: string
+    ) {
+      const { status, json } = await redeemTestAuthorizationCode({
+        clientId,
+        redirectUri,
+        userId,
+      });
+      if (status !== 200) {
+        throw new Error(`token request failed: ${JSON.stringify(json)}`);
+      }
+      return decodeJwt(json.id_token as string).sub;
+    }
+
+    async function storedSector() {
+      const client = await db.query.oauthClients.findFirst({
+        where: (t, { eq }) => eq(t.clientId, cimdClientId),
+      });
+      return client?.sectorIdentifier;
+    }
+
+    // The document names the other relying party's host first and its own
+    // second.
+    function claimingMetadata() {
+      return validMetadata({
+        redirect_uris: [RP_REDIRECT_URI, REDIRECT_URI],
+      });
+    }
+
+    /** A discovery-owned row whose document is due for a refresh. */
+    async function insertStaleClient(sectorIdentifier: string) {
+      const pastTtl = new Date(Date.now() - 25 * 60 * 60 * 1000);
+      await db.insert(oauthClients).values({
+        clientId: cimdClientId,
+        name: "MCP Test Client",
+        redirectUris: JSON.stringify([REDIRECT_URI]),
+        grantTypes: JSON.stringify(["authorization_code"]),
+        responseTypes: JSON.stringify(["code"]),
+        tokenEndpointAuthMethod: "none",
+        applicationType: "native",
+        clientDiscoveryId: "cimd",
+        subjectType: "pairwise",
+        sectorIdentifier,
+        trustLevel: 1,
+        metadataUrl: cimdClientId,
+        metadataFetchedAt: pastTtl,
+        createdAt: pastTtl,
+        updatedAt: pastTtl,
+      });
+    }
+
+    /** Makes Zentity's posture write fail; the provider's own writes pass. */
+    function failPostureWrite() {
+      const update = db.update.bind(db);
+      vi.spyOn(db, "update").mockImplementation(((
+        table: typeof oauthClients
+      ) => {
+        const builder = update(table);
+        const set = builder.set.bind(builder);
+        builder.set = ((values: Record<string, unknown>) => {
+          if ("trustLevel" in values) {
+            throw new Error("posture write failed");
+          }
+          return set(values);
+        }) as typeof builder.set;
+        return builder;
+      }) as typeof db.update);
+    }
+
+    let userId: string;
+
+    beforeEach(async () => {
+      userId = await createTestUser();
+      await db.insert(oauthClients).values({
+        clientId: RP_CLIENT_ID,
+        name: "Registered RP",
+        redirectUris: JSON.stringify([RP_REDIRECT_URI]),
+        grantTypes: JSON.stringify(["authorization_code"]),
+        responseTypes: JSON.stringify(["code"]),
+        tokenEndpointAuthMethod: "none",
+        subjectType: "pairwise",
+        sectorIdentifier: "rp.example",
+      });
+    });
+
+    it("gives a created client its own sector, not the first redirect host", async () => {
+      mockFetchMetadata(validMetadata());
+      const { status } = await postPar({
+        client_id: cimdClientId,
+        response_type: "code",
+        redirect_uri: REDIRECT_URI,
+        scope: "openid",
+        resource: "http://localhost:3000",
+        code_challenge: "test-challenge",
+        code_challenge_method: "S256",
+      });
+      expect(status).toBe(201);
+      expect(await storedSector()).toBe(`client/${cimdClientId}`);
+    });
+
+    it("refuses a document that names another origin's redirect URI", async () => {
+      mockFetchMetadata(claimingMetadata());
+      const { status, json } = await postPar({
+        client_id: cimdClientId,
+        response_type: "code",
+        redirect_uri: REDIRECT_URI,
+        scope: "openid",
+        resource: "http://localhost:3000",
+        code_challenge: "test-challenge",
+        code_challenge_method: "S256",
+      });
+      expect(status).toBe(400);
+      expect(json.error).toBe("invalid_client");
+      expect(json.error_description).toContain("same origin as client_id");
+      expect(await storedSector()).toBeUndefined();
+    });
+
+    it("accepts loopback redirect URIs beside its own origin", async () => {
+      mockFetchMetadata(
+        validMetadata({
+          redirect_uris: ["http://127.0.0.1:8123/callback", REDIRECT_URI],
+        })
+      );
+      const { status } = await postPar({
+        client_id: cimdClientId,
+        response_type: "code",
+        redirect_uri: REDIRECT_URI,
+        scope: "openid",
+        resource: "http://localhost:3000",
+        code_challenge: "test-challenge",
+        code_challenge_method: "S256",
+      });
+      expect(status).toBe(201);
+      expect(await storedSector()).toBe(`client/${cimdClientId}`);
+    });
+
+    it("keeps its own sector through a refresh during a token request", async () => {
+      // The provider's derivation, stored by the refresh before the posture.
+      await insertStaleClient("mcp-client.test");
+      mockFetchMetadata(validMetadata());
+
+      const cimdSub = await idTokenSub(cimdClientId, REDIRECT_URI, userId);
+      expect(globalThis.fetch).toHaveBeenCalledWith(
+        cimdClientId,
+        expect.anything()
+      );
+      expect(await storedSector()).toBe(`client/${cimdClientId}`);
+      expect(cimdSub).not.toBe(
+        await idTokenSub(RP_CLIENT_ID, RP_REDIRECT_URI, userId)
+      );
+    });
+
+    it("refuses a refreshed document that names another origin's redirect URI", async () => {
+      await insertStaleClient(`client/${cimdClientId}`);
+      mockFetchMetadata(claimingMetadata());
+
+      const { status, json } = await redeemTestAuthorizationCode({
+        clientId: cimdClientId,
+        redirectUri: REDIRECT_URI,
+        userId,
+      });
+      expect(status).toBe(400);
+      expect(json.error_description).toContain("same origin as client_id");
+      expect(await storedSector()).toBe(`client/${cimdClientId}`);
+    });
+
+    it("refuses the request when the posture cannot be stored", async () => {
+      await insertStaleClient(`client/${cimdClientId}`);
+      mockFetchMetadata(validMetadata());
+      failPostureWrite();
+
+      const { status, json } = await redeemTestAuthorizationCode({
+        clientId: cimdClientId,
+        redirectUri: REDIRECT_URI,
+        userId,
+      });
+      expect({ status, json }).toEqual({
+        status: 400,
+        json: {
+          error: "invalid_client",
+          error_description: "client is disabled",
+        },
+      });
+      // What the provider stored is the document's own host.
+      expect(await storedSector()).toBe("mcp-client.test");
     });
   });
 

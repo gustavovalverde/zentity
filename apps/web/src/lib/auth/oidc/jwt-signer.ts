@@ -18,8 +18,6 @@ import { env } from "@/env";
 import { db } from "@/lib/db/connection";
 import { jwks } from "@/lib/db/schema/oauth-provider";
 
-import { resolveSubForClientId } from "./pairwise";
-
 // ---------------------------------------------------------------------------
 // Envelope encryption for JWKS private keys at rest (AES-256-GCM)
 // ---------------------------------------------------------------------------
@@ -323,43 +321,16 @@ async function signWithAlg(
 // ---------------------------------------------------------------------------
 
 /**
- * A client-issued access token carries the subject identifier that client
- * receives everywhere else (pairwise for pairwise clients), never the raw user
- * id (ADR privacy/0015). Client-credentials tokens name the client itself.
- */
-async function projectAccessTokenSubject(
-  payload: Record<string, unknown>
-): Promise<Record<string, unknown>> {
-  const clientId = payload.azp ?? payload.client_id;
-  if (
-    typeof payload.sub !== "string" ||
-    typeof clientId !== "string" ||
-    payload.sub === clientId
-  ) {
-    return payload;
-  }
-  const sub = await resolveSubForClientId(payload.sub, clientId);
-  if (!sub) {
-    throw new Error(`Unknown client ${clientId} for access token subject`);
-  }
-  return { ...payload, sub };
-}
-
-/**
  * Access tokens (payload has `scope`) are EdDSA for compact size. Every other
  * JWT, including ID tokens, is RS256: the OAuth provider computes `at_hash`
  * for the JWT plugin's configured algorithm and rejects a mismatched signer.
  */
-export async function signJwt(
+export function signJwt(
   payload: Record<string, unknown>,
   header?: { typ?: string }
 ): Promise<string> {
   if (typeof payload.scope === "string") {
-    return signWithAlg(
-      await projectAccessTokenSubject(payload),
-      "EdDSA",
-      header?.typ
-    );
+    return signWithAlg(payload, "EdDSA", header?.typ);
   }
   return signWithAlg(payload, "RS256", header?.typ);
 }

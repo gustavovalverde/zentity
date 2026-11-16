@@ -19,11 +19,16 @@ vi.mock("@/env", async (importOriginal) => {
 });
 
 import { approvalPolicy } from "@/lib/agents/capability";
-import {
-  PAYMENT_AUTHORIZATION_SCOPE,
-  PAYMENT_TOKEN_SCOPE_EXPIRATIONS,
-  pinPaymentRequest,
-} from "@/lib/auth/oidc/payment-mint";
+import { pinPaymentRequest } from "@/lib/auth/oidc/payment-mint";
+
+function refusal(run: () => void) {
+  try {
+    run();
+  } catch (error) {
+    return (error as { body?: Record<string, unknown> }).body;
+  }
+  throw new Error("expected a refusal");
+}
 
 const RAR = {
   type: "payment_authorization",
@@ -77,24 +82,41 @@ describe("pinPaymentRequest (bc-authorize, D-5 + D-14)", () => {
     expect(body).toEqual({ scope: "openid" });
   });
 
-  it("rejects more than one entry (rar_too_many_entries)", () => {
+  it("refuses more than one entry as invalid authorization details", () => {
     mockEnv.WALLET_AUDIENCE = WALLET_AUDIENCE;
-    // The thrown APIError carries `rar_too_many_entries` in its body's
-    // error_description (not its .message), so assert it throws at all.
-    expect(() =>
-      pinPaymentRequest({ authorization_details: JSON.stringify([RAR, RAR]) })
-    ).toThrow();
+    expect(
+      refusal(() =>
+        pinPaymentRequest({ authorization_details: JSON.stringify([RAR, RAR]) })
+      )
+    ).toEqual({
+      error: "invalid_authorization_details",
+      error_description: expect.stringContaining("rar_too_many_entries"),
+    });
   });
 
-  it("rejects a malformed payment RAR", () => {
+  it("refuses a malformed payment RAR as invalid authorization details", () => {
     mockEnv.WALLET_AUDIENCE = WALLET_AUDIENCE;
-    expect(() =>
-      pinPaymentRequest({
-        authorization_details: JSON.stringify([
-          { ...RAR, intent_hash: "nope" },
-        ]),
-      })
-    ).toThrow();
+    expect(
+      refusal(() =>
+        pinPaymentRequest({
+          authorization_details: JSON.stringify([
+            { ...RAR, intent_hash: "nope" },
+          ]),
+        })
+      )
+    ).toMatchObject({ error: "invalid_authorization_details" });
+  });
+
+  it("refuses the wallet audience without a payment entry", () => {
+    mockEnv.WALLET_AUDIENCE = WALLET_AUDIENCE;
+    expect(
+      refusal(() =>
+        pinPaymentRequest({ scope: "openid", resource: WALLET_AUDIENCE })
+      )
+    ).toEqual({
+      error: "invalid_target",
+      error_description: "the wallet audience accepts only payment requests",
+    });
   });
 
   it("fails closed when WALLET_AUDIENCE is unset", () => {
@@ -107,21 +129,13 @@ describe("pinPaymentRequest (bc-authorize, D-5 + D-14)", () => {
   });
 });
 
-describe("capability + scope wiring", () => {
-  it("maps a payment RAR with the payment scope to payment_authorization:sign", () => {
+describe("capability wiring", () => {
+  it("maps a payment RAR to payment_authorization:sign without a payment scope", () => {
     expect(
       approvalPolicy({
-        scope: "openid payment_authorization:sign",
+        scope: "openid",
         authorizationDetails: [RAR],
       }).grantCapability
     ).toBe("payment_authorization:sign");
-  });
-
-  it("uses a duration string (not a number) for the 120s lifetime", () => {
-    // toExpJWT treats a number as an absolute epoch timestamp; the value must
-    // be a duration string so exp = iat + 120.
-    expect(PAYMENT_TOKEN_SCOPE_EXPIRATIONS[PAYMENT_AUTHORIZATION_SCOPE]).toBe(
-      "120s"
-    );
   });
 });

@@ -12,7 +12,7 @@ description: Private Agent Consent and Trust is a security profile for agent aut
 
 ## Abstract
 
-PACT (Private Agent Consent and Trust Profile) is a security profile of OAuth 2.1 for privacy-preserving agent delegation. It extends VEIL and composes OIDC CIBA Core 1.0 and OAuth Token Exchange (RFC 8693). PACT defines a durable-host plus ephemeral-session control plane, a delegation token claim vocabulary, runtime identity proofs using Ed25519 JWTs, capability grants with typed constraints and usage limits, risk-graduated consent routing, and claim narrowing on token exchange to non-agent audiences. Claim names align with the Agent Auth Protocol and draft-aap-oauth-profile (§17).
+PACT (Private Agent Consent and Trust Profile) is a security profile of OAuth 2.1 for privacy-preserving agent delegation. It extends VEIL and composes OIDC CIBA Core 1.0 and OAuth Token Exchange (RFC 8693). PACT defines a durable-host plus ephemeral-session control plane, a delegation token claim vocabulary, runtime identity proofs using Ed25519 JWTs, capability grants with typed constraints and usage limits, risk-graduated consent routing, and token exchange boundaries that keep delegated tokens from crossing audiences. Claim names align with the Agent Auth Protocol and draft-aap-oauth-profile (§17).
 
 ---
 
@@ -32,7 +32,7 @@ The profile composes and constrains the following specifications:
 | Consent Channel | CIBA (OIDC CIBA Core 1.0) |
 | Token Semantics | Token Exchange (RFC 8693), Token Introspection (RFC 7662), OIDC Core Pairwise Identifiers |
 
-This document specifies: pairwise agent identifiers (§4.3), risk-graduated consent routing (§6.2), usage-limited capability grants (§5.5), cryptographic binding chains (§11), ephemeral identity disclosure (§11.5), and claim narrowing on token exchange (§8).
+This document specifies: pairwise agent identifiers (§4.3), risk-graduated consent routing (§6.2), usage-limited capability grants (§5.5), cryptographic binding chains (§11), ephemeral identity disclosure (§11.5), and token exchange boundaries (§8).
 
 ---
 
@@ -103,15 +103,15 @@ flowchart TD
     TS["**Token Semantics**\nToken Exchange (RFC 8693)\nIntrospection (RFC 7662)\nPairwise identifiers\nPACT delegation claims"]
 ```
 
-**Secure Transport** sits beneath the other four concerns because removing any transport spec changes security properties, not the agent model. DPoP is the one transport spec that crosses into agent territory: when token exchange mints a downstream token from a CIBA access token, DPoP re-binds the issued token to the caller's proof-of-possession key.
+**Secure Transport** sits beneath the other four concerns because removing any transport spec changes security properties, not the agent model. DPoP is the one transport spec that crosses into agent territory: every delegated token is bound to the caller's proof-of-possession key, and token exchange keeps a client's token bound to its key.
 
-**Structured Intent** carries typed payloads through the flow. RAR (`authorization_details`) is submitted on the CIBA request, retained on the CIBA request record during consent evaluation, and projected onto downstream exchanged tokens (§8). The approved typed payload does not appear on the CIBA-issued access token itself.
+**Structured Intent** carries typed payloads through the flow. RAR (`authorization_details`) is submitted on the CIBA request, retained on the CIBA request record during consent evaluation, and issued on the CIBA access token and in its token response. That token is the payload's only carrier: token exchange refuses a subject token that carries it (§8.1).
 
 **Agent Control Plane** establishes who is asking. It produces two outputs: the `Agent-Assertion` JWT that enters the consent channel as runtime proof, and the capability grants that determine whether consent can short-circuit into automatic approval.
 
 **Consent Channel** carries the human approval interaction. CIBA binds the runtime proof to a specific consent request. The CIBA `auth_req_id` serves as the trace identifier correlating agent identity, consent, and token issuance.
 
-**Token Semantics** encodes the authorized delegation. Token exchange rebinds audience and recomputes pairwise identifiers. Introspection re-evaluates session lifecycle at query time. The delegation claim vocabulary is defined in §7.
+**Token Semantics** encodes the authorized delegation. The CIBA access token carries it to the audience the user approved; token exchange never rebinds it for another audience (§8). Introspection re-evaluates session lifecycle at query time. The delegation claim vocabulary is defined in §7.
 
 ### 3.2 Runtime Participants
 
@@ -310,7 +310,6 @@ Where:
 
 - `act.sub` in access tokens
 - `agent.id` in the PACT delegation claim set
-- `act.sub` in tokens issued by token exchange (re-derived for the target audience; §8)
 - The introspection response
 - The CIBA request snapshot (server-side)
 
@@ -607,7 +606,7 @@ Approved delegations are encoded as JWT access tokens. The `sub` and `act` claim
 
 ### 7.1 The Delegation Token Profile
 
-Access tokens issued after agent-verified CIBA approval carry the delegation claim set defined below. The `act` claim is used as specified in [RFC 8693] Section 4.1. The remaining claims (`agent`, `task`, `capabilities`, `oversight`, `audit`, `delegation`) are defined normatively in this document. Approved `authorization_details` (RFC 9396) are retained on the CIBA request record and emitted on exchange artifacts (§8), not on the CIBA-issued access token. Claim names align with draft-aap-oauth-profile (see §16, informative).
+Access tokens issued after agent-verified CIBA approval carry the delegation claim set defined below. The `act` claim is used as specified in [RFC 8693] Section 4.1. The remaining claims (`agent`, `task`, `capabilities`, `oversight`, `audit`, `delegation`) are defined normatively in this document. The CIBA access token carries the approved `authorization_details` (RFC 9396) and is their only carrier (§8.1). Claim names align with draft-aap-oauth-profile (see §16, informative).
 
 ```json
 {
@@ -690,95 +689,65 @@ Access tokens issued after agent-verified CIBA approval carry the delegation cla
 
 ### 7.2 Chain Tracking
 
-When tokens are exchanged via RFC 8693 Token Exchange, the `delegation` claim tracks the chain:
+A delegated access token is never a token exchange subject (§8.1), so no delegation chain forms across an exchange in this version. A conforming AS MUST advertise `delegation_chains: false`. The `delegation` claim on a CIBA access token states the depth of that token alone.
 
-```json
-{
-  "delegation": {
-    "depth": 1,
-    "max_depth": 3,
-    "chain": ["<pairwise-agent-A>", "<pairwise-agent-B>"],
-    "parent_jti": "<original-token-jti>"
-  }
-}
-```
-
-**Rules enforced on token exchange:**
-
-- The server MUST maintain delegation lineage in canonical internal actor references (for example, raw session IDs), not only in the audience-projected identifiers emitted in tokens.
-- `depth` incremented by 1 on each exchange.
-- Current actor appended to the canonical lineage before projection.
-- `delegation.chain` in the exchanged token MUST be projected for the current audience from the canonical lineage. Previous audience-specific pairwise values MUST NOT be copied verbatim into a new audience context.
-- Implementations advertising `delegation_chains: true` MUST reject the exchange if `depth >= max_depth`.
-- Implementations advertising `delegation_chains: true` MUST enforce **mandatory privilege reduction**: at least one of narrower capabilities, tighter constraints, shorter TTL, or lower `max_depth`.
-- The first exchange from a CIBA access token to a non-agent audience satisfies privilege reduction by applying the claim-narrowing rules of §8: the issued token omits the delegation `agent`, `task`, `capabilities`, `oversight`, and `audit` sections, narrows `authorization_details` to the approved subset, and rebinds audience. If `delegation_chains` is `false`, the issued token MAY omit `delegation` as well; if `delegation_chains` is `true`, it MUST retain the projected `delegation` lineage needed for depth enforcement and family revocation. The issued token lifetime MUST NOT exceed the subject token's remaining lifetime.
-
-**Family revocation.** Revoking a parent token (by `jti`) revokes all descendants reachable via `parent_jti` graph traversal.
+A later version that advertises `delegation_chains: true` would have to define how lineage is kept in canonical internal actor references, projected per audience (§4.3), bounded by `max_depth`, reduced in privilege at each hop, and revoked as a family. Those rules are out of scope for v0.1.
 
 ---
 
-## 8. Claim Narrowing on Token Exchange
+## 8. Token Exchange Boundaries
 
-When delegation evidence must cross an audience boundary, the AS uses RFC 8693 Token Exchange to mint a downstream token for the new audience. This section specifies what the AS MUST strip, project, and attenuate on every such exchange. The rules apply regardless of the `requested_token_type`; PACT does not mint any profile-specific artifact type.
+Delegation evidence does not cross an audience boundary through token exchange. The CIBA access token is issued for the audience the user approved and carries the approved `authorization_details`; an exchange would either drop what the user approved or present it to a party the user did not approve. An AS MAY still use RFC 8693 Token Exchange to issue tokens for its own resources, such as the bootstrap token an installed agent exchanges its login token for (§3.3) or the token a confidential resource server exchanges a caller's token for (§8.3). This section states what such an exchange MUST refuse and what it issues.
 
-### 8.1 Dropping Agent Control-Plane Claims
+### 8.1 Refused Subjects
 
-When the target audience is not itself an agent (the common case: a resource server or relying party consuming the delegated authorization), the issued token MUST omit the delegation `agent`, `task`, `capabilities`, `oversight`, and `audit` sections. These sections describe the agent control plane and leak agent-identifying context that a non-agent audience does not need for access decisions.
+The AS MUST refuse a token exchange, with `invalid_request` (RFC 8693 §2.2.2), when the validated subject token:
 
-- If the deployment does not advertise `delegation_chains`, the issued token MAY omit `delegation` entirely.
-- If the deployment advertises `delegation_chains: true`, the issued token MUST retain a projected `delegation` claim containing only the lineage needed for depth enforcement and family revocation (`depth`, `max_depth`, `chain`, `parent_jti`, `root_jti`; see §7). Previous audience-specific pairwise values MUST NOT be copied verbatim into the new audience context and MUST be recomputed per §4.3.
+- carries `authorization_details` (`subject_token must not carry authorization_details`);
+- carries `act`, or was issued by a CIBA approval, which the AS determines from its own approval record and not only from the token's claims (`subject_token must not be a delegated token`).
 
-Claims that the downstream audience does need (`iss`, `aud`, `sub`, `act.sub`, `scope`, `authorization_details`, `cnf`, `jti`, `iat`, `exp`) are copied or recomputed from the subject token: pairwise identifiers are recomputed for the target audience (§4.3), DPoP binding is taken from the token exchange request's proof, and `authorization_details` is narrowed per §8.2.
+The AS MUST also refuse an `actor_token`: an exchanged token names no actor.
+
+*Note (non-normative): RFC 9396 §6.1 lets an AS narrow `authorization_details` per audience. A later profile MAY define audience-gated propagation per RAR type, where a type declares which audiences may receive its entries; v0.1 defines none, so every such subject is refused.*
 
 ### 8.2 Privilege Reduction
 
-Every token exchange MUST enforce privilege reduction on the issued token:
+An exchange the AS permits MUST reduce privilege:
 
-- `scope` MUST be a subset of the subject token's scope.
-- `authorization_details` MUST be a subset of the subject token's `authorization_details`.
-- Lifetime MUST NOT exceed the subject token's remaining lifetime.
+- `scope` MUST be a subset of the subject token's scope and of the scopes registered for the exchanging client. `offline_access` MUST NOT carry over, and the response MUST NOT include a refresh token.
+- The issued token MUST NOT outlive the subject token, and it MUST end with the subject token's session.
+- The issued token MUST be for the AS's own resources and MUST NOT carry `act` or any delegation claim from §7.
+- Only the client the subject token was issued to, or a confidential client the AS linked to the subject token's audience, MAY exchange it. A public client MAY exchange only its own sender-constrained token and MUST prove its key; a linked resource server binds its own key.
 
 ### 8.3 Request and Response
 
-A downstream audience MAY negotiate a specialized `requested_token_type` (for example, a deployment-specific signed artifact type). The specific types are out of scope for this profile; the rules in §8.1 and §8.2 apply regardless of the chosen type.
+The common case is a confidential resource server (for example, an MCP server) exchanging a caller's token issued for it, so it can call the AS's own APIs as that user.
 
 **Request:**
 
 ```http
 POST {token_endpoint}
-  DPoP: <proof bound to the caller key>
+  Authorization: Basic <client_id:client_secret>
+  DPoP: <proof bound to the resource server's key>
   grant_type=urn:ietf:params:oauth:grant-type:token-exchange
-  subject_token=<CIBA access token>
+  subject_token=<caller's access token for the resource server>
   subject_token_type=urn:ietf:params:oauth:token-type:access_token
-  requested_token_type=urn:ietf:params:oauth:token-type:access_token
-  audience=<target RP client_id>
+  audience=<the AS's own resource>
 ```
 
-**Issued token (illustrative):**
+**Response:**
 
 ```json
 {
-  "iss": "https://as.example.com",
-  "aud": "<target RP client_id>",
-  "sub": "<pairwise user id for target RP>",
-  "act": { "sub": "<pairwise agent id for target RP>" },
-  "scope": "<narrowed subset>",
-  "authorization_details": [
-    {
-      "type": "purchase",
-      "merchant": "Acme",
-      "item": "Widget",
-      "amount": { "value": "29.99", "currency": "USD" }
-    }
-  ],
-  "cnf": { "jkt": "<DPoP key thumbprint>" },
-  "jti": "<unique>",
-  "iat": 1711000000,
-  "exp": 1711003600
+  "access_token": "<opaque token>",
+  "issued_token_type": "urn:ietf:params:oauth:token-type:access_token",
+  "token_type": "DPoP",
+  "expires_in": 3600,
+  "scope": "openid compliance:read"
 }
 ```
 
-The target RP validates the JWT signature against the AS's JWKS, verifies a matching DPoP proof against `cnf.jkt`, and enforces the `authorization_details` constraints. It does not need to understand the agent capability model; it only needs to trust the signature and proof-of-possession binding.
+A target that is not one of the AS's own resources, such as a relying party's `client_id`, MUST be refused with `invalid_target`.
 
 ---
 
@@ -936,8 +905,7 @@ flowchart TD
     C["Agent Session Registration\nFresh Ed25519 key bound to host + runtime"] --> D
     D["Agent-Assertion on CIBA\nRuntime proof bound to specific consent request"] --> E
     E["Human Approval via CIBA\nConsent bound to scope + authorization_details"] --> F
-    F["Access Token\nsub + act.sub + PACT delegation claims"] --> G
-    G["Token Exchange (optional)\nAudience rebinding + claim narrowing for downstream RP"]
+    F["Access Token\nsub + act.sub + PACT delegation claims\nnever exchanged for another audience"]
 ```
 
 ### 11.2 Session Binding
@@ -964,7 +932,7 @@ Identity release follows VEIL §6: PII is staged in an ephemeral single-consume 
 
 ### 11.7 Delegation Binding
 
-The delegated access token carries `sub` for the human principal, `act.sub` for the acting agent session, and the full PACT delegation claim set (§7). Tokens issued by token exchange to a non-agent audience carry pairwise `sub`, pairwise `act.sub`, `cnf.jkt`, and the approved `authorization_details`, all re-derived or rebound for the target audience per §8.
+The delegated access token carries `sub` for the human principal, `act.sub` for the acting agent session, and the full PACT delegation claim set (§7). The AS refuses to exchange it (§8.1), so the binding chain ends at that token and its `authorization_details` reach only the audience the user approved.
 
 ---
 
@@ -998,7 +966,7 @@ Task descriptions may contain user-specific context. They appear as `task.purpos
 
 ### 12.7 DPoP Binding
 
-Delegated access tokens issued by this profile SHOULD be DPoP-bound (RFC 9449). When token exchange mints a downstream token from a CIBA access token, the issued token MUST carry `cnf.jkt` from the validated DPoP proof and the target RP MUST require a matching DPoP proof at presentation time. A leaked exchanged token is useless without the caller's proof-of-possession key.
+Delegated access tokens issued by this profile SHOULD be DPoP-bound (RFC 9449), and the audience MUST require a matching DPoP proof at presentation time. Every token exchange MUST carry a DPoP proof: a client exchanging its own token MUST prove that token's key, and the issued token stays bound to it. A leaked delegated or exchanged token is useless without the bound proof-of-possession key.
 
 ---
 
@@ -1014,7 +982,7 @@ PACT mitigates this by deriving `act.sub` per-RP using the same sector-identifie
 
 ### 13.2 PII in Tokens
 
-Identity PII MUST NOT be embedded in access tokens or any tokens issued by token exchange. PII delivery uses the ephemeral in-memory store with single-consume semantics (Section 11.6). This ensures that long-lived tokens contain only cryptographic identifiers, not personal data.
+Identity PII MUST NOT be embedded in access tokens, including tokens issued by token exchange. PII delivery uses the ephemeral in-memory store with single-consume semantics (Section 11.6). This ensures that long-lived tokens contain only cryptographic identifiers, not personal data.
 
 ### 13.3 Metadata Minimization
 
@@ -1101,7 +1069,7 @@ A conforming authorization server SHOULD:
 
 - Support vendor attestation (Section 4.4)
 - Enforce usage limits atomically (Section 5.5)
-- Support token exchange with claim narrowing for downstream audiences (Section 8)
+- Refuse delegated and `authorization_details` subjects at token exchange (Section 8)
 - Provide introspection with lifecycle evaluation (Section 10.3)
 - Bind tokens with DPoP (Section 12.7)
 
@@ -1136,7 +1104,7 @@ A conforming client SHOULD:
 | Host and session JWTs | Control plane | PACT | Signed proofs for registration and runtime binding |
 | Vendor attestation | Control plane | draft-ietf-oauth-attestation-based-client-auth-08 | Host attestation against trusted JWKS |
 | A2A agent card (informational) | Control plane | A2A Protocol | Inter-agent capability discovery, optional surface |
-| Token exchange | Token semantics | RFC 8693 | Audience rebinding with claim narrowing for downstream RPs |
+| Token exchange | Token semantics | RFC 8693 | Tokens for the AS's own resources; delegated subjects refused |
 | Token introspection | Token semantics | RFC 7662 | Runtime lifecycle validation for downstream RPs |
 | Pairwise subject identifiers | Token semantics | OIDC Core 1.0 | Privacy for both `sub` and `act.sub` |
 | Agent authorization claims | Token semantics | PACT (this document) | JWT delegation claim vocabulary, §7 |
@@ -1146,7 +1114,7 @@ A conforming client SHOULD:
 | Risk-graduated consent routing | PACT | | Approval strength matched to operation risk |
 | Usage-limited capability grants | PACT | | Temporal and cumulative containment |
 | Ephemeral identity disclosure | PACT | | PII off the token path |
-| Claim narrowing on token exchange | PACT | | Drops agent control-plane claims for non-agent audiences (§8) |
+| Token exchange boundaries | PACT | | Refuses delegated and `authorization_details` subjects (§8) |
 
 ---
 

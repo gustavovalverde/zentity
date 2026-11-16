@@ -51,6 +51,7 @@ import {
 import { organization } from "better-auth/plugins/organization";
 import { and, eq, inArray } from "drizzle-orm";
 import { decodeJwt, jwtVerify } from "jose";
+import { PHASE_PRODUCTION_BUILD } from "next/constants";
 
 import { env } from "@/env";
 import { evaluateSessionGrants } from "@/lib/agents/approval-evaluate";
@@ -132,6 +133,7 @@ import { getJarmDecryptionKey } from "@/lib/auth/oidc/haip/jarm-key";
 import {
   getProtectedResourceAudiences,
   normalizeUserTokenResources,
+  refuseWalletAudience,
 } from "@/lib/auth/oidc/haip/resource-metadata";
 import { loadX5cChain } from "@/lib/auth/oidc/haip/x5c-chain";
 import {
@@ -145,15 +147,15 @@ import {
   validateResourceUri,
 } from "@/lib/auth/oidc/oauth-request";
 import {
-  adoptZentityPairwiseSector,
+  findPairwiseClient,
+  keepsSector,
   resolveSubForClientId,
   resolveUserIdFromSub,
 } from "@/lib/auth/oidc/pairwise";
 import { deletePairwiseSubjectsForUser } from "@/lib/auth/oidc/pairwise-subject-index";
 import {
-  PAYMENT_AUTHORIZATION_SCOPE,
-  PAYMENT_TOKEN_SCOPE_EXPIRATIONS,
   pinPaymentRequest,
+  registersPaymentAuthorization,
 } from "@/lib/auth/oidc/payment-mint";
 import { resourceAccessTokenPlugin } from "@/lib/auth/oidc/resource-access-token";
 import {
@@ -336,27 +338,48 @@ const cimdLog = rootLogger.child({ component: "cimd" });
 
 // The CIMD plugin persists only the standard OAuth client fields. CIMD clients
 // are dynamic and untrusted, so stamp Zentity's posture columns: a pairwise
-// subject (per-RP privacy) in Zentity's sector, the discovery trust tier, and
-// the metadata source/timestamp for audit and staleness.
-async function applyCimdClientPosture(clientId: string) {
-  await db
-    .update(oauthClients)
-    .set({
-      metadataUrl: clientId,
-      metadataFetchedAt: new Date(),
-      trustLevel: 1,
-      subjectType: "pairwise",
-      sectorIdentifier: null,
-    })
-    .where(eq(oauthClients.clientId, clientId))
-    .run();
+// subject (per-RP privacy), the discovery trust tier, and the metadata
+// source/timestamp for audit and staleness. The sector is the client's own,
+// `client/<client_id>`, because one host can serve many tenants' documents.
+// The plugin calls this only after the provider commits a refresh, and each
+// refresh first stores the provider's own derivation, the first redirect host
+// when every redirect URI is https. `originBoundFields` keeps that host on the
+// document's own origin meanwhile, so the interval never names another
+// relying party. The refreshed object goes back to the request that resolved
+// it, which may mint an ID token, so the posture is applied to the object as
+// well as the row, and a write that fails refuses that request.
+async function applyCimdClientPosture(client: { clientId: string }) {
+  const posture = {
+    metadataUrl: client.clientId,
+    metadataFetchedAt: new Date(),
+    trustLevel: 1,
+    subjectType: "pairwise",
+    sectorIdentifier: `client/${client.clientId}`,
+  };
+  try {
+    await db
+      .update(oauthClients)
+      .set(posture)
+      .where(eq(oauthClients.clientId, client.clientId))
+      .run();
+  } catch (error) {
+    Object.assign(client, { disabled: true });
+    throw error;
+  }
+  Object.assign(client, posture);
 }
 
 const cimdOptions = {
   fetchClientMetadataResource,
   metadataProfile: "mcp-2026-07-28" as const,
+  // Loopback and private-use redirect URIs stay exempt (RFC 8252).
+  originBoundFields: [
+    "redirect_uris",
+    "post_logout_redirect_uris",
+    "client_uri",
+  ],
   onClientCreated: async ({ client }: { client: { clientId: string } }) => {
-    await applyCimdClientPosture(client.clientId);
+    await applyCimdClientPosture(client);
     cimdLog.info(
       { clientId: client.clientId },
       "CIMD client registered from metadata document"
@@ -372,7 +395,7 @@ const cimdOptions = {
       tokenEndpointAuthMethod?: unknown;
     };
   }) => {
-    await applyCimdClientPosture(client.clientId);
+    await applyCimdClientPosture(client);
     // Security-relevant client metadata can change between refreshes; record each
     // refresh for audit. The plugin re-validates the document first.
     cimdLog.info(
@@ -410,7 +433,6 @@ const allowedClientScopes = [
   "poh",
   "offline_access",
   ...AGENT_BOOTSTRAP_SCOPES,
-  PAYMENT_AUTHORIZATION_SCOPE,
 ];
 const oidcStandardClaims = [
   "sub",
@@ -679,6 +701,32 @@ async function beforeDcrRegister(ctx: HookCtx) {
   }
 }
 
+// The provider recomputes a client's sector when its redirect URIs change but
+// keeps the client's tokens and grants, which would then resolve to the new
+// sector's subjects. A pairwise client could so move into another relying
+// party's sector and read that party's subject for each of its users. Interim
+// until the provider keeps the sector (U22 in
+// docs/adr/platform/0002-better-auth-patches.md).
+async function beforeUpdateClientKeepSector(ctx: HookCtx) {
+  const clientId = ctx.body?.client_id;
+  const redirectUris = ctx.body?.update?.redirect_uris;
+  if (typeof clientId !== "string" || !Array.isArray(redirectUris)) {
+    return;
+  }
+  const client = await findPairwiseClient(clientId);
+  if (
+    client?.subjectType !== "pairwise" ||
+    keepsSector(clientId, client, redirectUris)
+  ) {
+    return;
+  }
+  throw new APIError("BAD_REQUEST", {
+    error: "invalid_client_metadata",
+    error_description:
+      "redirect_uris must keep the client's pairwise sector; register a new client for another host",
+  });
+}
+
 // Magic-link verification deletes every account row of a user whose email is
 // unverified. For OPAQUE and wallet users that row is the only credential.
 const EMAIL_PROOF_PROTECTED_PROVIDERS = ["opaque", "eip712"];
@@ -882,24 +930,6 @@ async function afterCibaTokenPersist(ctx: HookCtx) {
       audienceClientId,
       snapshot: pending.snapshot,
     });
-  }
-}
-
-// Every way a client is created, so the provider's stored sector never governs
-// `sub` (see adoptZentityPairwiseSector).
-const CLIENT_CREATION_PATHS = new Set([
-  "/oauth2/register",
-  "/oauth2/create-client",
-  "/admin/oauth2/create-client",
-]);
-
-async function afterClientCreatedUseZentitySector(ctx: HookCtx) {
-  const responseBody = await readReturnedResponseBody(
-    (ctx.context as { returned?: unknown }).returned
-  );
-  const clientId = responseBody?.client_id;
-  if (typeof clientId === "string") {
-    await adoptZentityPairwiseSector(clientId);
   }
 }
 
@@ -1893,13 +1923,19 @@ export const auth = betterAuth({
       if (ctx.path === "/oauth2/register") {
         return beforeDcrRegister(ctx);
       }
+      if (
+        ctx.path === "/oauth2/update-client" ||
+        ctx.path === "/admin/oauth2/update-client"
+      ) {
+        return beforeUpdateClientKeepSector(ctx);
+      }
       if (ctx.path === "/magic-link/verify") {
         return beforeMagicLinkProtectCredentials(ctx);
       }
       if (ctx.path === "/oauth2/bc-authorize") {
         if (ctx.body) {
           pinPaymentRequest(ctx.body);
-          normalizeUserTokenResources(ctx.body);
+          normalizeUserTokenResources(ctx.body, { allowWalletAudience: true });
         }
         return;
       }
@@ -1908,7 +1944,7 @@ export const auth = betterAuth({
           logError(error, { operation: "first-party-row-cleanup" })
         );
         if (ctx.body) {
-          normalizeUserTokenResources(ctx.body);
+          normalizeUserTokenResources(ctx.body, { allowWalletAudience: false });
         }
         return;
       }
@@ -1916,12 +1952,22 @@ export const auth = betterAuth({
         // Before any hook stages state for the grant, so the client's retry
         // with the nonce redeems the same grant (RFC 9449 §8).
         await oauthProviderApi(ctx).challengeDpopNonce();
-        if (ctx.body?.grant_type === CIBA_GRANT_TYPE) {
+        const isCibaGrant = ctx.body?.grant_type === CIBA_GRANT_TYPE;
+        // Only a CIBA payment approval yields a wallet-audience token. The
+        // per-grant checks below do not see every grant (client_credentials
+        // and the pre-authorized code grant skip resource normalization), so
+        // the refusal covers them all here.
+        if (!isCibaGrant) {
+          refuseWalletAudience(ctx.body?.resource, ctx.body?.audience);
+        }
+        if (isCibaGrant) {
           await beforeCibaTokenLoadRequest(ctx);
         }
         beforeTokenValidateResource(ctx);
         if (USER_TOKEN_GRANT_TYPES.has(ctx.body?.grant_type)) {
-          normalizeUserTokenResources(ctx.body);
+          normalizeUserTokenResources(ctx.body, {
+            allowWalletAudience: isCibaGrant,
+          });
         }
         await beforeTokenFinalizeDisclosureBindings(ctx);
         return;
@@ -1941,8 +1987,9 @@ export const auth = betterAuth({
               "resource parameter is required for PAR requests",
           });
         }
+        refuseWalletAudience(ctx.body.resource);
         beforeValidateResourceUri(ctx);
-        normalizeUserTokenResources(ctx.body);
+        normalizeUserTokenResources(ctx.body, { allowWalletAudience: false });
         return;
       }
       if (ctx.path === "/oauth2/authorize") {
@@ -1950,15 +1997,12 @@ export const auth = betterAuth({
         redirectCibaInteraction(ctx, request);
         await enforceAuthorizeAcr(ctx, db);
         await beforeAuthorizeVerifyConsentHmac(ctx, request);
-        normalizeUserTokenResources(request);
+        normalizeUserTokenResources(request, { allowWalletAudience: false });
         return;
       }
     }),
     after: createAuthMiddleware(async (ctx) => {
       await afterPersistAuthenticationContext(ctx);
-      if (ctx.path && CLIENT_CREATION_PATHS.has(ctx.path)) {
-        await afterClientCreatedUseZentitySector(ctx);
-      }
       if (ctx.path === "/oauth2/consent") {
         await afterConsentPairwiseCleanup(ctx);
         return;
@@ -2045,9 +2089,6 @@ export const auth = betterAuth({
       // UserInfo, and Zentity's resources then refuse them; the wallet
       // runtime learns of them from the revocation feed.
       revocableJwtAccessTokens: true,
-      // Payment tokens live 120s (D-6); every other scope keeps the 3600s
-      // default. Token issuance takes the minimum across the granted scopes.
-      scopeExpirations: PAYMENT_TOKEN_SCOPE_EXPIRATIONS,
       // ES256 is the only proof algorithm Zentity clients present. Every DPoP
       // proof sent to this origin must carry a nonce this server issued in the
       // last 300 seconds (RFC 9449 §8, §9). Zentity's own DPoP endpoints verify
@@ -2058,8 +2099,20 @@ export const auth = betterAuth({
       },
       // Optional at the provider: remote MCP hosts authorize without PAR.
       pushedAuthorizationRequests: { enabled: true, expiresIn: 60 },
-      pairwiseSecret: env.PAIRWISE_SECRET,
-      scopes: [...OAUTH_SCOPES, PAYMENT_AUTHORIZATION_SCOPE],
+      // `next build` skips env validation but still builds this config, and
+      // the provider refuses pairwise subjects without a secret. The build
+      // never issues tokens, so a placeholder there is safe; env.ts requires
+      // the real secret at runtime.
+      pairwiseSecret:
+        env.PAIRWISE_SECRET ??
+        (process.env.NEXT_PHASE === PHASE_PRODUCTION_BUILD
+          ? "next-build-placeholder-pairwise-secret"
+          : undefined),
+      // A pairwise client's JWT access tokens carry its ID-token `sub`, and
+      // the provider adds the user id encrypted in `ba_sub`, which UserInfo,
+      // introspection, and every `validateAccessToken` caller read back.
+      accessTokenSubject: "pairwise",
+      scopes: [...OAUTH_SCOPES],
       grantTypes: [
         "authorization_code",
         "client_credentials",
@@ -2069,7 +2122,10 @@ export const auth = betterAuth({
       ],
       // Protected resources the AS issues tokens for (RFC 8707). Per-client
       // resource linkage is disabled: Zentity has dynamic DCR/wallet clients
-      // that implicitly may target any enabled resource.
+      // that implicitly may target any enabled resource. The wallet resource
+      // carries the 120 s payment token lifetime; "merge" applies it to a row
+      // seeded before it existed.
+      resourceSeedMode: "merge",
       resources: getProtectedResourceAudiences({
         appUrl,
         authIssuer,
@@ -2365,7 +2421,11 @@ export const auth = betterAuth({
       sendNotification: notifyCibaRequest,
       authorizationDetailsTypes: {
         [PAYMENT_AUTHORIZATION_TYPE]: {
-          validate: (detail) =>
+          // RFC 9396 §10: only a client that registered the type may request
+          // a payment. The plugin's own check lets a client that registered
+          // no types request any.
+          validate: (detail, { client }) =>
+            registersPaymentAuthorization(client.metadata) &&
             PaymentAuthorizationSchema.safeParse(detail).success,
         },
       },

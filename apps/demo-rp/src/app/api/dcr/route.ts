@@ -1,7 +1,9 @@
+import { createHash } from "node:crypto";
+
 import { NextResponse } from "next/server";
 import { z } from "zod";
 
-import { readDcrClientId, saveDcrClientId } from "@/lib/dcr";
+import { readDcrRegistration, saveDcrClientId } from "@/lib/dcr";
 import { env } from "@/lib/env";
 import {
   getRouteScenario,
@@ -76,36 +78,54 @@ async function isClientLiveAtZentity(
 
 const CIBA_GRANT_TYPE = "urn:openid:params:grant-type:ciba";
 
-async function registerScenarioClient(
+function registrationBody(
   scenarioId: RouteScenarioId
-): Promise<string> {
+): Record<string, unknown> {
   const scenario = getRouteScenario(scenarioId);
   const grantTypes = scenario.dcr.grantTypes ?? ["authorization_code"];
   const publicHttpsOrigin = isPublicHttpsOrigin();
+  return {
+    client_name: scenario.dcr.clientName,
+    application_type: publicHttpsOrigin ? "web" : "native",
+    redirect_uris: [scenarioRedirectUri(scenarioId)],
+    post_logout_redirect_uris: [`${env.NEXT_PUBLIC_APP_URL}/${scenarioId}`],
+    scope: scenario.dcr.requestedScopes,
+    token_endpoint_auth_method: "none",
+    grant_types: grantTypes,
+    response_types: ["code"],
+    ...(publicHttpsOrigin
+      ? {
+          backchannel_logout_uri: `${env.NEXT_PUBLIC_APP_URL}/api/auth/backchannel-logout`,
+        }
+      : {}),
+    rp_validity_notice_uri: `${env.NEXT_PUBLIC_APP_URL}/api/auth/validity`,
+    // CIBA clients must advertise a token delivery mode; the provider rejects
+    // bc-authorize otherwise. The demo agent polls the token endpoint.
+    ...(grantTypes.includes(CIBA_GRANT_TYPE)
+      ? { backchannel_token_delivery_mode: "poll" }
+      : {}),
+    ...(scenario.dcr.authorizationDetailsTypes
+      ? { authorization_details_types: scenario.dcr.authorizationDetailsTypes }
+      : {}),
+  };
+}
+
+/** Hex SHA-256 of the body with sorted keys; its values hold no objects. */
+function registrationFingerprint(body: Record<string, unknown>): string {
+  const sorted = Object.fromEntries(
+    Object.entries(body).sort(([a], [b]) => (a < b ? -1 : 1))
+  );
+  return createHash("sha256").update(JSON.stringify(sorted)).digest("hex");
+}
+
+async function registerScenarioClient(
+  scenarioId: RouteScenarioId
+): Promise<string> {
+  const body = registrationBody(scenarioId);
   const response = await fetch(`${env.ZENTITY_URL}/api/auth/oauth2/register`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      client_name: scenario.dcr.clientName,
-      application_type: publicHttpsOrigin ? "web" : "native",
-      redirect_uris: [scenarioRedirectUri(scenarioId)],
-      post_logout_redirect_uris: [`${env.NEXT_PUBLIC_APP_URL}/${scenarioId}`],
-      scope: scenario.dcr.requestedScopes,
-      token_endpoint_auth_method: "none",
-      grant_types: grantTypes,
-      response_types: ["code"],
-      ...(publicHttpsOrigin
-        ? {
-            backchannel_logout_uri: `${env.NEXT_PUBLIC_APP_URL}/api/auth/backchannel-logout`,
-          }
-        : {}),
-      rp_validity_notice_uri: `${env.NEXT_PUBLIC_APP_URL}/api/auth/validity`,
-      // CIBA clients must advertise a token delivery mode; the provider rejects
-      // bc-authorize otherwise. The demo agent polls the token endpoint.
-      ...(grantTypes.includes(CIBA_GRANT_TYPE)
-        ? { backchannel_token_delivery_mode: "poll" }
-        : {}),
-    }),
+    body: JSON.stringify(body),
   });
 
   if (!response.ok) {
@@ -118,7 +138,11 @@ async function registerScenarioClient(
   }
 
   try {
-    await saveDcrClientId(scenarioId, result.client_id);
+    await saveDcrClientId(
+      scenarioId,
+      result.client_id,
+      registrationFingerprint(body)
+    );
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     throw new Error(`Failed to persist DCR client: ${message}`);
@@ -138,17 +162,22 @@ export async function GET(request: Request) {
     );
   }
 
-  const cached = await readDcrClientId(scenarioId);
+  const cached = await readDcrRegistration(scenarioId);
   if (!cached) {
     // Never registered: keep first-time registration an explicit user action.
     return NextResponse.json({ registered: false });
   }
 
   try {
-    // Self-heal: if Zentity has forgotten the cached client (e.g. its database
-    // was reset), re-register transparently so the demo keeps working.
-    const clientId = (await isClientLiveAtZentity(scenarioId, cached))
-      ? cached
+    // Self-heal: re-register transparently when the cached client was
+    // registered from an older body, or Zentity has forgotten it (e.g. its
+    // database was reset), so the demo keeps working.
+    const current =
+      cached.registrationFingerprint ===
+        registrationFingerprint(registrationBody(scenarioId)) &&
+      (await isClientLiveAtZentity(scenarioId, cached.clientId));
+    const clientId = current
+      ? cached.clientId
       : await registerScenarioClient(scenarioId);
     return NextResponse.json({ registered: true, client_id: clientId });
   } catch (error) {

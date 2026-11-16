@@ -1,8 +1,13 @@
 import crypto from "node:crypto";
 
-import { AGENT_BOOTSTRAP_SCOPES } from "@zentity/sdk/agent-contract";
 import { encodeEd25519DidKeyFromJwk } from "@zentity/sdk/protocol";
-import { calculateJwkThumbprint } from "jose";
+import { eq } from "drizzle-orm";
+import {
+  calculateJwkThumbprint,
+  exportJWK,
+  generateKeyPair,
+  SignJWT,
+} from "jose";
 import { beforeEach, describe, expect, it } from "vitest";
 
 import { AGENT_BOOTSTRAP_TOKEN_USE } from "@/lib/agents/session";
@@ -12,6 +17,7 @@ import {
 } from "@/lib/auth/auth-context";
 import { TOKEN_EXCHANGE_GRANT_TYPE } from "@/lib/auth/oidc/token-exchange";
 import { db } from "@/lib/db/connection";
+import { agentSessions } from "@/lib/db/schema/agent";
 import {
   oauthAccessTokens,
   oauthClients,
@@ -29,118 +35,55 @@ import {
 } from "@/test-utils/dpop-test-utils";
 
 const APP_URL = "http://localhost:3000";
-const ACCESS_TOKEN_TYPE = "urn:ietf:params:oauth:token-type:access_token";
 const CLIENT_ID = "pairwise-bootstrap-client";
 const REDIRECT_URI = "http://localhost:3100/callback";
+const WEB_CLIENT_ID = "web-bootstrap-client";
+const WEB_REDIRECT_URI = "https://app.example.com/callback";
 const BOOTSTRAP_SCOPE = "agent:host.register agent:session.register";
-// The scopes an installed agent such as the MCP server signs in with: its
-// ordinary session scopes plus the agent bootstrap scopes.
-const SESSION_SCOPES = ["openid", "email", "proof:identity"];
-const LOGIN_SCOPES = [
-  ...SESSION_SCOPES,
-  "offline_access",
-  ...AGENT_BOOTSTRAP_SCOPES,
-];
-const HOST_DID = encodeEd25519DidKeyFromJwk({
-  crv: "Ed25519",
-  kty: "OKP",
-  x: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
-});
+// The scopes MCP stdio requests at sign-in, bootstrap scopes included.
+const LOGIN_SCOPES = ["openid", "email", ...BOOTSTRAP_SCOPE.split(" ")];
 
 function hashOpaqueAccessToken(token: string): string {
   return crypto.createHash("sha256").update(token).digest("base64url");
 }
 
-async function createInstalledAgentClient(scopes: string[] = LOGIN_SCOPES) {
+async function createPairwiseClient() {
   await db
     .insert(oauthClients)
     .values({
       clientId: CLIENT_ID,
       grantTypes: JSON.stringify([
         "authorization_code",
-        "refresh_token",
         TOKEN_EXCHANGE_GRANT_TYPE,
       ]),
       name: "Pairwise Bootstrap Client",
       redirectUris: JSON.stringify([REDIRECT_URI]),
-      scopes: JSON.stringify(scopes),
       subjectType: "pairwise",
       tokenEndpointAuthMethod: "none",
     })
     .run();
 }
 
-function exchange(
-  subjectToken: string,
-  dpopKeyPair: DpopKeyPair,
-  scope: string
-) {
-  return postTokenWithDpop(
-    {
-      audience: APP_URL,
-      client_id: CLIENT_ID,
-      grant_type: TOKEN_EXCHANGE_GRANT_TYPE,
-      scope,
-      subject_token: subjectToken,
-      subject_token_type: ACCESS_TOKEN_TYPE,
-    },
-    dpopKeyPair
-  );
-}
-
-async function registerHost(bootstrapToken: string, dpopKeyPair: DpopKeyPair) {
-  const registerUrl = `${APP_URL}/api/auth/agent/host/register`;
-  const proof = await buildDpopProof(
-    dpopKeyPair,
-    "POST",
-    registerUrl,
-    bootstrapToken
-  );
-  const { POST } = await import("@/app/api/auth/agent/host/register/route");
-  return POST(
-    new Request(registerUrl, {
-      method: "POST",
-      headers: {
-        Authorization: `DPoP ${bootstrapToken}`,
-        "Content-Type": "application/json",
-        DPoP: proof,
-      },
-      body: JSON.stringify({
-        did: HOST_DID,
-        name: "Bootstrap Host",
-      }),
+async function createWebClient() {
+  await db
+    .insert(oauthClients)
+    .values({
+      clientId: WEB_CLIENT_ID,
+      grantTypes: JSON.stringify([
+        "authorization_code",
+        TOKEN_EXCHANGE_GRANT_TYPE,
+      ]),
+      name: "Web Bootstrap Client",
+      redirectUris: JSON.stringify([WEB_REDIRECT_URI]),
+      subjectType: "pairwise",
+      tokenEndpointAuthMethod: "none",
     })
-  );
+    .run();
 }
 
 describe("agent bootstrap token exchange", () => {
   let authContextId: string;
   let userId: string;
-  let dpopKeyPair: DpopKeyPair;
-  let dpopJkt: string;
-
-  /** Stores an opaque login token, as the authorization code grant issues one. */
-  async function storeLoginToken(
-    scopes: string[],
-    { dpopBound = true }: { dpopBound?: boolean } = {}
-  ): Promise<string> {
-    const loginToken = `login-${crypto.randomUUID()}`;
-    await db
-      .insert(oauthAccessTokens)
-      .values({
-        accessTokenClaims: JSON.stringify({
-          [AUTHENTICATION_CONTEXT_CLAIM]: authContextId,
-        }),
-        clientId: CLIENT_ID,
-        confirmation: dpopBound ? JSON.stringify({ jkt: dpopJkt }) : null,
-        expiresAt: new Date(Date.now() + 3_600_000),
-        scopes: JSON.stringify(scopes),
-        token: hashOpaqueAccessToken(loginToken),
-        userId,
-      })
-      .run();
-    return loginToken;
-  }
 
   beforeEach(async () => {
     await resetDatabase();
@@ -153,18 +96,43 @@ describe("agent bootstrap token exchange", () => {
         userId,
       })
     ).id;
-    dpopKeyPair = await createTestDpopKeyPair();
-    dpopJkt = await calculateJwkThumbprint(dpopKeyPair.jwk, "sha256");
+    await createPairwiseClient();
+    await createWebClient();
   });
 
-  it("exchanges a login token granted the bootstrap scopes into a bootstrap token accepted by register-host", async () => {
-    await createInstalledAgentClient();
-    const loginToken = await storeLoginToken(LOGIN_SCOPES);
+  // R12, R18: an installed client signs in with the bootstrap scopes,
+  // exchanges its own login, and registers a host and a session that keep the
+  // sign-in's authentication context.
+  it("registers a host and a session from a login that holds the bootstrap scopes", async () => {
+    const loginToken = "opaque-login-token";
+    const dpopKeyPair = await createTestDpopKeyPair();
+    const dpopJkt = await calculateJwkThumbprint(dpopKeyPair.jwk, "sha256");
 
-    const { json, status } = await exchange(
-      loginToken,
-      dpopKeyPair,
-      BOOTSTRAP_SCOPE
+    await db
+      .insert(oauthAccessTokens)
+      .values({
+        accessTokenClaims: JSON.stringify({
+          [AUTHENTICATION_CONTEXT_CLAIM]: authContextId,
+        }),
+        clientId: CLIENT_ID,
+        confirmation: JSON.stringify({ jkt: dpopJkt }),
+        expiresAt: new Date(Date.now() + 3_600_000),
+        scopes: JSON.stringify(LOGIN_SCOPES),
+        token: hashOpaqueAccessToken(loginToken),
+        userId,
+      })
+      .run();
+
+    const { json, status } = await postTokenWithDpop(
+      {
+        audience: APP_URL,
+        client_id: CLIENT_ID,
+        grant_type: TOKEN_EXCHANGE_GRANT_TYPE,
+        scope: BOOTSTRAP_SCOPE,
+        subject_token: loginToken,
+        subject_token_type: "urn:ietf:params:oauth:token-type:access_token",
+      },
+      dpopKeyPair
     );
 
     expect(status).toBe(200);
@@ -179,119 +147,120 @@ describe("agent bootstrap token exchange", () => {
     expect(stored?.scopes.join(" ")).toBe(BOOTSTRAP_SCOPE);
     expect(stored?.userId).toBe(userId);
     expect(stored?.dpopJkt).toBe(dpopJkt);
+    expect(stored?.accessTokenClaims[AUTHENTICATION_CONTEXT_CLAIM]).toBe(
+      authContextId
+    );
 
-    const response = await registerHost(bootstrapToken, dpopKeyPair);
-    expect(response.status).toBe(201);
-    await expect(response.json()).resolves.toEqual(
-      expect.objectContaining({
-        created: true,
-        did: HOST_DID,
-        hostId: expect.any(String),
+    const hostKeys = await generateKeyPair("EdDSA", {
+      crv: "Ed25519",
+      extractable: true,
+    });
+    const hostJwk = await exportJWK(hostKeys.publicKey);
+    const hostDid = encodeEd25519DidKeyFromJwk({
+      crv: "Ed25519",
+      kty: "OKP",
+      x: hostJwk.x as string,
+    });
+    const registerUrl = `${APP_URL}/api/auth/agent/host/register`;
+    const { POST: registerHost } = await import(
+      "@/app/api/auth/agent/host/register/route"
+    );
+    const hostResponse = await registerHost(
+      new Request(registerUrl, {
+        method: "POST",
+        headers: {
+          Authorization: `DPoP ${bootstrapToken}`,
+          "Content-Type": "application/json",
+          DPoP: await buildDpopProof(
+            dpopKeyPair,
+            "POST",
+            registerUrl,
+            bootstrapToken
+          ),
+        },
+        body: JSON.stringify({ did: hostDid, name: "Bootstrap Host" }),
       })
     );
-  });
 
-  it("refuses bootstrap scopes the login token was not granted", async () => {
-    await createInstalledAgentClient();
-    const loginToken = await storeLoginToken(["openid"]);
-
-    const { json, status } = await exchange(
-      loginToken,
-      dpopKeyPair,
-      BOOTSTRAP_SCOPE
+    expect(hostResponse.status).toBe(201);
+    const host = (await hostResponse.json()) as {
+      created: boolean;
+      did: string;
+      hostId: string;
+    };
+    expect(host).toEqual(
+      expect.objectContaining({ created: true, did: hostDid })
     );
 
-    expect(status).toBe(400);
-    expect(json).toMatchObject({
-      error: "invalid_scope",
-      error_description:
-        "Requested scope 'agent:host.register' exceeds subject token scope",
+    const agentKeys = await generateKeyPair("EdDSA", {
+      crv: "Ed25519",
+      extractable: true,
     });
-  });
-
-  it("refuses bootstrap scopes the client did not register", async () => {
-    await createInstalledAgentClient(SESSION_SCOPES);
-    const loginToken = await storeLoginToken(LOGIN_SCOPES);
-
-    const { json, status } = await exchange(
-      loginToken,
-      dpopKeyPair,
-      BOOTSTRAP_SCOPE
+    const agentJwk = await exportJWK(agentKeys.publicKey);
+    const hostJwt = await new SignJWT({})
+      .setProtectedHeader({ alg: "EdDSA", typ: "host-attestation+jwt" })
+      .setIssuer(host.hostId)
+      .setSubject("agent-registration")
+      .setIssuedAt()
+      .setExpirationTime("60s")
+      .sign(hostKeys.privateKey);
+    const sessionUrl = `${APP_URL}/api/auth/agent/register`;
+    const { POST: registerSession } = await import(
+      "@/app/api/auth/agent/register/route"
+    );
+    const sessionResponse = await registerSession(
+      new Request(sessionUrl, {
+        method: "POST",
+        headers: {
+          Authorization: `DPoP ${bootstrapToken}`,
+          "Content-Type": "application/json",
+          DPoP: await buildDpopProof(
+            dpopKeyPair,
+            "POST",
+            sessionUrl,
+            bootstrapToken
+          ),
+        },
+        body: JSON.stringify({
+          hostJwt,
+          did: encodeEd25519DidKeyFromJwk({
+            crv: "Ed25519",
+            kty: "OKP",
+            x: agentJwk.x as string,
+          }),
+          display: { name: "Bootstrap Agent", runtime: "node" },
+        }),
+      })
     );
 
-    expect(status).toBe(400);
-    expect(json).toMatchObject({
-      error: "invalid_scope",
-      error_description: "client does not allow scope agent:host.register",
-    });
-  });
-
-  it("keeps bootstrap scopes off the session token and bootstraps from the login token", async () => {
-    await createInstalledAgentClient();
-    const loginToken = await storeLoginToken(LOGIN_SCOPES);
-
-    const session = await exchange(
-      loginToken,
-      dpopKeyPair,
-      SESSION_SCOPES.join(" ")
-    );
-    expect(session.status).toBe(200);
-    expect(session.json.scope).toBe(SESSION_SCOPES.join(" "));
-    const sessionToken = session.json.access_token as string;
-    const storedSession = await findStoredOpaqueAccessToken(sessionToken);
-    expect(storedSession?.scopes).toEqual(SESSION_SCOPES);
-    expect(storedSession?.accessTokenClaims).not.toHaveProperty(
-      "zentity_token_use"
-    );
-
-    // The session token cannot reach the agent registration endpoints, and
-    // exchanging it cannot widen it to the bootstrap scopes.
-    expect((await registerHost(sessionToken, dpopKeyPair)).status).toBe(401);
-    const widened = await exchange(sessionToken, dpopKeyPair, BOOTSTRAP_SCOPE);
-    expect(widened.status).toBe(400);
-    expect(widened.json.error).toBe("invalid_scope");
-
-    const bootstrap = await exchange(
-      loginToken,
-      dpopKeyPair,
-      AGENT_BOOTSTRAP_SCOPES.join(" ")
-    );
-    expect(bootstrap.status).toBe(200);
-    expect(bootstrap.json.scope).toBe(AGENT_BOOTSTRAP_SCOPES.join(" "));
-    expect(
-      (await registerHost(bootstrap.json.access_token as string, dpopKeyPair))
-        .status
-    ).toBe(201);
-  });
-
-  it("leaves bootstrap and offline_access scopes off an exchange that requests no scope", async () => {
-    await createInstalledAgentClient();
-    const loginToken = await storeLoginToken(LOGIN_SCOPES);
-
-    const { json, status } = await postTokenWithDpop(
-      {
-        audience: APP_URL,
-        client_id: CLIENT_ID,
-        grant_type: TOKEN_EXCHANGE_GRANT_TYPE,
-        subject_token: loginToken,
-        subject_token_type: ACCESS_TOKEN_TYPE,
-      },
-      dpopKeyPair
-    );
-
-    expect(status).toBe(200);
-    expect(json.scope).toBe(SESSION_SCOPES.join(" "));
-    const stored = await findStoredOpaqueAccessToken(
-      json.access_token as string
-    );
-    expect(stored?.scopes).toEqual(SESSION_SCOPES);
+    expect(sessionResponse.status).toBe(201);
+    const { sessionId } = (await sessionResponse.json()) as {
+      sessionId: string;
+    };
+    const session = await db
+      .select({ authContextId: agentSessions.authContextId })
+      .from(agentSessions)
+      .where(eq(agentSessions.id, sessionId))
+      .get();
+    expect(session?.authContextId).toBe(authContextId);
   });
 
   it("rejects direct opaque login tokens on bootstrap routes", async () => {
-    await createInstalledAgentClient();
-    const loginToken = await storeLoginToken(LOGIN_SCOPES, {
-      dpopBound: false,
-    });
+    const loginToken = "opaque-login-token";
+
+    await db
+      .insert(oauthAccessTokens)
+      .values({
+        accessTokenClaims: JSON.stringify({
+          [AUTHENTICATION_CONTEXT_CLAIM]: authContextId,
+        }),
+        clientId: CLIENT_ID,
+        expiresAt: new Date(Date.now() + 3_600_000),
+        scopes: JSON.stringify(["openid"]),
+        token: hashOpaqueAccessToken(loginToken),
+        userId,
+      })
+      .run();
 
     const { POST } = await import("@/app/api/auth/agent/host/register/route");
     const response = await POST(
@@ -302,7 +271,11 @@ describe("agent bootstrap token exchange", () => {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          did: HOST_DID,
+          did: encodeEd25519DidKeyFromJwk({
+            crv: "Ed25519",
+            kty: "OKP",
+            x: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+          }),
           name: "Bootstrap Host",
         }),
       })
@@ -315,6 +288,120 @@ describe("agent bootstrap token exchange", () => {
     await expect(response.json()).resolves.toMatchObject({
       error: "invalid_token",
       error_description: "bootstrap access token required",
+    });
+  });
+
+  /** Stores the pairwise client's DPoP-bound opaque login token. */
+  async function storeLoginToken(scopes: string[]) {
+    const loginToken = `login-${crypto.randomUUID()}`;
+    const dpopKeyPair = await createTestDpopKeyPair();
+    await db
+      .insert(oauthAccessTokens)
+      .values({
+        accessTokenClaims: JSON.stringify({
+          [AUTHENTICATION_CONTEXT_CLAIM]: authContextId,
+        }),
+        clientId: CLIENT_ID,
+        confirmation: JSON.stringify({
+          jkt: await calculateJwkThumbprint(dpopKeyPair.jwk, "sha256"),
+        }),
+        expiresAt: new Date(Date.now() + 3_600_000),
+        scopes: JSON.stringify(scopes),
+        token: hashOpaqueAccessToken(loginToken),
+        userId,
+      })
+      .run();
+    return { dpopKeyPair, loginToken };
+  }
+
+  function exchangeLogin(
+    login: { dpopKeyPair: DpopKeyPair; loginToken: string },
+    scope?: string
+  ) {
+    return postTokenWithDpop(
+      {
+        audience: APP_URL,
+        client_id: CLIENT_ID,
+        grant_type: TOKEN_EXCHANGE_GRANT_TYPE,
+        ...(scope ? { scope } : {}),
+        subject_token: login.loginToken,
+        subject_token_type: "urn:ietf:params:oauth:token-type:access_token",
+      },
+      login.dpopKeyPair
+    );
+  }
+
+  it("refuses bootstrap scopes the client did not register", async () => {
+    await db
+      .update(oauthClients)
+      .set({ scopes: JSON.stringify(["openid", "email"]) })
+      .where(eq(oauthClients.clientId, CLIENT_ID))
+      .run();
+    const login = await storeLoginToken(LOGIN_SCOPES);
+
+    const { json, status } = await exchangeLogin(login, BOOTSTRAP_SCOPE);
+
+    expect(status).toBe(400);
+    expect(json).toMatchObject({
+      error: "invalid_scope",
+      error_description: "client does not allow scope agent:host.register",
+    });
+  });
+
+  it("leaves bootstrap and offline_access scopes off an exchange that requests no scope", async () => {
+    const login = await storeLoginToken([...LOGIN_SCOPES, "offline_access"]);
+
+    const { json, status } = await exchangeLogin(login);
+
+    expect(status).toBe(200);
+    expect(json.scope).toBe("openid email");
+    const stored = await findStoredOpaqueAccessToken(
+      json.access_token as string
+    );
+    expect(stored?.scopes).toEqual(["openid", "email"]);
+    expect(stored?.accessTokenClaims).not.toHaveProperty("zentity_token_use");
+  });
+
+  // Any client may bootstrap, but only within the scopes its login holds.
+  it("refuses a bootstrap scope the login did not grant", async () => {
+    const loginToken = "opaque-web-login-token";
+    const dpopKeyPair = await createTestDpopKeyPair();
+    const dpopJkt = await calculateJwkThumbprint(dpopKeyPair.jwk, "sha256");
+
+    await db
+      .insert(oauthAccessTokens)
+      .values({
+        accessTokenClaims: JSON.stringify({
+          [AUTHENTICATION_CONTEXT_CLAIM]: authContextId,
+        }),
+        clientId: WEB_CLIENT_ID,
+        confirmation: JSON.stringify({ jkt: dpopJkt }),
+        expiresAt: new Date(Date.now() + 3_600_000),
+        scopes: JSON.stringify(["openid"]),
+        token: hashOpaqueAccessToken(loginToken),
+        userId,
+      })
+      .run();
+
+    const { json, status } = await postTokenWithDpop(
+      {
+        audience: APP_URL,
+        client_id: WEB_CLIENT_ID,
+        grant_type: TOKEN_EXCHANGE_GRANT_TYPE,
+        scope: BOOTSTRAP_SCOPE,
+        subject_token: loginToken,
+        subject_token_type: "urn:ietf:params:oauth:token-type:access_token",
+      },
+      dpopKeyPair
+    );
+
+    expect({ status, json }).toEqual({
+      status: 400,
+      json: {
+        error: "invalid_scope",
+        error_description:
+          "scope agent:host.register is not available through token exchange",
+      },
     });
   });
 });

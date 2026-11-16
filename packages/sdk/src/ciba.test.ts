@@ -136,6 +136,36 @@ describe("CIBA", () => {
     expect(fetch).toHaveBeenCalledTimes(1);
   });
 
+  // A confidential client (MCP HTTP) authenticates with client_secret_basic.
+  it("sends a client secret as HTTP Basic on the request and the poll", async () => {
+    vi.spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(
+        Response.json({ auth_req_id: "req-abc", expires_in: 300, interval: 5 })
+      )
+      .mockResolvedValueOnce(
+        Response.json({ error: "authorization_pending" }, { status: 400 })
+      );
+    const confidential = {
+      ...BASE_PARAMS,
+      clientId: "mcp server",
+      clientSecret: "s3cr:et",
+    };
+
+    const pending = await beginCibaApproval(confidential);
+    await pollCibaTokenOnce(confidential, pending);
+
+    for (const [, init] of vi.mocked(fetch).mock.calls) {
+      const headers = new Headers(init?.headers);
+      // RFC 6749 §2.3.1: both values are form-url-encoded before base64.
+      expect(headers.get("Authorization")).toBe(
+        `Basic ${btoa("mcp+server:s3cr%3Aet")}`
+      );
+      expect(new URLSearchParams(String(init?.body)).has("client_id")).toBe(
+        false
+      );
+    }
+  });
+
   it("retries the authorization request once with a DPoP nonce", async () => {
     vi.spyOn(globalThis, "fetch")
       .mockResolvedValueOnce(

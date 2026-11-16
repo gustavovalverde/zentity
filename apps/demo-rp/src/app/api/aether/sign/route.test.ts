@@ -187,7 +187,8 @@ describe("POST /api/aether/sign", () => {
       dpopClient: unknown;
       scope: string;
     };
-    expect(cibaArgs.scope).toContain("payment_authorization:sign");
+    // The payment entry, not a scope, makes this a payment request.
+    expect(cibaArgs.scope).toBe("openid");
     const rar = cibaArgs.authorizationDetails[0];
     expect(rar?.type).toBe("payment_authorization");
     expect(rar?.intent_hash).toBe(expectedIntentHash());

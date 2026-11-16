@@ -41,7 +41,6 @@ An unknown scope is page only, not grantable, and needs a session. An unknown or
 | `identity.*` | `my_profile` | user verification with a passkey, else session | no | no |
 | `email`, `offline_access`, `proof:sybil`, `proof:humanity:rp_unique`, `agent:*`, and other operational scopes | none | session | no | no |
 | RAR `payment_authorization` | `payment_authorization:sign` | user verification | no | bounded grants only |
-| scope `payment_authorization:sign` | `payment_authorization:sign` | user verification | no | only with a payment entry |
 
 The catalog's `approval_strength` is the manual ceremony, and `grantable` is a separate column, because one enum cannot say "a bounded grant may approve this, and a person needs user verification."
 
@@ -103,3 +102,7 @@ Every other refusal uses a registered OAuth, OIDC, or CIBA code. The one specifi
 * [Agent architecture: Approval Routing](<../../(architecture)/agent-architecture.md#approval-routing>)
 * [Better Auth passkey integration](../privacy/0008-better-auth-passkey-integration.md)
 * PACT draft §6.2, §6.4, §6.5, and §7.1
+
+## Revision History
+
+* 2026-11-16: Removed the `payment_authorization:sign` scope row. The scope no longer exists: a payment client registers the `payment_authorization` RAR type, and the payment entry alone makes a request a payment.

@@ -3,8 +3,10 @@
 /**
  * Zero-config dev environment setup.
  *
- * Generates cryptographic secrets and writes .env from .env.example.
- * Safe to re-run — skips if .env already exists.
+ * Generates cryptographic secrets and writes .env from .env.example, pushes
+ * the schema, and provisions the MCP HTTP client into ../mcp/.env.
+ * Safe to re-run — skips if .env already exists. On an existing checkout, run
+ * `pnpm mcp:provision --write-env ../mcp/.env` to provision the MCP client.
  *
  * Usage: pnpm setup
  */
@@ -112,6 +114,22 @@ async function main(): Promise<void> {
   } catch {
     console.warn(
       "Database push failed — you can run `pnpm db:push:dev` manually.\n"
+    );
+    console.log("Setup complete! Run `pnpm dev` to start the dev server.");
+    return;
+  }
+
+  console.log("Provisioning the MCP HTTP client...");
+  try {
+    execSync("pnpm mcp:provision --write-env ../mcp/.env", {
+      cwd: ROOT,
+      env: { ...process.env, TURSO_DATABASE_URL: "file:./.data/dev.db" },
+      stdio: "inherit",
+    });
+    console.log("MCP HTTP client provisioned into apps/mcp/.env.\n");
+  } catch {
+    console.warn(
+      "MCP client provisioning failed — run `pnpm mcp:provision --write-env ../mcp/.env` manually.\n"
     );
   }
 

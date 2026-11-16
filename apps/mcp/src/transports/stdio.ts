@@ -1,6 +1,7 @@
 import type { Implementation } from "@modelcontextprotocol/server";
 import { serveStdio } from "@modelcontextprotocol/server/stdio";
 import { AgentRegistrationError, buildHostKeyNamespace } from "@zentity/sdk";
+import { AGENT_BOOTSTRAP_SCOPES } from "@zentity/sdk/agent-contract";
 import { detectAgent } from "../agent.js";
 import { config } from "../config.js";
 import {
@@ -23,16 +24,6 @@ import { revokeAgentSession } from "../runtime/session-revoke.js";
 import { createServer } from "../server.js";
 
 const REFRESH_INTERVAL_MS = 4 * 60 * 1000;
-
-/** Whether the stored login cannot register the agent, so signing in again may. */
-function isUnsatisfiedByStoredLogin(error: unknown): boolean {
-  if (error instanceof AgentRegistrationError) {
-    return error.status === 403;
-  }
-  // The bootstrap token exchange refuses scopes the login was not granted,
-  // as for a login stored before they were requested at sign-in.
-  return error instanceof Error && error.message.includes("invalid_scope");
-}
 
 async function registerRuntime(
   oauth: OAuthSessionContext,
@@ -57,13 +48,65 @@ async function registerRuntime(
   return { oauth, runtime };
 }
 
+function lacksBootstrapScopes(oauth: OAuthSessionContext): boolean {
+  return (
+    oauth.scopes.length > 0 &&
+    AGENT_BOOTSTRAP_SCOPES.some((scope) => !oauth.scopes.includes(scope))
+  );
+}
+
+// The SDK reports a refused exchange as `Token exchange failed: <status>
+// <body>`; the bootstrap exchange refuses a login without the bootstrap
+// scopes (`invalid_scope`) or a delegated one (`invalid_request`).
+const REFUSED_BOOTSTRAP_EXCHANGE =
+  /^Token exchange failed: 400 .*"error":"(?:invalid_scope|invalid_request)"/;
+
+function isRefusedBootstrapExchange(error: unknown): boolean {
+  return (
+    error instanceof Error && REFUSED_BOOTSTRAP_EXCHANGE.test(error.message)
+  );
+}
+
+let signedInAgainForBootstrap = false;
+
+/**
+ * Credentials stored before the login carried the bootstrap scopes cannot
+ * register an agent. Clears them and signs in again, once per process.
+ */
+async function signInAgainForBootstrap(
+  reason: string
+): Promise<OAuthSessionContext | undefined> {
+  if (signedInAgainForBootstrap) {
+    return undefined;
+  }
+  signedInAgainForBootstrap = true;
+  console.error(`[auth] ${reason}, signing in again...`);
+  await clearMcpOAuthTokens();
+  return ensureMcpOAuthSession();
+}
+
 export async function bootstrapRegisteredRuntime(
   clientInfo: Implementation | undefined
 ): Promise<AuthContext> {
-  const oauth = await ensureMcpOAuthSession();
+  let oauth = await ensureMcpOAuthSession();
+  if (lacksBootstrapScopes(oauth)) {
+    oauth =
+      (await signInAgainForBootstrap(
+        "Stored credentials lack the agent bootstrap scopes"
+      )) ?? oauth;
+  }
   try {
     return await registerRuntime(oauth, clientInfo);
   } catch (error) {
+    if (isRefusedBootstrapExchange(error)) {
+      const fresh = await signInAgainForBootstrap(
+        "Zentity refused the stored credentials for agent bootstrap"
+      );
+      if (fresh) {
+        return registerRuntime(fresh, clientInfo);
+      }
+    }
+
     if (error instanceof AgentRegistrationError && error.status === 404) {
       console.error(
         "[auth] Cached host registration is stale, re-registering the durable host..."
@@ -72,7 +115,7 @@ export async function bootstrapRegisteredRuntime(
       return registerRuntime(oauth, clientInfo);
     }
 
-    if (isUnsatisfiedByStoredLogin(error)) {
+    if (error instanceof AgentRegistrationError && error.status === 403) {
       console.error(
         "[auth] Stored credentials no longer satisfy agent registration, re-authenticating..."
       );

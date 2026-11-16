@@ -35,6 +35,7 @@
     "knip:fix": "knip --fix --strict --allow-remove-files",
     "format": "biome format --write .",
     "probe:mcp-http": "node --env-file=.env --import tsx scripts/probe-mcp-http.ts",
+    "mcp:provision": "node --env-file-if-exists=.env --conditions=react-server --import tsx scripts/provision-mcp-client.ts",
     "smoke:demo-rp-validity": "pnpm exec tsx scripts/demo-rp-validity-smoke.ts",
     "test": "pnpm test:unit && pnpm test:integration",
     "test:unit": "node --max-old-space-size=4096 ./node_modules/vitest/vitest.mjs run --config vitest.unit.config.mts",

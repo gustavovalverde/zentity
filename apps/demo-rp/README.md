@@ -155,6 +155,7 @@ Current cases that need a push:
 
 - `vp_session`: `clientId` and `signedRequest` are `NOT NULL`, and `requestFetchedAt` is new.
 - `validity_notice.receivedAt`: changed from text to integer.
+- `dcr_client.registrationFingerprint`: a new nullable column. Each cached scenario client registers again on its next use, because it has no fingerprint yet.
 
 ## Environment Variables
 
@@ -184,7 +185,7 @@ Current cases that need a push:
 - **DPoP sign-in**: `genericOAuth` signs the code exchange and refresh with one key derived from `OAUTH_DPOP_KEY_SEED` and sends `dpop_jkt` on the authorization request. Userinfo, the agent bootstrap token exchange, validity pulls, and Proof-of-Human requests present the tokens with the same key. Sign-in does not use PAR: Zentity's PAR endpoint requires a `resource` indicator, which would change the access token audience
 - **shadcn/ui** for components
 - **SQLite** (via better-sqlite3) for session storage
-- **All-DCR**: Every route scenario self-registers via RFC 7591 and persists the `client_id` in the `dcr_client` table keyed by `scenarioId`
+- **All-DCR**: Every route scenario self-registers via RFC 7591 and persists the `client_id` in the `dcr_client` table keyed by `scenarioId`, with a SHA-256 fingerprint of the registration body. When the scenario's body changes (for example, Aether declaring `authorization_details_types: ["payment_authorization"]`), the cached client is registered again on its next use. Apply the schema with `pnpm run db:push` against the demo-rp database before deploying a release that adds a column
 
 ### OID4VCI Issuance Flow
 

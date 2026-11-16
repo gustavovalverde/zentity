@@ -5,8 +5,6 @@ import {
   createFirstPartyAuthFileStorage,
   createInstalledClientAuth,
   type InstalledClientAuth,
-  type InstalledClientCredentials,
-  normalizeUrl,
 } from "@zentity/sdk/node";
 import { config } from "./config.js";
 import {
@@ -16,20 +14,14 @@ import {
 
 const LOOPBACK_REDIRECT_URI = "http://127.0.0.1/callback";
 const MCP_SERVER_CLIENT_NAME = "@zentity/mcp-server";
-const PROTECTED_RESOURCE_METADATA_FIELD = "zentity_protected_resource";
 
-// The session token carries these. UserInfo needs openid.
-const INSTALLED_AGENT_SESSION_SCOPES = [
+// The login carries the bootstrap scopes, so agent registration exchanges a
+// subset of the login's own scopes.
+const INSTALLED_AGENT_LOGIN_SCOPES = [
   "openid",
   "email",
-  "proof:identity",
-] as const;
-
-// Token exchange issues only scopes the login was granted, so the login also
-// requests the scopes of the bootstrap token that registers the agent.
-const INSTALLED_AGENT_LOGIN_SCOPES = [
-  ...INSTALLED_AGENT_SESSION_SCOPES,
   "offline_access",
+  "proof:identity",
   ...AGENT_BOOTSTRAP_SCOPES,
 ] as const;
 
@@ -58,15 +50,12 @@ let cachedInstalledClientAuth: InstalledClientAuth | undefined;
 function getMcpInstalledClientAuth(): InstalledClientAuth {
   if (!cachedInstalledClientAuth) {
     cachedInstalledClientAuth = createInstalledClientAuth({
-      clientRegistrationRequest: {
-        ...buildLoopbackClientRegistration({
-          clientName: MCP_SERVER_CLIENT_NAME,
-          grantTypes: INSTALLED_AGENT_GRANT_TYPES,
-          redirectUri: LOOPBACK_REDIRECT_URI,
-          scope: INSTALLED_AGENT_REGISTRATION_SCOPES.join(" "),
-        }),
-        [PROTECTED_RESOURCE_METADATA_FIELD]: normalizeUrl(config.mcpPublicUrl),
-      },
+      clientRegistrationRequest: buildLoopbackClientRegistration({
+        clientName: MCP_SERVER_CLIENT_NAME,
+        grantTypes: INSTALLED_AGENT_GRANT_TYPES,
+        redirectUri: LOOPBACK_REDIRECT_URI,
+        scope: INSTALLED_AGENT_REGISTRATION_SCOPES.join(" "),
+      }),
       issuerUrl: config.zentityUrl,
       loginResource: config.zentityUrl,
       loginScope: INSTALLED_AGENT_LOGIN_SCOPES.join(" "),
@@ -81,8 +70,6 @@ function getMcpInstalledClientAuth(): InstalledClientAuth {
         issuerUrl: config.zentityUrl,
         namespace: "mcp-server",
       }),
-      tokenExchangeAudience: config.zentityUrl,
-      tokenExchangeScope: INSTALLED_AGENT_SESSION_SCOPES.join(" "),
     });
   }
 
@@ -95,12 +82,6 @@ export function clearMcpOAuthTokens(): Promise<void> {
 
 export function discoverMcpOAuth(): Promise<FirstPartyAuthDiscoveryDocument> {
   return getMcpInstalledClientAuth().discover();
-}
-
-export function ensureMcpOAuthClientCredentials(options?: {
-  forceClientRegistration?: boolean;
-}): Promise<InstalledClientCredentials> {
-  return getMcpInstalledClientAuth().ensureClientCredentials(options);
 }
 
 /** Exchanges the stored login token for a token limited to `scope`. */

@@ -28,9 +28,10 @@
  *    releases recorded JWT revocations only in `revoked_token`, which no check
  *    reads any more, so without a marker such a token is accepted until `exp`.
  * 5. Copies Zentity's `exchange_claims` into `access_token_claims` for opaque
- *    exchanged tokens, so chained exchanges keep the parent's delegation depth
- *    and agent claims, and bootstrap tokens keep `zentity_token_use`. Skipped
- *    once `pnpm db:push` has dropped the column.
+ *    exchanged tokens issued before the deploy, so bootstrap tokens keep
+ *    `zentity_token_use` and the provider's introspection keeps returning
+ *    their stored claims until they expire. Skipped once `pnpm db:push` has
+ *    dropped the column.
  * 6. Decodes `access_token_claims` rows written while drizzle's json mode
  *    encoded the adapter's JSON a second time.
  * 7. Adds `agent_capability.grantable` with the DDL `pnpm db:push` would emit.
@@ -41,6 +42,16 @@
  * 8. Creates `ciba_approval` with the DDL `pnpm db:push` would emit. The new
  *    release records every CIBA decision there and reads it at every CIBA
  *    token poll, so it must exist before that release serves traffic.
+ * 9. Stores a pairwise sector on every `oauth_client` row. Earlier releases
+ *    cleared the sector the provider stored at registration, so pairwise
+ *    subjects followed the first redirect host; the provider and Zentity now
+ *    both read the stored sector. A client registered from a metadata document
+ *    gets `client/<client_id>`, replacing any other sector, because its
+ *    redirect URIs are not bound to the origin that serves the document. Any
+ *    other row without a sector gets the provider's rule: the first redirect
+ *    host when every redirect URI is https, else `client/<client_id>`.
+ *    Subjects of loopback, custom-scheme, and metadata-document clients
+ *    change, so their users sign in again.
  *
  * Rollout order:
  *
@@ -206,6 +217,57 @@ const url = process.env.TURSO_DATABASE_URL || "file:./.data/dev.db";
 const authToken = process.env.TURSO_AUTH_TOKEN;
 const client = createClient(authToken ? { url, authToken } : { url });
 
+// Mirrors the provider's `deriveSectorIdentifier` (oauth-provider
+// `utils/index.ts`), which it does not export; replace with the export once it
+// ships (U15 in docs/adr/platform/0002-better-auth-patches.md).
+function deriveSectorIdentifier(
+  clientId: string,
+  redirectUris: readonly string[]
+): string {
+  const urls = redirectUris.map((uri) => new URL(uri));
+  const first = urls[0];
+  return first && urls.every((url) => url.protocol === "https:")
+    ? first.host
+    : `client/${clientId}`;
+}
+
+function parseRedirectUris(raw: unknown): string[] {
+  if (typeof raw !== "string" || raw === "") {
+    return [];
+  }
+  if (raw.startsWith("[")) {
+    const parsed: unknown = JSON.parse(raw);
+    return Array.isArray(parsed)
+      ? parsed.filter((uri): uri is string => typeof uri === "string")
+      : [];
+  }
+  return raw.split(" ").filter(Boolean);
+}
+
+/** The `UPDATE` statements that store a sector on every client row. */
+async function clientSectorStatements(): Promise<InStatement[]> {
+  const result = await client.execute(
+    `SELECT client_id, redirect_uris, metadata_url FROM oauth_client
+     WHERE sector_identifier IS NULL
+        OR (metadata_url IS NOT NULL
+            AND sector_identifier <> 'client/' || client_id)`
+  );
+  return result.rows.map((row) => {
+    const clientId = String(row.client_id);
+    const sector = row.metadata_url
+      ? `client/${clientId}`
+      : deriveSectorIdentifier(clientId, parseRedirectUris(row.redirect_uris));
+    return {
+      sql: `UPDATE oauth_client SET sector_identifier = ?
+        WHERE client_id = ?
+          AND (sector_identifier IS NULL
+               OR (metadata_url IS NOT NULL
+                   AND sector_identifier <> 'client/' || client_id))`,
+      args: [sector, clientId],
+    };
+  });
+}
+
 async function hasTable(table: string): Promise<boolean> {
   const result = await client.execute({
     sql: "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?",
@@ -299,6 +361,8 @@ async function main(): Promise<void> {
       args: [],
     },
   ];
+  const sectorStatements = await clientSectorStatements();
+  statements.push(...sectorStatements);
   if (copyExchangeClaims) {
     statements.push({
       sql: `UPDATE oauth_access_token
@@ -311,7 +375,11 @@ async function main(): Promise<void> {
   }
 
   const results = await client.batch(statements, "write");
-  const [markers, decoded, copied] = results.slice(schema.length);
+  const [markers, decoded] = results.slice(schema.length);
+  const sectorsStored = results
+    .slice(schema.length + 2, schema.length + 2 + sectorStatements.length)
+    .reduce((total, result) => total + result.rowsAffected, 0);
+  const copied = copyExchangeClaims ? results.at(-1) : undefined;
   console.log(`timestamp defaults moved: ${timestampDefaults.length}`);
   console.log(
     `oauth_access_token.auth_context_id: ${addAccessTokenAuthContext ? "added" : "already present"}`
@@ -324,6 +392,7 @@ async function main(): Promise<void> {
   );
   console.log(`revocation markers added: ${markers?.rowsAffected ?? 0}`);
   console.log(`access_token_claims decoded: ${decoded?.rowsAffected ?? 0}`);
+  console.log(`client sectors stored: ${sectorsStored}`);
   console.log(
     copyExchangeClaims
       ? `exchange_claims copied: ${copied?.rowsAffected ?? 0}`

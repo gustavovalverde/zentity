@@ -173,32 +173,6 @@ describe("bootstrapRegisteredRuntime", () => {
     expect(result.oauth.accessToken).toBe("fresh-token");
   });
 
-  it("signs in again when the stored login was not granted the bootstrap scopes", async () => {
-    const refreshedOauth = {
-      ...baseOauth,
-      accessToken: "fresh-token",
-    };
-    mockEnsureMcpOAuthSession
-      .mockResolvedValueOnce(baseOauth)
-      .mockResolvedValueOnce(refreshedOauth);
-    mockPrepareBootstrapRegistrationAuth
-      .mockRejectedValueOnce(
-        new Error(
-          `Token exchange failed: 400 {"error":"invalid_scope","error_description":"Requested scope 'agent:host.register' exceeds subject token scope"}`
-        )
-      )
-      .mockResolvedValueOnce(bootstrapOauth);
-
-    const result = await bootstrapRegisteredRuntime(CLAUDE_CODE);
-
-    expect(mockClearMcpOAuthTokens).toHaveBeenCalledTimes(1);
-    expect(mockEnsureMcpOAuthSession).toHaveBeenCalledTimes(2);
-    expect(mockPrepareBootstrapRegistrationAuth).toHaveBeenLastCalledWith(
-      refreshedOauth
-    );
-    expect(result.oauth.accessToken).toBe("fresh-token");
-  });
-
   it("does not sign in again for other bootstrap exchange failures", async () => {
     mockPrepareBootstrapRegistrationAuth.mockRejectedValueOnce(
       new Error("Token exchange failed: 503 unavailable")
@@ -253,5 +227,76 @@ describe("bootstrapRegisteredRuntime", () => {
     expect(mockClearMcpOAuthTokens).not.toHaveBeenCalled();
     expect(mockEnsureHostRegistered).toHaveBeenCalledTimes(1);
     expect(mockRegisterAgentSession).toHaveBeenCalledTimes(1);
+  });
+
+  // R36: credentials stored before the login carried the bootstrap scopes.
+  describe("credentials from before the bootstrap scopes", () => {
+    const freshOauth = {
+      ...baseOauth,
+      accessToken: "fresh-token",
+      scopes: [
+        "openid",
+        "agent:host.register",
+        "agent:session.register",
+        "agent:session.revoke",
+      ],
+    };
+
+    async function freshBootstrap() {
+      vi.resetModules();
+      const stdio = await import("../../src/transports/stdio.js");
+      return stdio.bootstrapRegisteredRuntime;
+    }
+
+    it("signs in again when the stored login lacks a bootstrap scope", async () => {
+      mockEnsureMcpOAuthSession
+        .mockResolvedValueOnce({ ...baseOauth, scopes: ["openid", "email"] })
+        .mockResolvedValueOnce(freshOauth);
+      const bootstrap = await freshBootstrap();
+
+      const result = await bootstrap(CLAUDE_CODE);
+
+      expect(mockClearMcpOAuthTokens).toHaveBeenCalledTimes(1);
+      expect(mockEnsureMcpOAuthSession).toHaveBeenCalledTimes(2);
+      expect(mockPrepareBootstrapRegistrationAuth).toHaveBeenCalledWith(
+        freshOauth
+      );
+      expect(mockEnsureHostRegistered).toHaveBeenCalledTimes(1);
+      expect(mockRegisterAgentSession).toHaveBeenCalledTimes(1);
+      expect(result).toEqual({ oauth: freshOauth, runtime });
+    });
+
+    it("signs in again once when the bootstrap exchange refuses the stored login", async () => {
+      mockEnsureMcpOAuthSession
+        .mockResolvedValueOnce(baseOauth)
+        .mockResolvedValueOnce(freshOauth);
+      mockPrepareBootstrapRegistrationAuth
+        .mockRejectedValueOnce(
+          new Error(
+            'Token exchange failed: 400 {"error":"invalid_scope","error_description":"scope agent:host.register is not available through token exchange"}'
+          )
+        )
+        .mockResolvedValueOnce(bootstrapOauth);
+      const bootstrap = await freshBootstrap();
+
+      const result = await bootstrap(CLAUDE_CODE);
+
+      expect(mockClearMcpOAuthTokens).toHaveBeenCalledTimes(1);
+      expect(mockEnsureMcpOAuthSession).toHaveBeenCalledTimes(2);
+      expect(mockPrepareBootstrapRegistrationAuth).toHaveBeenLastCalledWith(
+        freshOauth
+      );
+      expect(mockRegisterAgentSession).toHaveBeenCalledTimes(1);
+      expect(result.oauth).toBe(freshOauth);
+
+      // A second refusal in the same process is reported, not retried.
+      mockPrepareBootstrapRegistrationAuth.mockRejectedValueOnce(
+        new Error('Token exchange failed: 400 {"error":"invalid_request"}')
+      );
+      await expect(bootstrap(CLAUDE_CODE)).rejects.toThrow(
+        "Token exchange failed: 400"
+      );
+      expect(mockClearMcpOAuthTokens).toHaveBeenCalledTimes(1);
+    });
   });
 });

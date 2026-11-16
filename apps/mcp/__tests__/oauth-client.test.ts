@@ -38,7 +38,7 @@ function readScopes(scope: unknown): string[] {
 }
 
 describe("MCP installed client", () => {
-  it("is granted the bootstrap scopes at login but keeps them off its session token", async () => {
+  it("requests the bootstrap scopes at login and exchanges the login token for them", async () => {
     mockExchangeLoginToken.mockResolvedValue({
       accessToken: "bootstrap-token",
       expiresIn: 3600,
@@ -57,18 +57,16 @@ describe("MCP installed client", () => {
 
     const [options] = mockCreateInstalledClientAuth.mock.calls[0] ?? [];
     const loginScopes = readScopes(options.loginScope);
-    const sessionScopes = readScopes(options.tokenExchangeScope);
     const registeredScopes = readScopes(
       options.clientRegistrationRequest.scope
     );
 
     expect(loginScopes).toEqual(expect.arrayContaining(AGENT_BOOTSTRAP_SCOPES));
+    expect(loginScopes).toContain("openid");
     expect(registeredScopes).toEqual(expect.arrayContaining(loginScopes));
-    expect(sessionScopes).toContain("openid");
-    expect(loginScopes).toEqual(expect.arrayContaining(sessionScopes));
-    for (const scope of [...AGENT_BOOTSTRAP_SCOPES, "offline_access"]) {
-      expect(sessionScopes).not.toContain(scope);
-    }
+    // The login token is the session: no session exchange narrows it.
+    expect(options).not.toHaveProperty("tokenExchangeAudience");
+    expect(options).not.toHaveProperty("tokenExchangeScope");
     expect(mockExchangeLoginToken).toHaveBeenCalledWith({
       audience: "http://localhost:3000",
       scope: AGENT_BOOTSTRAP_SCOPES.join(" "),

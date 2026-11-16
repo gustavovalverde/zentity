@@ -1,6 +1,7 @@
 import { z } from "zod";
 import type { OversightMethod } from "./protocol/claims";
 import type { DpopClient } from "./rp/dpop-client";
+import { authenticateClientRequest } from "./rp/token-request";
 
 const DEFAULT_POLL_INTERVAL_MS = 5000;
 const SLOW_DOWN_INCREMENT_MS = 5000;
@@ -63,6 +64,8 @@ export interface CibaRequest {
   bindingMessage: string;
   cibaEndpoint: string;
   clientId: string;
+  /** For a confidential client: sent as `client_secret_basic`. */
+  clientSecret?: string | undefined;
   dpopClient: Pick<DpopClient, "fetch">;
   fetch?: typeof globalThis.fetch;
   loginHint: string;
@@ -130,6 +133,7 @@ export async function beginCibaApproval(
   const headers: Record<string, string> = {
     "Content-Type": "application/x-www-form-urlencoded",
   };
+  authenticateClientRequest(params, body, headers);
   if (params.agentAssertion) {
     headers["Agent-Assertion"] = params.agentAssertion;
   }
@@ -161,7 +165,7 @@ export async function beginCibaApproval(
 
 type CibaPollParams = Pick<
   CibaRequest,
-  "clientId" | "dpopClient" | "fetch" | "tokenEndpoint"
+  "clientId" | "clientSecret" | "dpopClient" | "fetch" | "tokenEndpoint"
 >;
 
 export async function pollCibaToken(
@@ -195,14 +199,18 @@ function requestCibaToken(
   params: CibaPollParams,
   pendingAuthorization: CibaPendingAuthorization
 ): Promise<Response> {
+  const body = new URLSearchParams({
+    grant_type: "urn:openid:params:grant-type:ciba",
+    auth_req_id: pendingAuthorization.authReqId,
+  });
+  const headers: Record<string, string> = {
+    "Content-Type": "application/x-www-form-urlencoded",
+  };
+  authenticateClientRequest(params, body, headers);
   return params.dpopClient.fetch(params.tokenEndpoint, {
     method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams({
-      grant_type: "urn:openid:params:grant-type:ciba",
-      auth_req_id: pendingAuthorization.authReqId,
-      client_id: params.clientId,
-    }),
+    headers,
+    body,
     ...(params.fetch ? { fetch: params.fetch } : {}),
   });
 }
@@ -267,7 +275,6 @@ export function createPendingApproval(
 
 function buildCibaBody(params: CibaRequest): URLSearchParams {
   const body = new URLSearchParams({
-    client_id: params.clientId,
     login_hint: params.loginHint,
     scope: params.scope,
     binding_message: params.bindingMessage,

@@ -24,6 +24,28 @@ export async function readDcrClientId(
   }
 }
 
+export async function readDcrRegistration(
+  scenarioId: RouteScenarioId
+): Promise<{
+  clientId: string;
+  registrationFingerprint: string | null;
+} | null> {
+  try {
+    const row = await getDb()
+      .select({
+        clientId: dcrClient.clientId,
+        registrationFingerprint: dcrClient.registrationFingerprint,
+      })
+      .from(dcrClient)
+      .where(eq(dcrClient.scenarioId, scenarioId))
+      .limit(1)
+      .get();
+    return row ?? null;
+  } catch {
+    return null;
+  }
+}
+
 export async function readDcrClient(
   scenarioId: RouteScenarioId
 ): Promise<{ clientId: string; clientSecret: string | null } | null> {
@@ -43,22 +65,33 @@ export async function readDcrClient(
   }
 }
 
+/**
+ * Stores the scenario's client. Replacing a client also forgets every sign-in
+ * made through the old one: its tokens and subject belong to that client, so
+ * the user signs in again through the new one.
+ */
 export async function saveDcrClientId(
   scenarioId: RouteScenarioId,
   clientId: string,
-  clientSecret?: string
+  registrationFingerprint: string
 ): Promise<void> {
-  await getDb()
-    .insert(dcrClient)
-    .values({
-      scenarioId,
-      clientId,
-      clientSecret: clientSecret ?? null,
-    })
-    .onConflictDoUpdate({
-      target: dcrClient.scenarioId,
-      set: { clientId, clientSecret: clientSecret ?? null },
-    });
+  const client = { clientId, clientSecret: null, registrationFingerprint };
+  await getDb().transaction(async (tx) => {
+    const previous = await tx
+      .select({ clientId: dcrClient.clientId })
+      .from(dcrClient)
+      .where(eq(dcrClient.scenarioId, scenarioId))
+      .get();
+    await tx
+      .insert(dcrClient)
+      .values({ scenarioId, ...client })
+      .onConflictDoUpdate({ target: dcrClient.scenarioId, set: client });
+    if (previous && previous.clientId !== clientId) {
+      await tx
+        .delete(account)
+        .where(eq(account.providerId, getOAuthProviderId(scenarioId)));
+    }
+  });
 }
 
 export async function findRouteScenarioByClientId(

@@ -142,7 +142,7 @@ describe("access token subjects", () => {
       scope: "openid",
       login_hint: await computePairwiseSub(
         userId,
-        ["https://other-rp.example/callback"],
+        new URL("https://other-rp.example/callback").host,
         env.PAIRWISE_SECRET
       ),
     });
@@ -171,13 +171,16 @@ describe("access token subjects", () => {
     const payload = decodeJwt(await mintMcpAccessToken(userId));
     const pairwiseSub = await computePairwiseSub(
       userId,
-      [REDIRECT_URI],
+      new URL(REDIRECT_URI).host,
       env.PAIRWISE_SECRET
     );
 
     expect(payload.aud).toContain(MCP_RESOURCE);
     expect(payload.sub).toBe(pairwiseSub);
     expect(payload.sub).not.toBe(userId);
+    // The provider writes the user id encrypted, for its own endpoints.
+    expect(payload.ba_sub).toEqual(expect.any(String));
+    expect(JSON.stringify(payload)).not.toContain(userId);
     await expect(resolveUserIdFromSub(pairwiseSub, CLIENT_ID)).resolves.toBe(
       userId
     );

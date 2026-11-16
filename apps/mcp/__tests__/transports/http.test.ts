@@ -86,6 +86,7 @@ function createTestApp() {
   return createApp(
     {
       clientId: "mcp-server-client",
+      clientSecret: "mcp-server-secret",
       dpopClient: {} as never,
       dpopKey: {} as never,
     },
@@ -240,10 +241,12 @@ describe("HTTP transport", () => {
       tier: 2,
       tierName: "Verified",
     });
+    // MCP HTTP is a confidential client: it exchanges with its secret.
     expect(mockExchangeToken).toHaveBeenCalledWith(
       expect.objectContaining({
         audience: "http://localhost:3000",
         clientId: "mcp-server-client",
+        clientSecret: "mcp-server-secret",
         subjectToken: token,
       })
     );

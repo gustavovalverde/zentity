@@ -188,6 +188,28 @@ describe("oauth helpers", () => {
     );
   });
 
+  it("authenticates a confidential client with client_secret_basic", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      Response.json({ access_token: "opaque-token", token_type: "DPoP" })
+    );
+
+    await exchangeToken({
+      audience: "https://issuer.example",
+      clientId: "mcp-server",
+      clientSecret: "secret",
+      dpopClient: createMockDpopClient(),
+      subjectToken: "subject-token",
+      tokenEndpoint: "https://issuer.example/oauth/token",
+    });
+
+    const [, init] = vi.mocked(fetch).mock.calls[0]!;
+    expect(new Headers((init as RequestInit).headers).get("Authorization")).toBe(
+      `Basic ${btoa("mcp-server:secret")}`
+    );
+    const body = new URLSearchParams((init as RequestInit).body as string);
+    expect(body.has("client_id")).toBe(false);
+  });
+
   it("throws when the token endpoint rejects the request", async () => {
     vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
       new Response("invalid_grant", { status: 400 })

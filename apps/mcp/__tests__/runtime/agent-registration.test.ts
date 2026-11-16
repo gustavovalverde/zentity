@@ -22,7 +22,7 @@ import { prepareBootstrapRegistrationAuth } from "../../src/runtime/agent-regist
 import type { OAuthSessionContext } from "../../src/runtime/auth-context.js";
 
 const sessionAuth = {
-  accessToken: "session-token",
+  accessToken: "login-token",
   accountSub: "user-123",
   clientId: "mcp-client",
   dpopClient: {},
@@ -30,7 +30,15 @@ const sessionAuth = {
     privateJwk: { crv: "P-256", kty: "EC" },
     publicJwk: { crv: "P-256", kty: "EC" },
   },
-  scopes: ["openid", "email", "proof:identity"],
+  scopes: [
+    "openid",
+    "email",
+    "offline_access",
+    "proof:identity",
+    "agent:host.register",
+    "agent:session.register",
+    "agent:session.revoke",
+  ],
 } as unknown as OAuthSessionContext;
 
 describe("prepareBootstrapRegistrationAuth", () => {
@@ -48,7 +56,7 @@ describe("prepareBootstrapRegistrationAuth", () => {
     mockExchangeMcpLoginToken.mockResolvedValue("bootstrap-token");
   });
 
-  it("exchanges the login token, not the session token, for the advertised bootstrap scopes", async () => {
+  it("exchanges the stored login token for the advertised bootstrap scopes", async () => {
     const bootstrapAuth = await prepareBootstrapRegistrationAuth(sessionAuth);
 
     expect(mockExchangeMcpLoginToken).toHaveBeenCalledWith({

@@ -4,6 +4,7 @@ import z from "zod";
 
 import { auth } from "@/lib/auth/auth-config";
 import { getAppOrigin } from "@/lib/auth/origin";
+import { isServiceAccountEmail } from "@/lib/auth/service-account";
 import { isUniqueConstraintError } from "@/lib/db/errors";
 import {
   clearAnonymousFlag,
@@ -29,7 +30,12 @@ export const signUpRouter = router({
     .input(
       z
         .object({
-          email: z.email().optional(),
+          email: z
+            .email()
+            .refine((email) => !isServiceAccountEmail(email), {
+              message: "This email address can't be used",
+            })
+            .optional(),
           wallet: z
             .object({
               address: z.string().min(1),

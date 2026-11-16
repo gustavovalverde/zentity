@@ -2,7 +2,13 @@ import crypto from "node:crypto";
 
 import { encodeEd25519DidKeyFromJwk } from "@zentity/sdk/protocol";
 import { eq } from "drizzle-orm";
-import { decodeJwt, exportJWK, generateKeyPair, SignJWT } from "jose";
+import {
+  calculateJwkThumbprint,
+  decodeJwt,
+  exportJWK,
+  generateKeyPair,
+  SignJWT,
+} from "jose";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.hoisted(() => {
@@ -18,7 +24,6 @@ import {
   AUTHENTICATION_CONTEXT_CLAIM,
   createAuthenticationContext,
 } from "@/lib/auth/auth-context";
-import { PAYMENT_AUTHORIZATION_SCOPE } from "@/lib/auth/oidc/payment-mint";
 import { TOKEN_EXCHANGE_GRANT_TYPE } from "@/lib/auth/oidc/token-exchange";
 import { db } from "@/lib/db/connection";
 import {
@@ -84,7 +89,10 @@ async function createAgentClient() {
         TOKEN_EXCHANGE_GRANT_TYPE,
       ]),
       tokenEndpointAuthMethod: "none",
-      metadata: JSON.stringify({ backchannel_token_delivery_mode: "poll" }),
+      metadata: JSON.stringify({
+        backchannel_token_delivery_mode: "poll",
+        authorization_details_types: ["payment_authorization"],
+      }),
     })
     .run();
 }
@@ -99,6 +107,7 @@ async function issueBootstrapToken(
   authContextId: string
 ): Promise<{ dpopKeyPair: DpopKeyPair; token: string }> {
   const loginToken = `login-${crypto.randomUUID()}`;
+  const dpopKeyPair = await createTestDpopKeyPair();
   await db
     .insert(oauthAccessTokens)
     .values({
@@ -106,6 +115,9 @@ async function issueBootstrapToken(
         [AUTHENTICATION_CONTEXT_CLAIM]: authContextId,
       }),
       clientId: CLIENT_ID,
+      confirmation: JSON.stringify({
+        jkt: await calculateJwkThumbprint(dpopKeyPair.jwk, "sha256"),
+      }),
       expiresAt: new Date(Date.now() + 3_600_000),
       scopes: JSON.stringify(["openid", ...BOOTSTRAP_SCOPE.split(" ")]),
       token: hashOpaqueAccessToken(loginToken),
@@ -113,7 +125,6 @@ async function issueBootstrapToken(
     })
     .run();
 
-  const dpopKeyPair = await createTestDpopKeyPair();
   const { json, status } = await postTokenWithDpop(
     {
       audience: APP_URL,
@@ -440,11 +451,11 @@ describe("CIBA approval from capability grants", () => {
       ]);
 
     const overCeiling = await requestBackchannelAuth(agent, userId, {
-      scope: `openid ${PAYMENT_AUTHORIZATION_SCOPE}`,
+      scope: "openid",
       authorization_details: payment("500"),
     });
     const withinCeiling = await requestBackchannelAuth(agent, userId, {
-      scope: `openid ${PAYMENT_AUTHORIZATION_SCOPE}`,
+      scope: "openid",
       authorization_details: payment("50"),
     });
 
@@ -503,7 +514,7 @@ describe("CIBA approval from capability grants", () => {
     ]);
 
     const authReqId = await requestBackchannelAuth(agent, userId, {
-      scope: `openid ${PAYMENT_AUTHORIZATION_SCOPE} proof:age`,
+      scope: "openid proof:age",
       authorization_details: paymentEntry("50"),
     });
 
@@ -528,30 +539,27 @@ describe("CIBA approval from capability grants", () => {
     expect(decision.json.error).toBe("insufficient_user_authentication");
   });
 
-  // R22: the payment scope is a grantable item only with its payment entry.
-  it("approves the payment scope with its entry and asks the user without one", async () => {
+  // R34: the payment entry, not a scope, makes the request a payment, so the
+  // grant still approves it once the payment scope is gone.
+  it("approves a bounded payment requested with scope openid", async () => {
     const agent = await registerAgent(userId, delegationAuthContextId, [
       boundedPaymentPolicy,
     ]);
 
-    const withEntry = await requestBackchannelAuth(agent, userId, {
-      scope: `openid ${PAYMENT_AUTHORIZATION_SCOPE}`,
+    const authReqId = await requestBackchannelAuth(agent, userId, {
+      scope: "openid",
       authorization_details: paymentEntry("50"),
     });
-    const scopeOnly = await requestBackchannelAuth(agent, userId, {
-      scope: `openid ${PAYMENT_AUTHORIZATION_SCOPE}`,
-    });
 
-    expect((await readRequest(withEntry))?.status).toBe("approved");
-    const stored = await readStoredRequest(scopeOnly);
-    expect(stored?.status).toBe("pending");
-    expect(approvalPolicy({ scope: stored?.scope ?? "" })).toEqual(
+    expect(await readRequest(authReqId)).toEqual(
       expect.objectContaining({
-        ceremony: "user_verification",
-        grantCapability: null,
-        pageOnly: true,
+        status: "approved",
+        approvalMethod: "capability_grant",
+        approvedCapabilityName: "payment_authorization:sign",
       })
     );
-    expect(await ledgerEntries(agent.sessionId)).toHaveLength(1);
+    expect(await ledgerEntries(agent.sessionId)).toEqual([
+      { capabilityName: "payment_authorization:sign" },
+    ]);
   });
 });

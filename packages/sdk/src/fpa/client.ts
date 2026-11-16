@@ -39,6 +39,8 @@ export interface StoredFirstPartyAuthState {
   refreshToken?: string;
   registrationFingerprint?: string;
   registrationMethod?: "cimd" | "dcr";
+  /** The scopes granted to `accessToken`. */
+  scopes?: string[];
 }
 
 export interface FirstPartyAuthStorage {
@@ -125,6 +127,7 @@ interface RefreshTokenResponseBody {
   access_token?: unknown;
   expires_in?: unknown;
   refresh_token?: unknown;
+  scope?: unknown;
 }
 
 interface StepUpErrorBody {
@@ -401,6 +404,8 @@ export interface FirstPartyAuth {
   exchangeToken(options: {
     audience: string;
     clientId: string;
+    /** For a confidential client: sent as `client_secret_basic`. */
+    clientSecret?: string;
     scope?: string;
     subjectToken: string;
   }): Promise<ExchangeTokenResult>;
@@ -466,6 +471,7 @@ export function createFirstPartyAuth(
       accessToken: _accessToken,
       expiresAt: _expiresAt,
       refreshToken: _refreshToken,
+      scopes: _scopes,
       ...rest
     } = current;
     await saveState(rest);
@@ -481,6 +487,7 @@ export function createFirstPartyAuth(
       refreshToken: _refreshToken,
       registrationFingerprint: _registrationFingerprint,
       registrationMethod: _registrationMethod,
+      scopes: _scopes,
       ...rest
     } = current;
     await saveState(rest);
@@ -782,6 +789,7 @@ export function createFirstPartyAuth(
       expiresAt: token.expiresAt,
       ...(token.loginHint ? { loginHint: token.loginHint } : {}),
       ...(token.refreshToken ? { refreshToken: token.refreshToken } : {}),
+      scopes: token.scopes,
     });
 
     return token;
@@ -790,6 +798,7 @@ export function createFirstPartyAuth(
   async function exchangeTokenInstance(exchangeOptions: {
     audience: string;
     clientId: string;
+    clientSecret?: string;
     scope?: string;
     subjectToken: string;
   }): Promise<ExchangeTokenResult> {
@@ -797,6 +806,9 @@ export function createFirstPartyAuth(
     return exchangeToken({
       audience: exchangeOptions.audience,
       clientId: exchangeOptions.clientId,
+      ...(exchangeOptions.clientSecret === undefined
+        ? {}
+        : { clientSecret: exchangeOptions.clientSecret }),
       dpopClient: await getOrCreateDpopClient(),
       ...(exchangeOptions.scope ? { scope: exchangeOptions.scope } : {}),
       subjectToken: exchangeOptions.subjectToken,
@@ -878,6 +890,9 @@ export function createFirstPartyAuth(
       expiresAt: nextExpiresAt,
       ...(typeof responseBody.refresh_token === "string"
         ? { refreshToken: responseBody.refresh_token }
+        : {}),
+      ...(typeof responseBody.scope === "string"
+        ? { scopes: responseBody.scope.split(" ").filter(Boolean) }
         : {}),
     });
 

@@ -34,13 +34,10 @@ export const aetherScenario: RouteScenario = {
   ],
   dcr: {
     clientName: "Aether AI",
-    // payment_authorization:sign is registered (so the client may request it) but
-    // kept out of signInScopes/stepUpScopes: it is requested only at the explicit
-    // agent-wallet spend step, and every grant still requires CIBA user approval.
-    requestedScopes: buildRequestedScopes(signInScopes, [
-      ...stepUpScopes,
-      "payment_authorization:sign",
-    ]),
+    // The agent-wallet spend step sends a payment_authorization entry, which
+    // Zentity accepts only from a client that registered the type.
+    authorizationDetailsTypes: ["payment_authorization"],
+    requestedScopes: buildRequestedScopes(signInScopes, stepUpScopes),
     grantTypes: [
       "authorization_code",
       "urn:openid:params:grant-type:ciba",

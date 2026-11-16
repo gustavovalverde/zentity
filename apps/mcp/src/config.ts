@@ -57,6 +57,24 @@ export function resolveDpopNonceSecret(value: string | undefined): string {
   return value;
 }
 
+/**
+ * The confidential client MCP HTTP authenticates to Zentity as. Provisioned
+ * by `pnpm mcp:provision` in apps/web, which prints both values.
+ */
+export function requireHttpClientCredentials(env: {
+  MCP_CLIENT_ID?: string | undefined;
+  MCP_CLIENT_SECRET?: string | undefined;
+}): { clientId: string; clientSecret: string } {
+  const clientId = env.MCP_CLIENT_ID;
+  const clientSecret = env.MCP_CLIENT_SECRET;
+  if (!(clientId && clientSecret)) {
+    throw new Error(
+      "The HTTP transport needs MCP_CLIENT_ID and MCP_CLIENT_SECRET. Run `pnpm mcp:provision` in apps/web to create them."
+    );
+  }
+  return { clientId, clientSecret };
+}
+
 export const config = {
   transport,
   port,

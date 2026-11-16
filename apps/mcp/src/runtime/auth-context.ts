@@ -10,6 +10,8 @@ import { createDpopClientFromKeyPair, type DpopClient } from "@zentity/sdk/rp";
 import { clientInfoOf } from "../agent.js";
 
 export type OAuthSessionContext = InstalledOAuthSession & {
+  /** Set for MCP HTTP, which authenticates as a confidential client. */
+  clientSecret?: string | undefined;
   dpopClient: DpopClient;
 };
 

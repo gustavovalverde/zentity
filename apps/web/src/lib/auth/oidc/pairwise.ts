@@ -13,53 +13,84 @@ import {
   upsertPairwiseSubjectIndex,
 } from "./pairwise-subject-index";
 
-/**
- * Zentity's pairwise sector is the host of a client's first redirect URI, the
- * same for every client. The provider instead stores a sector at
- * registration, `client/<clientId>` for a client without https redirect URIs,
- * which would give loopback and custom-scheme clients (the MCP server, agents)
- * an ID token `sub` that differs from the one Zentity resolves for CIBA login
- * hints and token exchange. Clearing the stored sector makes the provider fall
- * back to the first redirect host too, and keeps it from re-deriving one when
- * the redirect URIs change.
- */
-export async function adoptZentityPairwiseSector(clientId: string) {
-  await db
-    .update(oauthClients)
-    .set({ sectorIdentifier: null })
-    .where(eq(oauthClients.clientId, clientId))
-    .run();
+/** The client fields that determine its pairwise sector. */
+export interface SectorClient {
+  redirectUris: string[];
+  sectorIdentifier: string | null;
 }
 
-export function getPairwiseSector(redirectUris: string[]): string {
-  const first = redirectUris[0];
+export interface PairwiseClient extends SectorClient {
+  subjectType: string | null;
+}
+
+/**
+ * The provider's sector rule: the sector stored at registration, or for a row
+ * created before sectors were stored, the host of the first redirect URI.
+ */
+export function clientSector(client: SectorClient): string {
+  if (client.sectorIdentifier) {
+    return client.sectorIdentifier;
+  }
+  const first = client.redirectUris[0];
   if (!first) {
     throw new Error("Client has no redirect URIs for sector identifier");
   }
   return new URL(first).host;
 }
 
+// Mirrors the provider's `deriveSectorIdentifier`, which it does not export
+// (U15 in docs/adr/platform/0002-better-auth-patches.md).
+function deriveSectorIdentifier(
+  clientId: string,
+  redirectUris: readonly string[]
+): string {
+  const urls = redirectUris.map((uri) => new URL(uri));
+  const first = urls[0];
+  return first && urls.every((url) => url.protocol === "https:")
+    ? first.host
+    : `client/${clientId}`;
+}
+
+/**
+ * Whether replacing a client's redirect URIs keeps its sector. The provider
+ * recomputes a stored sector from the new set, and a row without one keeps
+ * deriving it from the first redirect host.
+ */
+export function keepsSector(
+  clientId: string,
+  client: SectorClient,
+  redirectUris: string[]
+): boolean {
+  try {
+    const next = clientSector({
+      redirectUris,
+      sectorIdentifier: client.sectorIdentifier
+        ? deriveSectorIdentifier(clientId, redirectUris)
+        : null,
+    });
+    return next === clientSector(client);
+  } catch {
+    return false;
+  }
+}
+
 export async function computePairwiseSub(
-  userId: string,
-  redirectUris: string[],
+  subjectId: string,
+  sector: string,
   secret: string
 ): Promise<string> {
-  const sector = getPairwiseSector(redirectUris);
-  return await makeSignature(`${sector}.${userId}`, secret);
+  return await makeSignature(`${sector}.${subjectId}`, secret);
 }
 
 export async function resolveSubForClient(
   userId: string,
-  client: { subjectType: string | null; redirectUris: string[] }
+  client: PairwiseClient
 ): Promise<string> {
   if (client.subjectType === "pairwise") {
-    const sub = await computePairwiseSub(
-      userId,
-      client.redirectUris,
-      env.PAIRWISE_SECRET
-    );
+    const sector = clientSector(client);
+    const sub = await computePairwiseSub(userId, sector, env.PAIRWISE_SECRET);
     await upsertPairwiseSubjectIndex({
-      sector: getPairwiseSector(client.redirectUris),
+      sector,
       sub,
       subjectId: userId,
       subjectType: "user",
@@ -69,13 +100,13 @@ export async function resolveSubForClient(
   return userId;
 }
 
-export async function resolveSubForClientId(
-  userId: string,
+export async function findPairwiseClient(
   clientId: string
-): Promise<string | null> {
+): Promise<PairwiseClient | null> {
   const client = await db
     .select({
       subjectType: oauthClients.subjectType,
+      sectorIdentifier: oauthClients.sectorIdentifier,
       redirectUris: oauthClients.redirectUris,
     })
     .from(oauthClients)
@@ -83,59 +114,46 @@ export async function resolveSubForClientId(
     .limit(1)
     .get();
 
-  if (!client) {
-    return null;
-  }
+  return client
+    ? { ...client, redirectUris: parseStoredStringArray(client.redirectUris) }
+    : null;
+}
 
-  return resolveSubForClient(userId, {
-    subjectType: client.subjectType,
-    redirectUris: parseStoredStringArray(client.redirectUris),
-  });
+export async function resolveSubForClientId(
+  userId: string,
+  clientId: string
+): Promise<string | null> {
+  const client = await findPairwiseClient(clientId);
+  return client ? await resolveSubForClient(userId, client) : null;
 }
 
 /**
  * Reverse direction with pre-fetched client config.
  * Use when the caller already has client data (avoids a redundant query).
  */
-export async function resolveUserIdFromSubForClient(
+async function resolveUserIdFromSubForClient(
   sub: string,
-  client: { subjectType: string | null; redirectUris: string[] }
+  client: PairwiseClient
 ): Promise<string | null> {
   if (client.subjectType !== "pairwise") {
     return sub;
   }
 
   return await resolvePairwiseSubjectId({
-    sector: getPairwiseSector(client.redirectUris),
+    sector: clientSector(client),
     sub,
     subjectType: "user",
   });
 }
 
 /**
- * Reverse direction: given the `sub` a client received (ID token or access
- * token) and that client's ID, resolve back to the raw userId.
+ * Reverse direction: given the `sub` a client received in an ID token or from
+ * UserInfo, and that client's ID, resolve back to the raw userId.
  */
 export async function resolveUserIdFromSub(
   sub: string,
   clientId: string
 ): Promise<string | null> {
-  const client = await db
-    .select({
-      subjectType: oauthClients.subjectType,
-      redirectUris: oauthClients.redirectUris,
-    })
-    .from(oauthClients)
-    .where(eq(oauthClients.clientId, clientId))
-    .limit(1)
-    .get();
-
-  if (!client) {
-    return null;
-  }
-
-  return resolveUserIdFromSubForClient(sub, {
-    subjectType: client.subjectType,
-    redirectUris: parseStoredStringArray(client.redirectUris),
-  });
+  const client = await findPairwiseClient(clientId);
+  return client ? await resolveUserIdFromSubForClient(sub, client) : null;
 }
