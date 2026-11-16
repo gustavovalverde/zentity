@@ -1,3 +1,5 @@
+import { CibaAuthorizationError } from "@zentity/sdk";
+import { AGENT_SESSION_INACTIVE_DESCRIPTION } from "@zentity/sdk/agent-contract";
 import {
   intentHash,
   intentHashToWireString,
@@ -200,6 +202,39 @@ describe("POST /api/aether/sign", () => {
       dpopClient: unknown;
     };
     expect(walletSpendArgs.dpopClient).toBe(cibaArgs.dpopClient);
+
+    vi.unstubAllGlobals();
+  });
+
+  it("signs with a new agent session when bc-authorize reports the stored one inactive", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        Response.json({ signed_payload: SIGNED_PAYLOAD }, { status: 200 })
+      )
+    );
+    mocks.prepareAgentAssertion.mockImplementation(
+      async ({ renewSession }: { renewSession: boolean }) =>
+        renewSession ? "assertion-renewed" : "assertion-stale"
+    );
+    mocks.requestCibaApproval.mockRejectedValueOnce(
+      new CibaAuthorizationError(
+        400,
+        JSON.stringify({
+          error: "invalid_request",
+          error_description: AGENT_SESSION_INACTIVE_DESCRIPTION,
+        })
+      )
+    );
+
+    const res = await post(VALID_BODY);
+
+    expect(res.status).toBe(200);
+    expect(
+      mocks.requestCibaApproval.mock.calls.map(
+        ([params]) => (params as { agentAssertion: string }).agentAssertion
+      )
+    ).toEqual(["assertion-stale", "assertion-renewed"]);
 
     vi.unstubAllGlobals();
   });

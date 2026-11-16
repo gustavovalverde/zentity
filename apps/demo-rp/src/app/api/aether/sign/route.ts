@@ -1,4 +1,4 @@
-import { requestCibaApproval } from "@zentity/sdk";
+import { isAgentSessionInactiveError, requestCibaApproval } from "@zentity/sdk";
 import {
   intentHash,
   intentHashToWireString,
@@ -128,33 +128,45 @@ export async function POST(request: Request) {
   // token request, so the issuer pins cnf.jkt to it (and to the wallet call).
   let accessToken: string;
   try {
-    const [client, agentAssertion, dpopClient] = await Promise.all([
-      readDcrClient(AETHER_SCENARIO),
+    const signAgentAssertion = (renewSession: boolean) =>
       prepareAgentAssertionForScenario({
         bindingMessage,
         scope: "openid",
         authorizationDetails: [rar],
+        renewSession,
         scenarioId: AETHER_SCENARIO,
         userId,
-      }),
+      });
+    const [client, agentAssertion, dpopClient] = await Promise.all([
+      readDcrClient(AETHER_SCENARIO),
+      signAgentAssertion(false),
       getZpayDpopClient(),
     ]);
     if (!client) {
       throw new Error("Aether OAuth client is not registered");
     }
-    const tokenSet = await requestCibaApproval({
-      bindingMessage,
-      cibaEndpoint: `${env.ZENTITY_URL}/api/auth/oauth2/bc-authorize`,
-      tokenEndpoint: `${env.ZENTITY_URL}/api/auth/oauth2/token`,
-      clientId: client.clientId,
-      dpopClient,
-      loginHint,
-      scope: "openid",
-      authorizationDetails: [rar],
-      // No `resource`: the issuer authoritatively pins aud=wallet thumbprint
-      // for the payment grant regardless of what the client requests (D-5).
-      ...(agentAssertion ? { agentAssertion } : {}),
-    });
+    const approve = (assertion: string | null) =>
+      requestCibaApproval({
+        bindingMessage,
+        cibaEndpoint: `${env.ZENTITY_URL}/api/auth/oauth2/bc-authorize`,
+        tokenEndpoint: `${env.ZENTITY_URL}/api/auth/oauth2/token`,
+        clientId: client.clientId,
+        dpopClient,
+        loginHint,
+        scope: "openid",
+        authorizationDetails: [rar],
+        // No `resource`: the issuer authoritatively pins aud=wallet thumbprint
+        // for the payment grant regardless of what the client requests (D-5).
+        ...(assertion ? { agentAssertion: assertion } : {}),
+      });
+    const tokenSet = await approve(agentAssertion).catch(
+      async (error: unknown) => {
+        if (!(agentAssertion && isAgentSessionInactiveError(error))) {
+          throw error;
+        }
+        return approve(await signAgentAssertion(true));
+      }
+    );
     accessToken = tokenSet.accessToken;
   } catch (err) {
     return NextResponse.json(

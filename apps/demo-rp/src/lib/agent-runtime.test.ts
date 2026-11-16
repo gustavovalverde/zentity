@@ -434,4 +434,51 @@ describe("prepareAgentAssertionForScenario", () => {
       })
     );
   });
+
+  it.each([
+    [false, "session-old", 1],
+    [true, "session-new", 2],
+  ])(
+    "with renewSession %s, signs with %s",
+    async (renewSession, sessionId, calls) => {
+      const dbState = {
+        runtimeRow: createRuntimeRow({
+          runtimePartitionKey: "bank::agent-runtime:v2:registered",
+        }),
+      };
+      testState.db = createDbMock(dbState);
+      testState.fetchMock
+        .mockResolvedValueOnce(
+          Response.json({
+            access_token: "bootstrap-token",
+            expires_in: 300,
+            scope: "agent:host.register agent:session.register",
+            token_type: "DPoP",
+          })
+        )
+        .mockResolvedValueOnce(
+          Response.json(
+            {
+              did: "did:key:z6Mkg3ShJxrz8J4kizVwR6cJQ2s9wZ5x1hQxQds2z7Q9b3Zs",
+              sessionId: "session-new",
+              status: "active",
+            },
+            { status: 201 }
+          )
+        );
+
+      const assertion = await prepareAgentAssertionForScenario({
+        bindingMessage: "Aether AI requests purchase: Sony WH-1000XM5",
+        renewSession,
+        scope: "openid",
+        scenarioId: "bank",
+        trustTier: "registered",
+        userId: "user-1",
+      });
+
+      expect(JSON.parse(assertion as string).iss).toBe(sessionId);
+      expect(dbState.runtimeRow.sessionId).toBe(sessionId);
+      expect(testState.fetchMock).toHaveBeenCalledTimes(calls);
+    }
+  );
 });
