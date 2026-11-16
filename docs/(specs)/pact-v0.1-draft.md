@@ -517,13 +517,21 @@ Before requesting consent, the client signs an `Agent-Assertion` JWT with the se
   "exp": 1711000060,
   "host_id": "<hostId>",
   "task_id": "<unique task identifier>",
-  "task_hash": "<SHA-256 hex of binding_message>"
+  "task_hash": "<hex SHA-256 of the canonical request>"
 }
 ```
 
 The assertion is placed in the `Agent-Assertion` HTTP header on the CIBA backchannel authorize request.
 
-`binding_message` is the OIDC CIBA Core 1.0 request parameter (Section 7.1 of that specification), defined there as a human-readable display value. PACT retains its human-visible role in the approval UI and additionally requires that a `binding_message` be present whenever an `Agent-Assertion` is present. The `task_hash` claim is defined as `SHA-256(binding_message)`, giving the agent cryptographic commitment to the same string the human will see. An assertion whose `task_hash` does not match the CIBA request's `binding_message` MUST NOT produce agent-bound token semantics.
+`binding_message` is the OIDC CIBA Core 1.0 request parameter (Section 7.1 of that specification), defined there as a human-readable display value. PACT retains its human-visible role in the approval UI and additionally requires that a `binding_message` be present whenever an `Agent-Assertion` is present.
+
+The `task_hash` claim commits the agent to the whole request, not only to the string the human reads:
+
+```text
+task_hash = hex(SHA-256(JCS({ binding_message, scope, acr_values?, authorization_details? })))
+```
+
+JCS is the JSON Canonicalization Scheme (RFC 8785). `scope` is the request's scopes, sorted and de-duplicated; `acr_values` is the space-separated list in its order; `authorization_details` is the parsed array. Members whose list is empty are omitted. Before the AS stores a request it may change only representation (for example re-serializing an `authorization_details` entry), which JCS removes, and it never rewrites the scope, so the hash the agent signed equals the hash of the stored request. The AS verifies a present assertion before it stores the request, without consuming its `jti`, and refuses a mismatch with `400 invalid_request` "Agent-Assertion does not match this request". A mismatched assertion therefore never yields an unverified-agent request.
 
 **Verification sequence:**
 
@@ -534,7 +542,7 @@ The assertion is placed in the `Agent-Assertion` HTTP header on the CIBA backcha
 5. Verify JWT signature with `algorithms: ["EdDSA"]`.
 6. Verify `typ` header is `agent-assertion+jwt`.
 7. Compute session lifecycle state (Section 9). Reject if not `active`.
-8. Compute `SHA-256(binding_message)` and compare to `task_hash`. MUST match.
+8. Compute `task_hash` from the request as above and compare it to the assertion's `task_hash`. MUST match.
 9. Verify host ownership: the session's host MUST belong to the same user and OAuth client as the CIBA request.
 
 **Binding to CIBA request.** On successful verification, the server snapshots server-owned metadata onto the CIBA request record:
@@ -899,7 +907,7 @@ Session registration binds a fresh Ed25519 public key to one host, one runtime p
 
 ### 11.5 Consent Binding
 
-CIBA binds human approval to one `auth_req_id`, one binding message, one scope set, and one optional `authorization_details` payload.
+CIBA binds human approval to one `auth_req_id`, one binding message, one scope set, and one optional `authorization_details` payload. The Agent-Assertion's `task_hash` covers all three, with any `acr_values`, as the canonical JSON of the normalized request (§6.3), so an assertion signed for one request cannot bind another.
 
 If the runtime proof is present and valid, the server snapshots runtime metadata into the CIBA request before the approval result is finalized.
 

@@ -1,4 +1,7 @@
-import type { RegisteredAgentSession as AgentRuntimeState } from "@zentity/sdk";
+import type {
+  RegisteredAgentSession as AgentRuntimeState,
+  TaskHashInput,
+} from "@zentity/sdk";
 import {
   buildHostKeyNamespace,
   registerHost,
@@ -139,15 +142,16 @@ export async function registerAgentSession(
 }
 
 /**
- * Sign an agent assertion JWT for a CIBA request.
- * Proves the caller possesses the session's Ed25519 private key.
+ * Sign an agent assertion JWT for a CIBA request, over the request exactly as
+ * it will be sent. Proves the caller possesses the session's Ed25519 private
+ * key.
  */
 export function signAgentAssertion(
   agent: AgentRuntimeState,
-  bindingMessage: string
+  request: TaskHashInput
 ): Promise<string> {
   return signSdkAgentAssertion({
-    bindingMessage,
+    ...request,
     hostId: agent.hostId,
     sessionId: agent.sessionId,
     sessionPrivateKey: agent.sessionPrivateKey,

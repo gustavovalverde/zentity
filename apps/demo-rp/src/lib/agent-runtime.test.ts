@@ -274,6 +274,7 @@ describe("prepareAgentAssertionForScenario", () => {
     await expect(
       prepareAgentAssertionForScenario({
         bindingMessage: "Verified Aether AI requests purchase: Macallan 18",
+        scope: "openid",
         scenarioId: "bank",
         trustTier: "attested",
         userId: "user-1",
@@ -311,6 +312,7 @@ describe("prepareAgentAssertionForScenario", () => {
       prepareAgentAssertionForScenario({
         bindingMessage: "Aether AI requests purchase: Sony WH-1000XM5",
         scenarioId: "aether",
+        scope: "openid",
         trustTier: "registered",
         userId: "user-1",
       })
@@ -355,6 +357,7 @@ describe("prepareAgentAssertionForScenario", () => {
     await expect(
       prepareAgentAssertionForScenario({
         bindingMessage: "Aether AI requests purchase: Sony WH-1000XM5",
+        scope: "openid",
         scenarioId: "bank",
         trustTier: "registered",
         userId: "user-1",
@@ -414,6 +417,7 @@ describe("prepareAgentAssertionForScenario", () => {
 
     const assertion = await prepareAgentAssertionForScenario({
       bindingMessage: "Verified Aether AI requests purchase: Macallan 18",
+      scope: "openid",
       scenarioId: "bank",
       trustTier: "attested",
       userId: "user-1",

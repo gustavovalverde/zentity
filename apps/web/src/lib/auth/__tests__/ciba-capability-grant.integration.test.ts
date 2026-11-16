@@ -1,6 +1,6 @@
 import crypto from "node:crypto";
 
-import { encodeEd25519DidKeyFromJwk } from "@zentity/sdk/protocol";
+import { encodeEd25519DidKeyFromJwk, taskHash } from "@zentity/sdk/protocol";
 import { eq } from "drizzle-orm";
 import {
   calculateJwkThumbprint,
@@ -217,13 +217,18 @@ async function registerAgent(
   return { hostId: host.id, privateKey: agentKeys.privateKey, sessionId };
 }
 
-function signAgentAssertion(agent: RegisteredAgent): Promise<string> {
+async function signAgentAssertion(
+  agent: RegisteredAgent,
+  body: Record<string, string>
+): Promise<string> {
   return new SignJWT({
     host_id: agent.hostId,
-    task_hash: crypto
-      .createHash("sha256")
-      .update(BINDING_MESSAGE)
-      .digest("hex"),
+    task_hash: await taskHash({
+      bindingMessage: body.binding_message as string,
+      scope: body.scope as string,
+      acrValues: body.acr_values,
+      authorizationDetails: body.authorization_details,
+    }),
     task_id: crypto.randomUUID(),
   })
     .setProtectedHeader({ alg: "EdDSA", typ: "agent-assertion+jwt" })
@@ -239,19 +244,20 @@ async function requestBackchannelAuth(
   userId: string,
   params: Record<string, string>
 ): Promise<string> {
+  const body = {
+    binding_message: BINDING_MESSAGE,
+    client_id: CLIENT_ID,
+    login_hint: userId,
+    ...params,
+  };
   const response = await auth.handler(
     new Request(BC_AUTHORIZE_URL, {
       method: "POST",
       headers: {
-        "Agent-Assertion": await signAgentAssertion(agent),
+        "Agent-Assertion": await signAgentAssertion(agent, body),
         "Content-Type": "application/x-www-form-urlencoded",
       },
-      body: new URLSearchParams({
-        binding_message: BINDING_MESSAGE,
-        client_id: CLIENT_ID,
-        login_hint: userId,
-        ...params,
-      }),
+      body: new URLSearchParams(body),
     })
   );
   const json = (await response.json()) as Record<string, unknown>;

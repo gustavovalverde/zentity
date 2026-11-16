@@ -132,6 +132,8 @@ export async function POST(request: Request) {
       readDcrClient(AETHER_SCENARIO),
       prepareAgentAssertionForScenario({
         bindingMessage,
+        scope: "openid",
+        authorizationDetails: [rar],
         scenarioId: AETHER_SCENARIO,
         userId,
       }),

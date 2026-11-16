@@ -15,6 +15,7 @@ import {
   signAgentAssertion,
   type HostKeyMaterial,
 } from "./agent-registration";
+import { taskHash } from "./protocol/authorization-details";
 
 async function createHostKey(): Promise<HostKeyMaterial> {
   const { privateKey, publicKey } = await generateKeyPair("EdDSA", {
@@ -25,16 +26,6 @@ async function createHostKey(): Promise<HostKeyMaterial> {
     privateKey: await exportJWK(privateKey),
     publicKey: await exportJWK(publicKey),
   };
-}
-
-async function sha256Hex(text: string): Promise<string> {
-  const digest = await crypto.subtle.digest(
-    "SHA-256",
-    new TextEncoder().encode(text)
-  );
-  return Array.from(new Uint8Array(digest))
-    .map((byte) => byte.toString(16).padStart(2, "0"))
-    .join("");
 }
 
 describe("agent registration", () => {
@@ -244,8 +235,18 @@ describe("agent registration", () => {
       crv: "Ed25519",
       extractable: true,
     });
+    const authorizationDetails = [
+      {
+        type: "purchase",
+        merchant: { name: "Corner Books" },
+        item: "A paperback",
+        amount: { value: "12.00", currency: "EUR" },
+      },
+    ];
     const assertion = await signAgentAssertion({
-      bindingMessage: "Authorize purchase",
+      bindingMessage: "Buy from Corner Books",
+      scope: "openid identity.name identity.address",
+      authorizationDetails,
       hostId: "host-123",
       jti: "jti-123",
       sessionId: "session-123",
@@ -266,7 +267,12 @@ describe("agent registration", () => {
     expect(agentAssertionClaims).toMatchObject({
       host_id: "host-123",
       jti: "jti-123",
-      task_hash: await sha256Hex("Authorize purchase"),
+      // R17: the hash covers the whole request, not the binding message.
+      task_hash: await taskHash({
+        bindingMessage: "Buy from Corner Books",
+        scope: ["identity.address", "identity.name", "openid"],
+        authorizationDetails,
+      }),
       task_id: "task-123",
     });
   });

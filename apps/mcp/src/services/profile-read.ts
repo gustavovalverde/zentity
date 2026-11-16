@@ -170,7 +170,7 @@ export async function readProfile(input: {
     `Share ${protectedFields.join(", ")} from my profile`
   );
   const agentAssertion = runtime
-    ? await signAgentAssertion(runtime, bindingMessage)
+    ? await signAgentAssertion(runtime, { bindingMessage, scope })
     : undefined;
 
   const flow = await beginOrResumeInteractiveFlow({

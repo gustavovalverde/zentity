@@ -310,7 +310,6 @@ async function requestProofOfHumanForPurchase(input: {
 }
 
 interface PurchaseInput {
-  agentAssertion?: string | undefined;
   bindingMessage: string;
   ctx: ServerContext;
   oauth: ReturnType<typeof getOAuthContext>;
@@ -347,6 +346,25 @@ async function fetchX402Purchase(
     getPohToken: async (minComplianceLevel, context) => {
       x402Context = context;
       assertX402Bounds(input.params, context);
+      const scope = buildX402PurchaseScope();
+      const authorizationDetails = [
+        {
+          type: "purchase",
+          url: input.params.url,
+          amount: {
+            value: input.params.amount.toFixed(2),
+            currency: input.params.currency,
+          },
+          minComplianceLevel,
+        },
+      ];
+      const agentAssertion = input.runtime
+        ? await signAgentAssertion(input.runtime, {
+            bindingMessage: input.bindingMessage,
+            scope,
+            authorizationDetails,
+          })
+        : undefined;
       const outcome = await beginOrResumeInteractiveFlow({
         toolName: "purchase",
         fingerprint: buildX402PurchaseFingerprint(
@@ -356,22 +374,10 @@ async function fetchX402Purchase(
         ),
         oauth: input.oauth,
         approval: {
-          scope: buildX402PurchaseScope(),
+          scope,
           bindingMessage: input.bindingMessage,
-          authorizationDetails: [
-            {
-              type: "purchase",
-              url: input.params.url,
-              amount: {
-                value: input.params.amount.toFixed(2),
-                currency: input.params.currency,
-              },
-              minComplianceLevel,
-            },
-          ],
-          ...(input.agentAssertion
-            ? { agentAssertion: input.agentAssertion }
-            : {}),
+          authorizationDetails,
+          ...(agentAssertion ? { agentAssertion } : {}),
         },
         onApproved: async (tokenSet) => {
           const proofOfHuman = await requestProofOfHumanForPurchase({
@@ -469,6 +475,27 @@ async function runX402PurchaseTool(input: PurchaseInput) {
 }
 
 async function runDirectPurchaseTool(input: PurchaseInput) {
+  const scope = buildPurchaseScope(
+    Boolean(input.params.requires_age_verification)
+  );
+  const authorizationDetails = [
+    {
+      type: "purchase",
+      merchant: input.params.merchant,
+      item: input.params.item,
+      amount: {
+        value: input.params.amount.toFixed(2),
+        currency: input.params.currency,
+      },
+    },
+  ];
+  const agentAssertion = input.runtime
+    ? await signAgentAssertion(input.runtime, {
+        bindingMessage: input.bindingMessage,
+        scope,
+        authorizationDetails,
+      })
+    : undefined;
   const outcome = await beginOrResumeInteractiveFlow({
     toolName: "purchase",
     fingerprint: buildPurchaseFingerprint(
@@ -478,22 +505,10 @@ async function runDirectPurchaseTool(input: PurchaseInput) {
     ),
     oauth: input.oauth,
     approval: {
-      scope: buildPurchaseScope(
-        Boolean(input.params.requires_age_verification)
-      ),
+      scope,
       bindingMessage: input.bindingMessage,
-      authorizationDetails: [
-        {
-          type: "purchase",
-          merchant: input.params.merchant,
-          item: input.params.item,
-          amount: {
-            value: input.params.amount.toFixed(2),
-            currency: input.params.currency,
-          },
-        },
-      ],
-      ...(input.agentAssertion ? { agentAssertion: input.agentAssertion } : {}),
+      authorizationDetails,
+      ...(agentAssertion ? { agentAssertion } : {}),
     },
     onApproved: async (tokenSet) => {
       const pii = await redeemRelease(
@@ -540,12 +555,7 @@ async function runPurchaseTool(
     runtime?.display.name ?? "Zentity MCP",
     rawBindingMessage
   );
-  const agentAssertion = runtime
-    ? await signAgentAssertion(runtime, bindingMessage)
-    : undefined;
-
   const purchaseInput = {
-    agentAssertion,
     bindingMessage,
     ctx,
     oauth,

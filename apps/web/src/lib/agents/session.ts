@@ -1,11 +1,14 @@
-import { createHash } from "node:crypto";
-
 import { AGENT_BOOTSTRAP_SCOPES } from "@zentity/sdk/agent-contract";
-import { decodeJwtPayloadStrict } from "@zentity/sdk/protocol";
+import {
+  decodeJwtPayloadStrict,
+  type TaskHashInput,
+  taskHash,
+} from "@zentity/sdk/protocol";
 import { eq, inArray, lt } from "drizzle-orm";
 import { importJWK, jwtVerify } from "jose";
 import { z } from "zod";
 
+import { parseStoredStringArray } from "@/lib/db/adapter-compat";
 import { db } from "@/lib/db/connection";
 import {
   agentHosts,
@@ -179,6 +182,7 @@ async function verifyAgentAssertion(
 
     const session = await db
       .select({
+        hostId: agentSessions.hostId,
         publicKey: agentSessions.publicKey,
         status: agentSessions.status,
       })
@@ -204,14 +208,18 @@ async function verifyAgentAssertion(
     }
 
     const { jti, exp } = payload;
-    if (typeof jti !== "string" || exp === undefined) {
+    if (
+      typeof jti !== "string" ||
+      exp === undefined ||
+      payload.host_id !== session.hostId
+    ) {
       return null;
     }
 
     return {
       exp,
       sessionId,
-      hostId: (payload.host_id as string) ?? "",
+      hostId: session.hostId,
       jti,
       taskId: payload.task_id as string | undefined,
       taskDescriptionHash: payload.task_hash as string | undefined,
@@ -245,13 +253,64 @@ interface BindAgentAssertionParams {
   authReqId: string;
 }
 
+/** Whether the assertion's `task_hash` is the hash of this request. */
+async function matchesTaskHash(
+  assertion: AgentAssertionResult,
+  request: TaskHashInput
+): Promise<boolean> {
+  if (!assertion.taskDescriptionHash) {
+    return false;
+  }
+  try {
+    return (await taskHash(request)) === assertion.taskDescriptionHash;
+  } catch {
+    // Details outside the canonical JSON domain match no assertion.
+    return false;
+  }
+}
+
+function formString(value: unknown): string | undefined {
+  return typeof value === "string" && value.length > 0 ? value : undefined;
+}
+
+/**
+ * Checks an Agent-Assertion against a bc-authorize request before the CIBA
+ * plugin stores it: the session's signature, a live session of its host, and
+ * a `task_hash` over this request's binding message, scopes, `acr_values`,
+ * and `authorization_details`. It does not reserve the assertion `jti`;
+ * binding the stored request does that once the plugin has stored it.
+ */
+export async function verifyAgentAssertionForRequest(
+  body: Record<string, unknown>,
+  assertionJwt: string
+): Promise<boolean> {
+  const bindingMessage = formString(body.binding_message);
+  const scope = formString(body.scope);
+  if (!(bindingMessage && scope)) {
+    return false;
+  }
+  const assertion = await verifyAgentAssertion(assertionJwt);
+  return Boolean(
+    assertion &&
+      (await matchesTaskHash(assertion, {
+        bindingMessage,
+        scope,
+        acrValues: formString(body.acr_values),
+        authorizationDetails: formString(body.authorization_details),
+      }))
+  );
+}
+
 export async function bindAgentAssertionToCibaRequest(
   params: BindAgentAssertionParams
 ): Promise<BoundAgentAssertion | null> {
   const cibaRow = await db
     .select({
+      acrValues: cibaRequests.acrValues,
+      authorizationDetails: cibaRequests.authorizationDetails,
       bindingMessage: cibaRequests.bindingMessage,
       clientId: cibaRequests.clientId,
+      scope: cibaRequests.scope,
       userId: cibaRequests.userId,
     })
     .from(cibaRequests)
@@ -263,14 +322,17 @@ export async function bindAgentAssertionToCibaRequest(
   }
 
   const assertion = await verifyAgentAssertion(params.assertionJwt);
-  if (!(assertion?.taskDescriptionHash && assertion.hostId)) {
-    return null;
-  }
-
-  const expectedTaskHash = createHash("sha256")
-    .update(cibaRow.bindingMessage)
-    .digest("hex");
-  if (expectedTaskHash !== assertion.taskDescriptionHash) {
+  if (
+    !(
+      assertion &&
+      (await matchesTaskHash(assertion, {
+        bindingMessage: cibaRow.bindingMessage,
+        scope: cibaRow.scope,
+        acrValues: parseStoredStringArray(cibaRow.acrValues),
+        authorizationDetails: cibaRow.authorizationDetails,
+      }))
+    )
+  ) {
     return null;
   }
 

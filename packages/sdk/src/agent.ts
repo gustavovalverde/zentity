@@ -6,6 +6,7 @@ import {
 } from "./ciba";
 import { stableStringify } from "./fpa/client";
 import { createDiscoveryResolver } from "./fpa/discovery";
+import type { TaskHashInput } from "./protocol/authorization-details";
 import { truncateBindingMessage } from "./protocol/binding-message";
 import type { DpopClient } from "./rp/dpop-client";
 import {
@@ -32,10 +33,15 @@ export interface AgentConfig {
     | undefined;
   proofOfHumanUrl?: string | URL;
   resource?: string;
+  /**
+   * Signs an Agent-Assertion for the registered agent session, for example
+   * with `signAgentAssertion`. Called with each request as it will be sent,
+   * so the assertion's `task_hash` covers that exact request.
+   */
+  signAgentAssertion?: ((request: TaskHashInput) => Promise<string>) | undefined;
 }
 
 export interface RequestApprovalOptions {
-  agentAssertion?: string | undefined;
   authorizationDetails?: unknown[];
   bindingMessage: string;
   loginHint?: string;
@@ -153,6 +159,13 @@ export function createAgent(config: AgentConfig): Agent {
       );
     }
 
+    const agentAssertion = await config.signAgentAssertion?.({
+      bindingMessage: options.bindingMessage,
+      scope: options.scope,
+      ...(options.authorizationDetails
+        ? { authorizationDetails: options.authorizationDetails }
+        : {}),
+    });
     const request: CibaRequest = {
       bindingMessage: options.bindingMessage,
       cibaEndpoint: discovery.backchannel_authentication_endpoint,
@@ -163,9 +176,7 @@ export function createAgent(config: AgentConfig): Agent {
       onPendingApproval: config.onPendingApproval,
       scope: options.scope,
       tokenEndpoint: discovery.token_endpoint,
-      ...(options.agentAssertion
-        ? { agentAssertion: options.agentAssertion }
-        : {}),
+      ...(agentAssertion ? { agentAssertion } : {}),
       ...(options.authorizationDetails
         ? { authorizationDetails: options.authorizationDetails }
         : {}),

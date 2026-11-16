@@ -1,5 +1,6 @@
 import crypto from "node:crypto";
 
+import { taskHash } from "@zentity/sdk/protocol";
 import { eq } from "drizzle-orm";
 import { exportJWK, generateKeyPair, SignJWT } from "jose";
 import { beforeEach, describe, expect, it } from "vitest";
@@ -13,6 +14,7 @@ import { oauthClients } from "@/lib/db/schema/oauth-provider";
 import { createTestUser, resetDatabase } from "@/test-utils/db-test-utils";
 
 const TEST_CLIENT_ID = "ciba-agent-binding-client";
+const IDENTITY_SCOPE = "openid identity.name identity.address";
 const OTHER_CLIENT_ID = "ciba-agent-binding-other-client";
 
 async function createOAuthClient(clientId: string) {
@@ -104,22 +106,21 @@ async function insertCibaRequest(params: {
   return authReqId;
 }
 
-function signAssertion(params: {
+async function signAssertion(params: {
   bindingMessage: string;
   hostId: string;
   privateKey: Awaited<ReturnType<typeof generateKeyPair>>["privateKey"];
+  scope?: string;
   sessionId: string;
   typ?: string;
   withJti?: boolean;
 }) {
-  const taskHash = crypto
-    .createHash("sha256")
-    .update(params.bindingMessage)
-    .digest("hex");
-
   const jwt = new SignJWT({
     host_id: params.hostId,
-    task_hash: taskHash,
+    task_hash: await taskHash({
+      bindingMessage: params.bindingMessage,
+      scope: params.scope ?? IDENTITY_SCOPE,
+    }),
     task_id: crypto.randomUUID(),
   })
     .setProtectedHeader({
@@ -323,6 +324,7 @@ describe("bindAgentAssertionToCibaRequest", () => {
       bindingMessage,
       hostId: agent.hostId,
       privateKey: agent.privateKey,
+      scope: "openid identity.name",
       sessionId: agent.sessionId,
     });
 
@@ -363,5 +365,77 @@ describe("bindAgentAssertionToCibaRequest", () => {
       agentSessionId: null,
       assertionVerified: null,
     });
+  });
+
+  // R17: hashing the binding message alone does not bind the action.
+  it("rejects an assertion whose task hash covers only the binding message", async () => {
+    const bindingMessage = "Claude Code: Unlock identity for this session";
+    const agent = await createRegisteredAgent(userId);
+    const assertionJwt = await new SignJWT({
+      host_id: agent.hostId,
+      task_hash: crypto
+        .createHash("sha256")
+        .update(bindingMessage)
+        .digest("hex"),
+      task_id: crypto.randomUUID(),
+    })
+      .setProtectedHeader({ alg: "EdDSA", typ: "agent-assertion+jwt" })
+      .setIssuer(agent.sessionId)
+      .setJti(crypto.randomUUID())
+      .setIssuedAt()
+      .setExpirationTime("60s")
+      .sign(agent.privateKey);
+    const authReqId = await insertCibaRequest({
+      bindingMessage,
+      scope: IDENTITY_SCOPE,
+      userId,
+    });
+
+    expect(
+      await bindAgentAssertionToCibaRequest({ assertionJwt, authReqId })
+    ).toBeNull();
+  });
+
+  it("rejects an assertion signed for other scopes", async () => {
+    const bindingMessage = "Claude Code: Unlock identity for this session";
+    const agent = await createRegisteredAgent(userId);
+    const assertionJwt = await signAssertion({
+      bindingMessage,
+      hostId: agent.hostId,
+      privateKey: agent.privateKey,
+      scope: "openid identity.name",
+      sessionId: agent.sessionId,
+    });
+    const authReqId = await insertCibaRequest({
+      bindingMessage,
+      scope: IDENTITY_SCOPE,
+      userId,
+    });
+
+    expect(
+      await bindAgentAssertionToCibaRequest({ assertionJwt, authReqId })
+    ).toBeNull();
+  });
+
+  it("binds an assertion whatever the order of the scopes it signed", async () => {
+    const bindingMessage = "Claude Code: Unlock identity for this session";
+    const agent = await createRegisteredAgent(userId);
+    const assertionJwt = await signAssertion({
+      bindingMessage,
+      hostId: agent.hostId,
+      privateKey: agent.privateKey,
+      scope: "identity.address openid identity.name",
+      sessionId: agent.sessionId,
+    });
+    const authReqId = await insertCibaRequest({
+      bindingMessage,
+      scope: IDENTITY_SCOPE,
+      userId,
+    });
+
+    expect(
+      (await bindAgentAssertionToCibaRequest({ assertionJwt, authReqId }))
+        ?.sessionId
+    ).toBe(agent.sessionId);
   });
 });

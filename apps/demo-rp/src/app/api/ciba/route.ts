@@ -206,6 +206,9 @@ export async function POST(request: Request) {
     try {
       agentAssertion = await prepareAgentAssertionForScenario({
         bindingMessage,
+        scope: data.scope,
+        acrValues: data.acrValues,
+        authorizationDetails: data.authorizationDetails,
         scenarioId: data.scenarioId,
         ...(data.trustTier ? { trustTier: data.trustTier } : {}),
         userId,

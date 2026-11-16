@@ -1,9 +1,26 @@
+import crypto from "node:crypto";
+
+import { signAgentAssertion } from "@zentity/sdk";
 import { eq } from "drizzle-orm";
+import { exportJWK, generateKeyPair } from "jose";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+const pushMock = vi.hoisted(() => ({ sent: 0 }));
+vi.mock("@/lib/agents/push-sender", async (importOriginal) => {
+  const mod = await importOriginal<typeof import("@/lib/agents/push-sender")>();
+  return {
+    ...mod,
+    sendWebPush: (...args: Parameters<typeof mod.sendWebPush>) => {
+      pushMock.sent += 1;
+      return mod.sendWebPush(...args);
+    },
+  };
+});
 
 import { auth } from "@/lib/auth/auth-config";
 import { resolveSubForClientId } from "@/lib/auth/oidc/pairwise";
 import { db } from "@/lib/db/connection";
+import { agentHosts, agentSessions } from "@/lib/db/schema/agent";
 import { cibaRequests } from "@/lib/db/schema/ciba";
 import { oauthClients } from "@/lib/db/schema/oauth-provider";
 import { createTestUser, resetDatabase } from "@/test-utils/db-test-utils";
@@ -64,11 +81,17 @@ async function insertCibaClient(
     .run();
 }
 
-async function postBcAuthorize(body: Record<string, string>) {
+async function postBcAuthorize(
+  body: Record<string, string>,
+  headers: Record<string, string> = {}
+) {
   const response = await auth.handler(
     new Request(BC_AUTHORIZE_URL, {
       method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded",
+        ...headers,
+      },
       body: new URLSearchParams(body),
     })
   );
@@ -76,6 +99,41 @@ async function postBcAuthorize(body: Record<string, string>) {
   return {
     status: response.status,
     json: (text ? JSON.parse(text) : {}) as Record<string, unknown>,
+  };
+}
+
+async function createRegisteredAgent(userId: string, clientId: string) {
+  const { privateKey, publicKey } = await generateKeyPair("EdDSA", {
+    crv: "Ed25519",
+    extractable: true,
+  });
+  const [host] = await db
+    .insert(agentHosts)
+    .values({
+      userId,
+      clientId,
+      publicKey: JSON.stringify({
+        crv: "Ed25519",
+        kty: "OKP",
+        x: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+      }),
+      publicKeyThumbprint: `host-${crypto.randomUUID()}`,
+      name: "Test Host",
+    })
+    .returning({ id: agentHosts.id });
+  const [session] = await db
+    .insert(agentSessions)
+    .values({
+      hostId: host?.id as string,
+      publicKey: JSON.stringify(await exportJWK(publicKey)),
+      publicKeyThumbprint: `agent-${crypto.randomUUID()}`,
+      displayName: "Shopping Agent",
+    })
+    .returning({ id: agentSessions.id });
+  return {
+    hostId: host?.id as string,
+    sessionId: session?.id as string,
+    sessionPrivateKey: await exportJWK(privateKey),
   };
 }
 
@@ -119,6 +177,124 @@ describe("purchase requests at bc-authorize", () => {
 
   afterEach(() => {
     vi.unstubAllEnvs();
+    pushMock.sent = 0;
+  });
+
+  async function storedAgentBinding() {
+    return await db
+      .select({
+        assertionVerified: cibaRequests.assertionVerified,
+        scope: cibaRequests.scope,
+      })
+      .from(cibaRequests)
+      .get();
+  }
+
+  // R29: the pins change only representation, so the hash the server
+  // recomputes from the stored request is the hash the agent signed.
+  it.each([
+    ["purchase", PURCHASE, "identity.address openid identity.name"],
+    ["x402_purchase", X402_PURCHASE, "poh openid"],
+  ])(
+    "binds an Agent-Assertion over a %s request",
+    async (_type, detail, scope) => {
+      const agent = await createRegisteredAgent(userId, CLIENT_ID);
+      const reordered = Object.fromEntries(Object.entries(detail).reverse());
+      const body = {
+        client_id: CLIENT_ID,
+        scope,
+        login_hint: loginHint,
+        binding_message: "Buy from Corner Books",
+        authorization_details: JSON.stringify([reordered]),
+      };
+      const assertion = await signAgentAssertion({
+        bindingMessage: body.binding_message,
+        scope: body.scope,
+        authorizationDetails: body.authorization_details,
+        ...agent,
+      });
+
+      const response = await postBcAuthorize(body, {
+        "Agent-Assertion": assertion,
+      });
+
+      expect(response.status).toBe(200);
+      expect(await storedAgentBinding()).toEqual({
+        assertionVerified: true,
+        scope,
+      });
+    }
+  );
+
+  // R28: a mismatched assertion is refused, not silently left unbound.
+  it.each([
+    [
+      "the binding message alone",
+      { authorizationDetails: undefined, scope: "openid" },
+    ],
+    [
+      "another amount",
+      {
+        authorizationDetails: JSON.stringify([
+          { ...PURCHASE, amount: { value: "1.00", currency: "EUR" } },
+        ]),
+      },
+    ],
+  ])("refuses an Agent-Assertion signed over %s", async (_case, change) => {
+    const agent = await createRegisteredAgent(userId, CLIENT_ID);
+    const body = {
+      client_id: CLIENT_ID,
+      scope: DIRECT_SCOPE,
+      login_hint: loginHint,
+      binding_message: "Buy from Corner Books",
+      authorization_details: JSON.stringify([PURCHASE]),
+    };
+    const signed = Object.assign(
+      {
+        bindingMessage: body.binding_message,
+        scope: body.scope,
+        authorizationDetails: body.authorization_details,
+      },
+      change
+    );
+    const assertion = await signAgentAssertion({ ...signed, ...agent });
+
+    const response = await postBcAuthorize(body, {
+      "Agent-Assertion": assertion,
+    });
+
+    expect(response.status).toBe(400);
+    expect(response.json).toEqual({
+      error: "invalid_request",
+      error_description: "Agent-Assertion does not match this request",
+    });
+    expect(await storedRequests()).toHaveLength(0);
+    expect(pushMock.sent).toBe(0);
+  });
+
+  it("refuses an Agent-Assertion from an unknown session", async () => {
+    const agent = await createRegisteredAgent(userId, CLIENT_ID);
+    const body = {
+      client_id: CLIENT_ID,
+      scope: DIRECT_SCOPE,
+      login_hint: loginHint,
+      binding_message: "Buy from Corner Books",
+      authorization_details: JSON.stringify([PURCHASE]),
+    };
+    const assertion = await signAgentAssertion({
+      bindingMessage: body.binding_message,
+      scope: body.scope,
+      authorizationDetails: body.authorization_details,
+      ...agent,
+      sessionId: "unknown-session",
+    });
+
+    const response = await postBcAuthorize(body, {
+      "Agent-Assertion": assertion,
+    });
+
+    expect(response.status).toBe(400);
+    expect(response.json.error).toBe("invalid_request");
   });
 
   // R1: both purchase types are registered.

@@ -320,6 +320,8 @@ The MCP sends `Agent-Assertion` on CIBA requests. That assertion is a short-live
 - `task_id`
 - `task_hash`
 
+`task_hash` is the hex SHA-256 of the RFC 8785 canonical JSON of the request the MCP sends: its binding message, sorted scopes, `acr_values`, and `authorization_details`. The MCP signs the assertion after it builds the request, and bc-authorize refuses an assertion whose hash does not match that request with `invalid_request`.
+
 Before Zentity uses an unverified assertion payload to choose a session key, it parses the JWT with duplicate-key rejection. This keeps issuer/session selection deterministic even if a malicious assertion contains repeated JSON member names.
 
 When Zentity receives a valid assertion, it snapshots server-owned runtime metadata onto the CIBA request:
@@ -851,7 +853,7 @@ Once consent is obtained, the question shifts from "does the human approve?" to 
 
 Two convergence points tie the five concerns together rather than letting them exist as parallel tracks.
 
-The `assertionVerified` flag on the CIBA request row is the first. It is set when the `Agent-Assertion` from the control plane passes verification inside the consent channel. If verification fails, three downstream effects cascade: the token's `act` names the client, the token response carries no agent authorization, and introspection returns `active: false` for agent consumers.
+The `assertionVerified` flag on the CIBA request row is the first. It is set when the `Agent-Assertion` from the control plane passes verification inside the consent channel. bc-authorize refuses an assertion that does not match the request before anything is stored. If binding still fails (a replayed `jti`, or a host of another user or client), three downstream effects cascade: the token's `act` names the client, the token response carries no agent authorization, and introspection returns `active: false` for agent consumers.
 
 The `authorization_details` payload is the second. It enters at the structured intent layer, drives capability matching in the consent channel, and survives into the CIBA access token and its token response, where the CIBA plugin issues the details it stored at bc-authorize. Token exchange refuses a subject that carries it. The same structured data flows across these specs without transformation, which is evidence that the specs compose cleanly rather than fighting over data representation.
 

@@ -66,7 +66,10 @@ import {
   normalizeAuthorizationDetails,
 } from "@/lib/agents/capability";
 import { buildCibaPushPayload, sendWebPush } from "@/lib/agents/push-sender";
-import { bindAgentAssertionToCibaRequest } from "@/lib/agents/session";
+import {
+  bindAgentAssertionToCibaRequest,
+  verifyAgentAssertionForRequest,
+} from "@/lib/agents/session";
 import {
   ACR_VALUES_SUPPORTED,
   buildNamespacedAssuranceClaim,
@@ -1572,6 +1575,33 @@ async function approveFromCapabilityGrant(input: {
   }
 }
 
+function agentAssertionHeader(
+  ctx: GenericEndpointContext | HookCtx
+): string | null | undefined {
+  return (
+    ctx.headers?.get("Agent-Assertion") ??
+    ctx.request?.headers.get("Agent-Assertion")
+  );
+}
+
+/**
+ * A bc-authorize request that presents an Agent-Assertion must be the request
+ * the assertion signed. A mismatch is refused before the plugin stores or
+ * notifies anything, rather than proceeding as an unverified agent.
+ */
+async function refuseMismatchedAgentAssertion(
+  ctx: HookCtx,
+  body: Record<string, unknown>
+): Promise<void> {
+  const assertion = agentAssertionHeader(ctx);
+  if (assertion && !(await verifyAgentAssertionForRequest(body, assertion))) {
+    throw new APIError("BAD_REQUEST", {
+      error: "invalid_request",
+      error_description: "Agent-Assertion does not match this request",
+    });
+  }
+}
+
 /**
  * CIBA `sendNotification`: binds a verified Agent-Assertion, auto-approves
  * from capability grants when they allow it, and otherwise notifies the user
@@ -1605,9 +1635,7 @@ async function notifyCibaRequest(
   let verifiedAgent:
     | { authContextId: string | null; sessionId: string }
     | undefined;
-  const assertionHeader =
-    ctx.headers?.get("Agent-Assertion") ??
-    ctx.request?.headers.get("Agent-Assertion");
+  const assertionHeader = agentAssertionHeader(ctx);
   if (assertionHeader) {
     const boundAssertion = await bindAgentAssertionToCibaRequest({
       assertionJwt: assertionHeader,
@@ -1995,6 +2023,7 @@ export const auth = betterAuth({
           pinPaymentRequest(ctx.body);
           pinPurchaseRequest(ctx.body);
           normalizeUserTokenResources(ctx.body, { allowWalletAudience: true });
+          await refuseMismatchedAgentAssertion(ctx, ctx.body);
         }
         return;
       }

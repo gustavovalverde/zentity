@@ -1,6 +1,9 @@
-import { bytesToHex } from "@noble/curves/utils.js";
 import { exportJWK, generateKeyPair, importJWK, type JWK, SignJWT } from "jose";
 import { z } from "zod";
+import {
+  type TaskHashInput,
+  taskHash,
+} from "./protocol/authorization-details";
 import { HOST_ATTESTATION_TIERS } from "./protocol/claims";
 import {
   encodeEd25519DidKeyFromJwk,
@@ -67,8 +70,14 @@ export interface RegisterAgentSessionOptions {
   requestedCapabilities?: string[];
 }
 
-export interface SignAgentAssertionOptions {
-  bindingMessage: string;
+/**
+ * The registered session that signs, and the CIBA request it signs for. The
+ * request members are the ones the agent sends to bc-authorize: the
+ * assertion's `task_hash` covers the binding message, the scopes, any
+ * `acr_values`, and any `authorization_details`, so the authorization server
+ * refuses the assertion on any other request.
+ */
+export interface SignAgentAssertionOptions extends TaskHashInput {
   hostId: string;
   jti?: string;
   sessionId: string;
@@ -278,21 +287,14 @@ export async function registerAgentSession(
   };
 }
 
-async function sha256Hex(text: string): Promise<string> {
-  const encoded = new TextEncoder().encode(text);
-  const digest = await crypto.subtle.digest("SHA-256", encoded);
-  return bytesToHex(new Uint8Array(digest));
-}
-
 export async function signAgentAssertion(
   options: SignAgentAssertionOptions
 ): Promise<string> {
   const privateKey = await importJWK(options.sessionPrivateKey, "EdDSA");
-  const taskHash = await sha256Hex(options.bindingMessage);
 
   return new SignJWT({
     host_id: options.hostId,
-    task_hash: taskHash,
+    task_hash: await taskHash(options),
     task_id: options.taskId ?? crypto.randomUUID(),
   })
     .setProtectedHeader({ alg: "EdDSA", typ: "agent-assertion+jwt" })

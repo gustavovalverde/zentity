@@ -317,9 +317,17 @@ async function registerAgentSession(
   return updated;
 }
 
+/**
+ * Signs an Agent-Assertion over the CIBA request the scenario will send. The
+ * request members must be the ones sent to bc-authorize, which recomputes the
+ * assertion's `task_hash` from them.
+ */
 export async function prepareAgentAssertionForScenario(params: {
+  acrValues?: string | undefined;
+  authorizationDetails?: string | readonly unknown[] | undefined;
   bindingMessage: string;
   scenarioId: RouteScenarioId;
+  scope: string;
   trustTier?: TrustTier;
   userId: string;
 }): Promise<string | null> {
@@ -376,6 +384,9 @@ export async function prepareAgentAssertionForScenario(params: {
 
   return signAgentAssertion({
     bindingMessage: params.bindingMessage,
+    scope: params.scope,
+    acrValues: params.acrValues,
+    authorizationDetails: params.authorizationDetails,
     hostId: runtime.hostId,
     sessionId: runtime.sessionId,
     sessionPrivateKey: JSON.parse(runtime.sessionPrivateJwk),
