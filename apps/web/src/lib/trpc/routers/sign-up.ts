@@ -1,5 +1,6 @@
 import "server-only";
 
+import { TRPCError } from "@trpc/server";
 import z from "zod";
 
 import { auth } from "@/lib/auth/auth-config";
@@ -10,7 +11,8 @@ import {
   clearAnonymousFlag,
   deleteStaleAnonymousUserByEmail,
   emailBelongsToAnotherAccount,
-  linkWalletAddress,
+  isUserAnonymous,
+  isWalletLinkedToUser,
   updateUserEmail,
   updateUserWalletIdentity,
 } from "@/lib/db/queries/auth";
@@ -36,18 +38,28 @@ export const signUpRouter = router({
               message: "This email address can't be used",
             })
             .optional(),
-          wallet: z
-            .object({
-              address: z.string().min(1),
-              chainId: z.number().int().positive(),
-            })
-            .optional(),
+          wallet: z.object({ address: z.string().min(1) }).optional(),
         })
         .optional()
     )
     .mutation(async ({ ctx, input }) => {
+      // Completing sign-up sets the account's email and wallet without any
+      // other check, so it must not reach an account that already exists.
+      if (!(await isUserAnonymous(ctx.userId))) {
+        throw new TRPCError({
+          code: "FORBIDDEN",
+          message: "This account is already set up.",
+        });
+      }
+
       const email = input?.email?.trim() || null;
       const wallet = input?.wallet;
+      if (wallet && !(await isWalletLinkedToUser(ctx.userId, wallet.address))) {
+        throw new TRPCError({
+          code: "FORBIDDEN",
+          message: "Sign in with this wallet to link it to your account.",
+        });
+      }
 
       // Privacy: never reveal whether an email is registered. If the email
       // belongs to another account, no-op locally and dispatch an alert to
@@ -94,14 +106,6 @@ export const signUpRouter = router({
       try {
         await Promise.all([
           identityUpdate,
-          wallet
-            ? linkWalletAddress({
-                userId: ctx.userId,
-                address: wallet.address,
-                chainId: wallet.chainId,
-                isPrimary: true,
-              })
-            : Promise.resolve(),
           upsertIdentityBundle({
             userId: ctx.userId,
             validityStatus: "pending",

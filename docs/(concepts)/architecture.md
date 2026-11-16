@@ -163,7 +163,7 @@ sequenceDiagram
   end
   AUTH-->>UI: Session with credential
   UI->>API: completeAccountCreation
-  API->>DB: Link email/wallet, clear isAnonymous, create identity bundle stub
+  API->>DB: On the anonymous account, set email (unverified) or wallet identity, clear isAnonymous, create identity bundle stub
   UI->>UI: Invalidate session cookie cache
   UI-->>UI: Redirect → /dashboard
 

@@ -304,7 +304,7 @@ The system has two distinct flows: **sign-up** (account creation) and **verifica
 
 1. **Credential choice** → User picks passkey, password (OPAQUE), or wallet (inline cards)
 2. **Session creation** → Passkey/password paths call `ensureAuthSession()` on demand to create an anonymous user; wallet (SIWE) creates its own user directly
-3. **Account completion** → `trpc.signUp.completeAccountCreation` links email/wallet, clears `isAnonymous`, creates identity bundle stub, then client invalidates the session cookie cache so the dashboard reads fresh data
+3. **Account completion** → `trpc.signUp.completeAccountCreation`, which accepts only a still-anonymous account, sets the email (unverified, with a verification link) or the wallet identity, clears `isAnonymous`, creates identity bundle stub, then client invalidates the session cookie cache so the dashboard reads fresh data. A wallet is accepted only when its Sign-In with Ethereum sign-up already linked it, after verifying the wallet signatures
 4. User lands on dashboard with **Tier 0** (Anonymous: account created, no FHE keys yet). Tier 1 (Account) starts once FHE keys are enrolled at the verification preflight.
 
 FHE key enrollment is **not** part of sign-up — it happens as a verification preflight gate when the user starts identity verification. See [FHE Key Lifecycle](docs/(protocols)/fhe-key-lifecycle.md).

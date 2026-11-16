@@ -75,7 +75,7 @@ export function SignUpForm() {
   };
 
   const completeAccountCreation = async (params?: {
-    wallet?: { address: string; chainId: number };
+    wallet?: { address: string };
   }): Promise<{ email: string | null }> => {
     const resolvedEmail = resolveEmail();
 
@@ -137,6 +137,15 @@ export function SignUpForm() {
               : authResult.message ||
                 "This passkey is already registered. Please sign in to continue.";
           throw new Error(message);
+        }
+        // The passkey signed in to an account that already finished sign-up,
+        // which keeps its own email.
+        const session = await authClient.getSession({
+          query: { disableCookieCache: true },
+        });
+        if (session.data && !session.data.user.isAnonymous) {
+          finalizeSignUp();
+          return;
         }
         credentialId = authResult.credentialId ?? null;
         prfOutput = authResult.prfOutput ?? null;
@@ -208,7 +217,7 @@ export function SignUpForm() {
 
     try {
       const { email: submitted } = await completeAccountCreation({
-        wallet: { address: result.address, chainId: result.chainId },
+        wallet: { address: result.address },
       });
       if (submitted) {
         setSubmittedEmail(submitted);

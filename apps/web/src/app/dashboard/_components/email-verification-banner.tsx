@@ -8,13 +8,7 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { asyncHandler } from "@/lib/async-handler";
 import { authClient } from "@/lib/auth/auth-client";
-
-const SYNTHETIC_EMAIL_DOMAINS = ["anon.zentity.app", "wallet.zentity.app"];
-
-function isSyntheticEmail(email: string): boolean {
-  const domain = email.split("@")[1];
-  return domain !== undefined && SYNTHETIC_EMAIL_DOMAINS.includes(domain);
-}
+import { isSyntheticEmail } from "@/lib/auth/synthetic-email";
 
 export function EmailVerificationBanner({
   email,

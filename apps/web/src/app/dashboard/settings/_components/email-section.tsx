@@ -21,13 +21,7 @@ import { Redacted } from "@/components/ui/redacted";
 import { Spinner } from "@/components/ui/spinner";
 import { asyncHandler, reportRejection } from "@/lib/async-handler";
 import { authClient, useSession } from "@/lib/auth/auth-client";
-
-const SYNTHETIC_EMAIL_DOMAINS = ["anon.zentity.app", "wallet.zentity.app"];
-
-function isSyntheticEmail(email: string): boolean {
-  const domain = email.split("@")[1];
-  return domain !== undefined && SYNTHETIC_EMAIL_DOMAINS.includes(domain);
-}
+import { isSyntheticEmail } from "@/lib/auth/synthetic-email";
 
 type EmailState = "synthetic" | "unverified" | "verified";
 

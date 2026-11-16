@@ -193,6 +193,10 @@ import { opaque } from "@/lib/auth/opaque/server";
 import { getTrustedOrigins, PASSKEY_RP_ID } from "@/lib/auth/origin";
 import { canManageOAuthClients } from "@/lib/auth/rp-admin";
 import { siweAuth } from "@/lib/auth/siwe/server";
+import {
+  ANONYMOUS_EMAIL_DOMAIN,
+  WALLET_EMAIL_DOMAIN,
+} from "@/lib/auth/synthetic-email";
 import { parseStoredStringArray } from "@/lib/db/adapter-compat";
 import { db } from "@/lib/db/connection";
 import {
@@ -2142,7 +2146,7 @@ export const auth = betterAuth({
       revokeSessionsOnPasswordReset: true,
     }),
     anonymous({
-      emailDomainName: "anon.zentity.app",
+      emailDomainName: ANONYMOUS_EMAIL_DOMAIN,
     }),
     magicLink({
       sendMagicLink: async ({ email, url }) => {
@@ -2171,7 +2175,7 @@ export const auth = betterAuth({
     organization({
       creatorRole: "owner",
     }),
-    siweAuth({ emailDomainName: "wallet.zentity.app" }),
+    siweAuth({ emailDomainName: WALLET_EMAIL_DOMAIN }),
     jwt({
       ...signingKeyOptions,
       jwks: {
