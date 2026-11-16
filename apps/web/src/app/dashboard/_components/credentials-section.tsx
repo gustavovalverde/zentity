@@ -48,7 +48,12 @@ import {
   EmptyMedia,
   EmptyTitle,
 } from "@/components/ui/empty";
-import { Field, FieldDescription, FieldLabel } from "@/components/ui/field";
+import {
+  Field,
+  FieldDescription,
+  FieldError,
+  FieldLabel,
+} from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
@@ -78,6 +83,15 @@ interface CredentialOfferState {
   expiresIn: number;
   offer: Record<string, unknown>;
   offerUri: string;
+  walletClientId: string | null;
+}
+
+function isBadRequest(error: unknown): error is Error {
+  return (
+    error instanceof Error &&
+    "data" in error &&
+    (error.data as { code?: string } | undefined)?.code === "BAD_REQUEST"
+  );
 }
 
 export function CredentialsSection() {
@@ -85,7 +99,11 @@ export function CredentialsSection() {
     null
   );
   const [countdown, setCountdown] = useState(0);
+  const [walletPickerOpen, setWalletPickerOpen] = useState(false);
   const [walletClientId, setWalletClientId] = useState("");
+  const [walletClientIdError, setWalletClientIdError] = useState<string | null>(
+    null
+  );
   const walletClientIdInputId = useId();
 
   const trpc = useTRPC();
@@ -115,25 +133,39 @@ export function CredentialsSection() {
     return () => clearInterval(interval);
   }, [offerDialog]);
 
+  const handleWalletPickerOpenChange = useCallback((open: boolean) => {
+    setWalletPickerOpen(open);
+    if (!open) {
+      setWalletClientId("");
+      setWalletClientIdError(null);
+    }
+  }, []);
+
   const handleGetCredential = useCallback(async () => {
+    const targetClientId = walletPickerOpen ? walletClientId.trim() : "";
+    setWalletClientIdError(null);
     try {
-      const trimmedClientId = walletClientId.trim();
       const result = await createOfferMutation.mutateAsync(
-        trimmedClientId ? { walletClientId: trimmedClientId } : {}
+        targetClientId ? { walletClientId: targetClientId } : {}
       );
 
       setOfferDialog({
         offerUri: result.offerUri,
         offer: result.offer,
         expiresIn: result.expiresIn,
+        walletClientId: targetClientId || null,
       });
     } catch (error) {
+      if (targetClientId && isBadRequest(error)) {
+        setWalletClientIdError(error.message);
+        return;
+      }
       toast.error("Failed to create credential offer", {
         description:
           error instanceof Error ? error.message : "Please try again",
       });
     }
-  }, [createOfferMutation, walletClientId]);
+  }, [createOfferMutation, walletClientId, walletPickerOpen]);
 
   const handleCopyUri = useCallback(async () => {
     if (!offerDialog?.offerUri) {
@@ -272,7 +304,10 @@ export function CredentialsSection() {
             </AlertDescription>
           </Alert>
 
-          <Collapsible>
+          <Collapsible
+            onOpenChange={handleWalletPickerOpenChange}
+            open={walletPickerOpen}
+          >
             <CollapsibleTrigger asChild>
               <Button
                 className="group h-auto p-0 text-muted-foreground"
@@ -285,21 +320,29 @@ export function CredentialsSection() {
               </Button>
             </CollapsibleTrigger>
             <CollapsibleContent className="pt-3">
-              <Field>
+              <Field data-invalid={Boolean(walletClientIdError)}>
                 <FieldLabel htmlFor={walletClientIdInputId}>
                   Wallet client ID
                 </FieldLabel>
                 <Input
+                  aria-invalid={Boolean(walletClientIdError)}
                   autoCapitalize="none"
                   autoComplete="off"
                   id={walletClientIdInputId}
-                  onChange={(event) => setWalletClientId(event.target.value)}
+                  onChange={(event) => {
+                    setWalletClientId(event.target.value);
+                    setWalletClientIdError(null);
+                  }}
                   spellCheck={false}
                   value={walletClientId}
                 />
                 <FieldDescription>
-                  Only the wallet with this client ID can accept the offer.
+                  A wallet with a different client ID can&apos;t accept the
+                  offer.
                 </FieldDescription>
+                {walletClientIdError ? (
+                  <FieldError>{walletClientIdError}</FieldError>
+                ) : null}
               </Field>
             </CollapsibleContent>
           </Collapsible>
@@ -332,8 +375,19 @@ export function CredentialsSection() {
               Scan with Your Wallet
             </DialogTitle>
             <DialogDescription>
-              Scan this QR code with a compatible identity wallet to receive
-              your credential.
+              {offerDialog?.walletClientId ? (
+                <>
+                  Scan this QR code with the wallet registered as{" "}
+                  <code className="break-all">
+                    {offerDialog.walletClientId}
+                  </code>{" "}
+                  to receive your credential.
+                </>
+              ) : (
+                "Scan this QR code with a compatible identity wallet to receive your credential."
+              )}{" "}
+              Keep the code and link private until your wallet accepts the
+              offer.
             </DialogDescription>
           </DialogHeader>
 
