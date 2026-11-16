@@ -19,8 +19,8 @@ import { introspectZentityAccessToken } from "@/lib/auth/oidc/resource-principal
 import { TOKEN_EXCHANGE_GRANT_TYPE } from "@/lib/auth/oidc/token-exchange";
 import { getAuthIssuer } from "@/lib/auth/oidc/well-known";
 import { db } from "@/lib/db/connection";
-import { agentTokenSnapshots } from "@/lib/db/schema/agent";
 import { sessions } from "@/lib/db/schema/auth";
+import { cibaApprovals } from "@/lib/db/schema/ciba";
 import {
   jwks as jwksTable,
   oauthAccessTokens,
@@ -483,7 +483,8 @@ describe("Token Exchange (RFC 8693)", () => {
         dpopJkt: await jwkThumbprint(dpopKeyPair),
         userId,
       });
-      expect(await db.select().from(agentTokenSnapshots).all()).toEqual([]);
+      // An exchange records no approval token.
+      expect(await db.select().from(cibaApprovals).all()).toEqual([]);
     });
 
     // R26: the MCP server's subject is its own pairwise subject.

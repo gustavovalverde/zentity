@@ -546,10 +546,9 @@ The assertion is placed in the `Agent-Assertion` HTTP header on the CIBA backcha
 | `display_name`, `runtime`, `model`, `version` | Session registration metadata |
 | `task_id`, `task_hash` | Agent-Assertion claims |
 | `assertion_verified` | `true` |
-| `pairwise_act_sub` | Derived for the requesting OAuth client |
 | `attestation_provider`, `attestation_tier` | Host attestation metadata |
 
-This snapshot ties the later token to the actual registered runtime, not a free-form claim supplied by the client.
+This snapshot ties the later token to the actual registered runtime, not a free-form claim supplied by the client. The AS copies the verified session and attestation onto its durable approval record at the decision, and derives `act.sub` from it for each token's own sector (§4.3); no actor identifier is stored.
 
 **CIBA request integrity.** Three additional security properties apply to CIBA requests in PACT:
 
@@ -863,7 +862,7 @@ No authentication required for either endpoint.
 - Session lifecycle is re-evaluated at query time. A session that expired between token issuance and introspection returns `active: false`.
 - `sub` and `agent.id` MUST come from a consistent caller-relative pairwise view. If the server cannot safely re-project `sub` for the introspecting client, it MUST omit `sub` rather than leak another client's pairwise identifier.
 - `client_id` and `aud` continue to identify the token that was issued, not the introspector's own client registration.
-- If `assertion_verified` is `false` on the token snapshot, delegation claims are omitted.
+- If `assertion_verified` was `false` on the CIBA request, the approval record names no agent, and the response is `{ "active": false }`.
 
 ### 10.4 A2A Agent Card (Informational)
 

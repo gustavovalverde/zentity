@@ -1,12 +1,11 @@
 import "server-only";
 
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 
 import { db } from "@/lib/db/connection";
-import { agentHosts, agentSessions } from "@/lib/db/schema/agent";
 import { pairwiseSubjects } from "@/lib/db/schema/oauth-provider";
 
-type PairwiseSubjectType = "agent_session" | "user";
+type PairwiseSubjectType = "user";
 
 interface PairwiseSubjectIndexEntry {
   sector: string;
@@ -46,9 +45,7 @@ export async function resolvePairwiseSubjectId(
   return indexed?.subjectId ?? null;
 }
 
-/**
- * Removes pairwise rows for a user and any agent sessions that user owns.
- */
+/** Removes the user's pairwise rows. */
 export async function deletePairwiseSubjectsForUser(
   userId: string
 ): Promise<void> {
@@ -58,28 +55,6 @@ export async function deletePairwiseSubjectsForUser(
       and(
         eq(pairwiseSubjects.subjectType, "user"),
         eq(pairwiseSubjects.subjectId, userId)
-      )
-    )
-    .run();
-
-  const ownedSessions = await db
-    .select({ id: agentSessions.id })
-    .from(agentSessions)
-    .innerJoin(agentHosts, eq(agentSessions.hostId, agentHosts.id))
-    .where(eq(agentHosts.userId, userId))
-    .all();
-
-  const sessionIds = ownedSessions.map((session) => session.id);
-  if (sessionIds.length === 0) {
-    return;
-  }
-
-  await db
-    .delete(pairwiseSubjects)
-    .where(
-      and(
-        eq(pairwiseSubjects.subjectType, "agent_session"),
-        inArray(pairwiseSubjects.subjectId, sessionIds)
       )
     )
     .run();

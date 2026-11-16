@@ -56,16 +56,16 @@ import { PHASE_PRODUCTION_BUILD } from "next/constants";
 import { env } from "@/env";
 import { evaluateSessionGrants } from "@/lib/agents/approval-evaluate";
 import {
+  agentApprovalFor,
+  recordApprovalToken,
+} from "@/lib/agents/approval-record";
+import {
   type ApprovalPolicy,
   approvalPolicy,
   normalizeAuthorizationDetails,
 } from "@/lib/agents/capability";
 import { buildCibaPushPayload, sendWebPush } from "@/lib/agents/push-sender";
 import { bindAgentAssertionToCibaRequest } from "@/lib/agents/session";
-import {
-  buildCibaAgentContribution,
-  persistTokenSnapshot,
-} from "@/lib/agents/token-snapshot";
 import {
   ACR_VALUES_SUPPORTED,
   buildNamespacedAssuranceClaim,
@@ -856,23 +856,11 @@ async function afterIntrospectKeepJwtSubject(ctx: HookCtx) {
   return ctx.json({ ...introspection, sub });
 }
 
-function accessTokenJti(token: string): string | undefined {
-  if (token.split(".").length !== 3) {
-    return undefined;
-  }
-  try {
-    const jti = decodeJwt(token).jti;
-    return typeof jti === "string" ? jti : undefined;
-  } catch {
-    return undefined;
-  }
-}
-
 /**
- * Loads what a CIBA token poll needs from the request row before the plugin
- * consumes (deletes) it: the step-up re-check, the staged identity release,
- * the verified agent context, the approval-time authentication context, and
- * the approval record's oversight.
+ * Loads what a CIBA token poll needs before the plugin consumes (deletes) the
+ * request row: the step-up re-check, the staged identity release, and the
+ * approval-time authentication context from the request, and from the
+ * approval record its oversight and any verified agent with what it may do.
  * The result is stashed for the claim contributors and the after-hook of the
  * same request. A refusal here leaves the approved request in place for
  * another poll.
@@ -910,13 +898,10 @@ async function beforeCibaTokenLoadRequest(ctx: HookCtx) {
   }
 
   const approval = await findCibaApproval(authReqIdHash);
-  const contribution = await buildCibaAgentContribution(
-    row as unknown as Record<string, unknown>,
-    approval
-  );
+  const agent = approval ? agentApprovalFor(approval) : null;
   await setPendingCibaToken({
-    agentSessionId: contribution?.snapshot.agentSessionId ?? null,
-    authorization: contribution?.authorization ?? null,
+    agentSessionId: agent?.sessionId ?? null,
+    authorization: agent?.authorization ?? null,
     authContextId: row.authContextId ?? "",
     authReqIdHash,
     oversight: approval?.approvalMethod
@@ -925,16 +910,14 @@ async function beforeCibaTokenLoadRequest(ctx: HookCtx) {
           approved_at: Math.floor(approval.decidedAt.getTime() / 1000),
         }
       : null,
-    snapshot: contribution?.snapshot ?? null,
   });
 }
 
 /**
- * Drains the CIBA token stash after `/oauth2/token` by persisting the agent
- * snapshot keyed by the minted token's identity. Every CIBA token references
- * the stored auth_req_id hash, set as the request's `referenceId` at approval.
- * The snapshot is keyed by the JWT's jti (the AS owns it) or, for opaque
- * tokens, by that referenceId, which introspection looks up.
+ * Drains the CIBA token stash after `/oauth2/token` by recording the issued
+ * token on the approval, whose `reference_id` every CIBA token carries as its
+ * own. Introspection finds the approval of a JWT by that `jti` and of an
+ * opaque token by its `reference_id`.
  */
 async function afterCibaTokenPersist(ctx: HookCtx) {
   const pending = await getPendingCibaToken();
@@ -943,21 +926,12 @@ async function afterCibaTokenPersist(ctx: HookCtx) {
   }
   const { authReqIdHash } = pending;
 
-  const audienceClientId = ctx.body?.client_id as string | undefined;
-  if (pending.snapshot && audienceClientId) {
-    const responseBody = await readReturnedResponseBody(
-      (ctx.context as { returned?: unknown }).returned
-    );
-    const accessToken = responseBody?.access_token;
-    const tokenJti =
-      typeof accessToken === "string"
-        ? (accessTokenJti(accessToken) ?? authReqIdHash)
-        : authReqIdHash;
-    await persistTokenSnapshot({
-      tokenJti,
-      audienceClientId,
-      snapshot: pending.snapshot,
-    });
+  const responseBody = await readReturnedResponseBody(
+    (ctx.context as { returned?: unknown }).returned
+  );
+  const accessToken = responseBody?.access_token;
+  if (typeof accessToken === "string") {
+    await recordApprovalToken({ accessToken, referenceId: authReqIdHash });
   }
 }
 

@@ -66,7 +66,7 @@ The approval page runs one ceremony at the Approve click. When the vault is pass
 
 ### The approval record
 
-`ciba_approval` holds one row per decision: the decision, `approval_method` (`session`, `user_verification`, or `capability_grant`), `approval_channel` (`push`, `page`, `email`, or `grant`), copies of the scope, binding message, details, and `acr_values`, the grant facts, the agent session and attestation, the authentication context, and the request, decision, and expiry times. It is written before the plugin can consume the request and is deleted only with the user. It is the source of the CIBA token response members `oversight: { method, approved_at }` and, for a verified agent, `capabilities` and `delegation`, of agent introspection, and of the Requests tab history.
+`ciba_approval` holds one row per decision: the decision, `approval_method` (`session`, `user_verification`, or `capability_grant`), `approval_channel` (`push`, `page`, `email`, or `grant`), copies of the scope, binding message, details, and `acr_values`, the grant facts, the agent session and attestation, the authentication context, the request, decision, and expiry times, and the one access token the approval issued (`token_jti` for a JWT, `token_audience`, and `token_issued_at`). It is written before the plugin can consume the request and is deleted only with the user. It is the source of the CIBA token response members `oversight: { method, approved_at }` and, for a verified agent, `capabilities` and `delegation`, of agent introspection, and of the Requests tab history.
 
 ### Error codes
 
@@ -107,3 +107,4 @@ Every other refusal uses a registered OAuth, OIDC, or CIBA code. The one specifi
 
 * 2026-11-16: Removed the `payment_authorization:sign` scope row. The scope no longer exists: a payment client registers the `payment_authorization` RAR type, and the payment entry alone makes a request a payment.
 * 2026-11-16: The record also supplies a verified agent's `capabilities` and `delegation` in the token response and at agent introspection, since access tokens no longer carry agent claims. A manual approval names the capabilities the policy table maps the request to.
+* 2026-11-16: The record keeps the access token its approval issued, which replaces the separate agent token snapshot; agent introspection finds a JWT's approval by `token_jti` and an opaque token's by `reference_id`.

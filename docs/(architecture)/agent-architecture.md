@@ -333,7 +333,7 @@ When Zentity receives a valid assertion, it snapshots server-owned runtime metad
 - `task_hash`
 - `assertion_verified`
 
-That snapshot is what ties the later token to the actual registered runtime, not a free-form claim supplied by the client at approval time.
+That snapshot is what ties the later token to the actual registered runtime, not a free-form claim supplied by the client at approval time. The decision copies the verified session and its attestation onto the request's `ciba_approval` record, which outlives the request. The token's `act`, its token response, and agent introspection all read the agent from that record, and the record keeps the one token the approval issued: `token_jti` for a JWT (null for an opaque token, which carries the record's `reference_id`), `token_audience`, and `token_issued_at`.
 
 ### The two main approval paths
 
@@ -682,7 +682,7 @@ The route:
 
 1. authenticates the caller as a machine client
 2. verifies the presented Zentity access token
-3. resolves the acting session from server-owned token snapshot metadata
+3. resolves the acting session from the token's approval record
 4. computes current lifecycle state
 5. returns the token's actor and the approval's authorization plus Zentity lifecycle metadata
 

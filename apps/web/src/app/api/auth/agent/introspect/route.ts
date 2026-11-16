@@ -1,7 +1,10 @@
 import { NextResponse } from "next/server";
 
+import {
+  agentApprovalFor,
+  findApprovalForToken,
+} from "@/lib/agents/approval-record";
 import { observeSessionLifecycle } from "@/lib/agents/session";
-import { resolveTokenSnapshotForTokenJti } from "@/lib/agents/token-snapshot";
 import {
   findPairwiseClient,
   resolveSubForClient,
@@ -97,13 +100,12 @@ async function introspect(
       : rawUserId;
   }
 
-  let tokenSnapshot: Awaited<
-    ReturnType<typeof resolveTokenSnapshotForTokenJti>
-  > = null;
-  const snapshotKey = isJwt ? payload.jti : payload.reference_id;
-  if (typeof snapshotKey === "string") {
-    tokenSnapshot = await resolveTokenSnapshotForTokenJti(snapshotKey);
-  }
+  const key = isJwt ? payload.jti : payload.reference_id;
+  const approval =
+    typeof key === "string"
+      ? await findApprovalForToken(isJwt ? { jti: key } : { referenceId: key })
+      : null;
+  const tokenSnapshot = approval ? agentApprovalFor(approval) : null;
   if (!tokenSnapshot) {
     return NextResponse.json({ active: false });
   }

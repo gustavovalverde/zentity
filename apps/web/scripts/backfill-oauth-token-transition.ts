@@ -2,8 +2,8 @@
 
 /**
  * One-time transition for the move to the OAuth provider's JWT revocation,
- * per-token `accessTokenClaims`, the first-party-apps plugin, and the CIBA
- * approval record. Every step is idempotent, and the script applies them in
+ * per-token `accessTokenClaims`, the first-party-apps plugin, the CIBA
+ * approval record, and its token columns. Every step is idempotent, and the script applies them in
  * one transaction.
  *
  * 1. Moves the timestamp defaults that #298 and #338 changed from
@@ -52,6 +52,13 @@
  *    host when every redirect URI is https, else `client/<client_id>`.
  *    Subjects of loopback, custom-scheme, and metadata-document clients
  *    change, so their users sign in again.
+ * 10. Adds the `token_jti`, `token_audience`, and `token_issued_at` columns
+ *    of `ciba_approval`, and the unique index on `token_jti`, with the DDL
+ *    `pnpm db:push` would emit. The new release records every CIBA token on
+ *    its approval and finds agent tokens there at introspection.
+ * 11. Deletes the `pairwise_subject` rows of type `agent_session`. Agent
+ *    actor subjects are no longer indexed, and the schema no longer allows
+ *    the type.
  *
  * Rollout order:
  *
@@ -62,12 +69,13 @@
  *      after step a.
  *   d. Run `pnpm db:push` once. It drops `auth_challenge_session`,
  *      `oauth_access_token.exchange_claims`, the `reason`, `actor_sub`, and
- *      `audience` columns of `revoked_token`, and the approval columns of
- *      `ciba_request`, which the previous release reads or writes, so it must
- *      not run before step c. When they hold rows, it asks to confirm the
- *      data loss; `--force` confirms it without a terminal. drizzle-kit exits
- *      0 even when SQLite rejects a statement and rolls the push back, so
- *      check its output for an error.
+ *      `audience` columns of `revoked_token`, the approval columns and
+ *      `pairwise_act_sub` of `ciba_request`, and `agent_token_snapshot`,
+ *      which the previous release reads or writes, so it must not run before
+ *      step c. When they hold rows, it asks to confirm the data loss;
+ *      `--force` confirms it without a terminal. drizzle-kit exits 0 even
+ *      when SQLite rejects a statement and rolls the push back, so check its
+ *      output for an error.
  *
  * Because step a creates the new tables and columns and moves the defaults,
  * `pnpm db:push` asks no rename questions and needs no second run. The previous
@@ -195,12 +203,16 @@ const CIBA_APPROVAL_DDL = [
 	\`requested_at\` integer NOT NULL,
 	\`decided_at\` integer NOT NULL,
 	\`expires_at\` integer NOT NULL,
+	\`token_jti\` text,
+	\`token_audience\` text,
+	\`token_issued_at\` integer,
 	FOREIGN KEY (\`user_id\`) REFERENCES \`user\`(\`id\`) ON UPDATE no action ON DELETE cascade,
 	FOREIGN KEY (\`agent_session_id\`) REFERENCES \`agent_session\`(\`id\`) ON UPDATE no action ON DELETE set null,
 	FOREIGN KEY (\`host_id\`) REFERENCES \`agent_host\`(\`id\`) ON UPDATE no action ON DELETE set null,
 	FOREIGN KEY (\`auth_context_id\`) REFERENCES \`authentication_context\`(\`id\`) ON UPDATE no action ON DELETE set null
 )`,
   "CREATE UNIQUE INDEX IF NOT EXISTS `ciba_approval_reference_id_unique` ON `ciba_approval` (`reference_id`)",
+  "CREATE UNIQUE INDEX IF NOT EXISTS `ciba_approval_token_jti_unique` ON `ciba_approval` (`token_jti`)",
   "CREATE INDEX IF NOT EXISTS `ciba_approval_user_decided_idx` ON `ciba_approval` (`user_id`,`decided_at`)",
   "CREATE INDEX IF NOT EXISTS `ciba_approval_client_id_idx` ON `ciba_approval` (`client_id`)",
   "CREATE INDEX IF NOT EXISTS `ciba_approval_agent_session_id_idx` ON `ciba_approval` (`agent_session_id`)",
@@ -208,6 +220,15 @@ const CIBA_APPROVAL_DDL = [
 
 const AGENT_CAPABILITY_GRANTABLE_DDL =
   "ALTER TABLE `agent_capability` ADD `grantable` integer DEFAULT false NOT NULL";
+
+// The columns T4 added to `ciba_approval`, for a table an earlier run of this
+// script created without them. The index statement in CIBA_APPROVAL_DDL runs
+// after these.
+const CIBA_APPROVAL_TOKEN_COLUMNS = [
+  ["token_jti", "text"],
+  ["token_audience", "text"],
+  ["token_issued_at", "integer"],
+] as const;
 
 // `drizzle-kit push` output for this column in oauth-provider.ts.
 const ACCESS_TOKEN_AUTH_CONTEXT_DDL =
@@ -322,13 +343,26 @@ async function main(): Promise<void> {
     (await hasTable("agent_capability")) &&
     !(await hasColumn("agent_capability", "grantable"));
   const createCibaApproval = !(await hasTable("ciba_approval"));
+  const tokenColumns: string[] = [];
+  if (!createCibaApproval) {
+    for (const [column, type] of CIBA_APPROVAL_TOKEN_COLUMNS) {
+      if (!(await hasColumn("ciba_approval", column))) {
+        tokenColumns.push(
+          `ALTER TABLE \`ciba_approval\` ADD \`${column}\` ${type}`
+        );
+      }
+    }
+  }
+  const [createCibaApprovalTable, ...cibaApprovalIndexes] = CIBA_APPROVAL_DDL;
   const schema = [
     ...timestampDefaults,
     ...HUMANITY_CREDENTIAL_UNIQUE_INDEXES,
     ...(addAccessTokenAuthContext ? [ACCESS_TOKEN_AUTH_CONTEXT_DDL] : []),
     ...FIRST_PARTY_APPS_DDL,
     ...(addGrantable ? [AGENT_CAPABILITY_GRANTABLE_DDL] : []),
-    ...CIBA_APPROVAL_DDL,
+    ...(createCibaApprovalTable ? [createCibaApprovalTable] : []),
+    ...tokenColumns,
+    ...cibaApprovalIndexes,
   ];
 
   const statements: InStatement[] = [
@@ -360,6 +394,10 @@ async function main(): Promise<void> {
                    ELSE 0 END`,
       args: [],
     },
+    {
+      sql: "DELETE FROM pairwise_subject WHERE subject_type = 'agent_session'",
+      args: [],
+    },
   ];
   const sectorStatements = await clientSectorStatements();
   statements.push(...sectorStatements);
@@ -375,9 +413,9 @@ async function main(): Promise<void> {
   }
 
   const results = await client.batch(statements, "write");
-  const [markers, decoded] = results.slice(schema.length);
+  const [markers, decoded, agentSubjects] = results.slice(schema.length);
   const sectorsStored = results
-    .slice(schema.length + 2, schema.length + 2 + sectorStatements.length)
+    .slice(schema.length + 3, schema.length + 3 + sectorStatements.length)
     .reduce((total, result) => total + result.rowsAffected, 0);
   const copied = copyExchangeClaims ? results.at(-1) : undefined;
   console.log(`timestamp defaults moved: ${timestampDefaults.length}`);
@@ -389,6 +427,10 @@ async function main(): Promise<void> {
   );
   console.log(
     `ciba_approval: ${createCibaApproval ? "created" : "already present"}`
+  );
+  console.log(`ciba_approval token columns added: ${tokenColumns.length}`);
+  console.log(
+    `agent_session pairwise subjects deleted: ${agentSubjects?.rowsAffected ?? 0}`
   );
   console.log(`revocation markers added: ${markers?.rowsAffected ?? 0}`);
   console.log(`access_token_claims decoded: ${decoded?.rowsAffected ?? 0}`);

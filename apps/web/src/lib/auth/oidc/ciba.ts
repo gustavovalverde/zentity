@@ -12,7 +12,6 @@ import type {
 } from "@zentity/sdk/protocol";
 import type { BetterAuthPlugin } from "better-auth";
 import type { GrantConstraint } from "@/lib/agents/approval-evaluate";
-import type { StoredTokenSnapshot } from "@/lib/agents/token-snapshot";
 
 import { CIBA_GRANT_TYPE } from "@better-auth/ciba";
 import { defineRequestState } from "@better-auth/core/context";
@@ -93,8 +92,6 @@ export interface PendingCibaToken {
   authReqIdHash: string;
   /** How the approval happened, from `ciba_approval`, for the token response. */
   oversight: CibaOversight | null;
-  /** Durable agent snapshot, set only for verified agent sessions. */
-  snapshot: StoredTokenSnapshot | null;
 }
 
 /** The token response member that tells the client how the user approved. */
