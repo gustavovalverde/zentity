@@ -1,4 +1,8 @@
-import type { CreateX402FetchOptions } from "@zentity/sdk";
+import {
+  CibaAuthorizationError,
+  type CreateX402FetchOptions,
+} from "@zentity/sdk";
+import { AGENT_SESSION_INACTIVE_DESCRIPTION } from "@zentity/sdk/agent-contract";
 import {
   buildAuthHintsExtension,
   buildZentityExtension,
@@ -257,6 +261,49 @@ describe("purchase", () => {
       scope: "openid identity.name identity.address",
       authorizationDetails: params.approval.authorizationDetails,
     });
+  });
+
+  // An agent session idles out between tool calls; the purchase signs again
+  // with a new session instead of failing until the process restarts.
+  it("signs with a new agent session when Zentity reports the old one inactive", async () => {
+    const renewed = { ...mockRuntimeState, sessionId: "session-456" };
+    const renewRuntime = vi.fn().mockResolvedValue(renewed);
+    mockSignAgentAssertion.mockImplementation(
+      (runtime: { sessionId: string }) =>
+        Promise.resolve(`assertion-${runtime.sessionId}`)
+    );
+    mockBeginOrResumeInteractiveFlow
+      .mockRejectedValueOnce(
+        new CibaAuthorizationError(
+          400,
+          JSON.stringify({
+            error: "invalid_request",
+            error_description: AGENT_SESSION_INACTIVE_DESCRIPTION,
+          })
+        )
+      )
+      .mockResolvedValueOnce({ status: "denied" });
+
+    const client = await connectClient({
+      auth: {
+        oauth: mockOAuthContext,
+        runtime: mockRuntimeState,
+        renewRuntime,
+      },
+    });
+    const parsed = parse(
+      await client.callTool({ name: "purchase", arguments: purchaseArgs })
+    );
+
+    expect(parsed.status).toBe("denied");
+    expect(renewRuntime).toHaveBeenCalledTimes(1);
+    const sent = mockBeginOrResumeInteractiveFlow.mock.calls.map(
+      ([params]) => params as { approval: { agentAssertion: string } }
+    );
+    expect(sent.map((params) => params.approval.agentAssertion)).toEqual([
+      "assertion-session-123",
+      "assertion-session-456",
+    ]);
   });
 
   it("returns structured fallback interaction data while approval is pending", async () => {

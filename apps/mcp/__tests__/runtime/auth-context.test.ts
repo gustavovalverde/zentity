@@ -1,4 +1,6 @@
 import type { McpServer, ServerContext } from "@modelcontextprotocol/server";
+import { CibaAuthorizationError } from "@zentity/sdk";
+import { AGENT_SESSION_INACTIVE_DESCRIPTION } from "@zentity/sdk/agent-contract";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   type AuthContext,
@@ -6,6 +8,7 @@ import {
   requireAuth,
   runWithAuth,
   setProcessAuthResolver,
+  withAgentSession,
   withToolAuth,
 } from "../../src/runtime/auth-context.js";
 
@@ -90,5 +93,59 @@ describe("auth context", () => {
     const tool = withToolAuth(server, async () => Promise.resolve("never"));
 
     await expect(tool({}, ctx)).rejects.toThrow("login required");
+  });
+});
+
+describe("withAgentSession", () => {
+  const session = (sessionId: string) =>
+    ({ sessionId }) as unknown as NonNullable<AuthContext["runtime"]>;
+  const refusal = (description: string) =>
+    new CibaAuthorizationError(
+      400,
+      JSON.stringify({
+        error: "invalid_request",
+        error_description: description,
+      })
+    );
+
+  it("registers a new session and sends once more when Zentity reports the session inactive", async () => {
+    const renewRuntime = vi.fn().mockResolvedValue(session("session-2"));
+    const send = vi
+      .fn()
+      .mockRejectedValueOnce(refusal(AGENT_SESSION_INACTIVE_DESCRIPTION))
+      .mockResolvedValueOnce("sent");
+
+    const result = await withAgentSession(
+      { ...makeAuth("sub-1"), runtime: session("session-1"), renewRuntime },
+      send
+    );
+
+    expect(result).toBe("sent");
+    expect(renewRuntime).toHaveBeenCalledTimes(1);
+    expect(send.mock.calls.map(([runtime]) => runtime.sessionId)).toEqual([
+      "session-1",
+      "session-2",
+    ]);
+  });
+
+  it("keeps any other refusal, and a second inactive one, as errors", async () => {
+    const renewRuntime = vi.fn().mockResolvedValue(session("session-2"));
+    const auth = {
+      ...makeAuth("sub-1"),
+      runtime: session("session-1"),
+      renewRuntime,
+    };
+    const mismatch = refusal("Agent-Assertion does not match this request");
+
+    await expect(
+      withAgentSession(auth, () => Promise.reject(mismatch))
+    ).rejects.toBe(mismatch);
+    expect(renewRuntime).not.toHaveBeenCalled();
+
+    const inactive = refusal(AGENT_SESSION_INACTIVE_DESCRIPTION);
+    await expect(
+      withAgentSession(auth, () => Promise.reject(inactive))
+    ).rejects.toBe(inactive);
+    expect(renewRuntime).toHaveBeenCalledTimes(1);
   });
 });

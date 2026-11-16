@@ -1,4 +1,5 @@
 import type {
+  AgentDisplay,
   RegisteredAgentSession as AgentRuntimeState,
   TaskHashInput,
 } from "@zentity/sdk";
@@ -9,7 +10,6 @@ import {
   signAgentAssertion as signSdkAgentAssertion,
 } from "@zentity/sdk";
 import { AGENT_BOOTSTRAP_SCOPES } from "@zentity/sdk/agent-contract";
-import type { AgentInfo } from "../agent.js";
 import { config } from "../config.js";
 import { exchangeMcpLoginToken } from "../oauth-client.js";
 import { discoverAgentConfiguration } from "./agent-configuration.js";
@@ -102,7 +102,7 @@ export async function registerAgentSession(
   zentityUrl: string,
   auth: OAuthSessionContext,
   hostId: string,
-  display: AgentInfo,
+  display: AgentDisplay,
   keyNamespace = buildHostKeyNamespace(auth)
 ): Promise<AgentRuntimeState> {
   const agentConfiguration = await discoverAgentConfiguration(zentityUrl);

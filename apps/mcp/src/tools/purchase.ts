@@ -6,6 +6,7 @@ import type {
 import {
   assertApprovedDetails,
   buildX402PurchaseAuthorization,
+  type CibaTokenSet,
   type CreateX402FetchOptions,
   createX402Fetch,
   type X402ApprovalContext,
@@ -31,9 +32,10 @@ import { config } from "../config.js";
 import { discoverMcpOAuth } from "../oauth-client.js";
 import { signAgentAssertion } from "../runtime/agent-registration.js";
 import {
+  type AuthContext,
   getAuthContext,
   getOAuthContext,
-  tryGetRuntimeState,
+  withAgentSession,
   withToolAuth,
 } from "../runtime/auth-context.js";
 import { redeemRelease } from "../services/identity-release.js";
@@ -186,7 +188,7 @@ const ISO_4217_CODE = /^[A-Z]{3}$/;
 
 function sessionFingerprint(
   oauth: ReturnType<typeof getOAuthContext>,
-  runtime: ReturnType<typeof tryGetRuntimeState>
+  runtime: AuthContext["runtime"]
 ): string[] {
   return [oauth.accountSub, oauth.clientId, runtime?.sessionId ?? "no-runtime"];
 }
@@ -218,9 +220,9 @@ function readPaymentResponseHeader(response: Response): unknown {
 }
 
 interface PurchaseInput {
+  auth: AuthContext;
   ctx: ServerContext;
   oauth: ReturnType<typeof getOAuthContext>;
-  runtime: ReturnType<typeof tryGetRuntimeState>;
   server: McpServer;
 }
 
@@ -263,47 +265,32 @@ async function approveX402Purchase(
   const authorizationDetails = [
     buildX402PurchaseAuthorization(requirement, context),
   ];
-  const agentAssertion = input.runtime
-    ? await signAgentAssertion(input.runtime, {
-        bindingMessage,
+  const outcome = await withAgentSession(input.auth, async (runtime) => {
+    const agentAssertion = runtime
+      ? await signAgentAssertion(runtime, {
+          bindingMessage,
+          scope: X402_PURCHASE_SCOPE,
+          authorizationDetails,
+        })
+      : undefined;
+    return beginOrResumeInteractiveFlow({
+      toolName: "purchase",
+      fingerprint: [
+        ...sessionFingerprint(input.oauth, runtime),
+        "x402",
+        canonicalJson(authorizationDetails),
+      ].join(":"),
+      oauth: input.oauth,
+      createFlowDpopClient: createDpopClient,
+      approval: {
         scope: X402_PURCHASE_SCOPE,
+        bindingMessage,
         authorizationDetails,
-      })
-    : undefined;
-
-  const outcome = await beginOrResumeInteractiveFlow({
-    toolName: "purchase",
-    fingerprint: [
-      ...sessionFingerprint(input.oauth, input.runtime),
-      "x402",
-      canonicalJson(authorizationDetails),
-    ].join(":"),
-    oauth: input.oauth,
-    createFlowDpopClient: createDpopClient,
-    approval: {
-      scope: X402_PURCHASE_SCOPE,
-      bindingMessage,
-      authorizationDetails,
-      ...(agentAssertion ? { agentAssertion } : {}),
-    },
-    onApproved: async (tokenSet, dpopClient) => {
-      assertApprovedDetails(
-        authorizationDetails,
-        tokenSet.authorizationDetails
-      );
-      const proofOfHuman = await requestProofOfHumanToken({
-        accessToken: tokenSet.accessToken,
-        dpopClient,
-        proofOfHumanUrl: `${config.zentityUrl}/api/auth/oauth2/proof-of-human`,
-      });
-      if (!proofOfHuman.ok) {
-        throw new Error(
-          proofOfHuman.errorDescription ??
-            `Proof of human request failed: ${proofOfHuman.error}`
-        );
-      }
-      return { dpopClient, pohToken: proofOfHuman.token };
-    },
+        ...(agentAssertion ? { agentAssertion } : {}),
+      },
+      onApproved: (tokenSet, dpopClient) =>
+        mintMerchantProofOfHuman(authorizationDetails, tokenSet, dpopClient),
+    });
   });
 
   if (outcome.status === "needs_user_action") {
@@ -313,6 +300,26 @@ async function approveX402Purchase(
     throw new PurchaseAuthorizationEndedError(outcome.status);
   }
   return outcome.data;
+}
+
+async function mintMerchantProofOfHuman(
+  authorizationDetails: readonly unknown[],
+  tokenSet: CibaTokenSet,
+  dpopClient: DpopClient
+): Promise<{ dpopClient: DpopClient; pohToken: string }> {
+  assertApprovedDetails(authorizationDetails, tokenSet.authorizationDetails);
+  const proofOfHuman = await requestProofOfHumanToken({
+    accessToken: tokenSet.accessToken,
+    dpopClient,
+    proofOfHumanUrl: `${config.zentityUrl}/api/auth/oauth2/proof-of-human`,
+  });
+  if (!proofOfHuman.ok) {
+    throw new Error(
+      proofOfHuman.errorDescription ??
+        `Proof of human request failed: ${proofOfHuman.error}`
+    );
+  }
+  return { dpopClient, pohToken: proofOfHuman.token };
 }
 
 /**
@@ -431,40 +438,42 @@ async function runDirectPurchaseTool(
       },
     },
   ];
-  const agentAssertion = input.runtime
-    ? await signAgentAssertion(input.runtime, {
-        bindingMessage,
+  const outcome = await withAgentSession(input.auth, async (runtime) => {
+    const agentAssertion = runtime
+      ? await signAgentAssertion(runtime, {
+          bindingMessage,
+          scope,
+          authorizationDetails,
+        })
+      : undefined;
+    return beginOrResumeInteractiveFlow({
+      toolName: "purchase",
+      fingerprint: [
+        ...sessionFingerprint(input.oauth, runtime),
+        "purchase",
+        canonicalJson(authorizationDetails),
         scope,
-        authorizationDetails,
-      })
-    : undefined;
-  const outcome = await beginOrResumeInteractiveFlow({
-    toolName: "purchase",
-    fingerprint: [
-      ...sessionFingerprint(input.oauth, input.runtime),
-      "purchase",
-      canonicalJson(authorizationDetails),
-      scope,
-    ].join(":"),
-    oauth: input.oauth,
-    approval: {
-      scope,
-      bindingMessage,
-      authorizationDetails,
-      ...(agentAssertion ? { agentAssertion } : {}),
-    },
-    onApproved: async (tokenSet) => {
-      const pii = await redeemRelease(
-        tokenSet.accessToken,
-        input.oauth.dpopClient
-      );
-      return {
-        status: "approved" as const,
-        approved: true,
+      ].join(":"),
+      oauth: input.oauth,
+      approval: {
+        scope,
         bindingMessage,
-        fulfillment: formatFulfillment(pii),
-      };
-    },
+        authorizationDetails,
+        ...(agentAssertion ? { agentAssertion } : {}),
+      },
+      onApproved: async (tokenSet) => {
+        const pii = await redeemRelease(
+          tokenSet.accessToken,
+          input.oauth.dpopClient
+        );
+        return {
+          status: "approved" as const,
+          approved: true,
+          bindingMessage,
+          fulfillment: formatFulfillment(pii),
+        };
+      },
+    });
   });
 
   if (outcome.status === "needs_user_action") {
@@ -502,9 +511,9 @@ function runPurchaseTool(
 > {
   const auth = getAuthContext();
   const input: PurchaseInput = {
+    auth,
     ctx,
     oauth: getOAuthContext(auth),
-    runtime: tryGetRuntimeState(auth),
     server,
   };
 
