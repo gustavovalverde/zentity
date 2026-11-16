@@ -8,6 +8,7 @@ import { createClient } from "@libsql/client";
 import { encode } from "@msgpack/msgpack";
 import { type APIResponse, request } from "@playwright/test";
 
+import { loginMethodToAmr } from "../src/lib/assurance/oidc-claims";
 import {
   deriveOpaqueExportKey,
   ensureOpaquePasswordRegistration,
@@ -1056,7 +1057,7 @@ async function promoteLatestSessionToPasskeyAuth(dbUrl: string, email: string) {
       '${escapeSqlString(userId)}',
       'better_auth',
       'passkey',
-      '["pop","hwk","user"]',
+      '${JSON.stringify(loginMethodToAmr("passkey", { userVerified: true }))}',
       'strong',
       ${now},
       '${escapeSqlString(sessionId)}',
