@@ -35,7 +35,7 @@ The mint (`POST /api/auth/oauth2/proof-of-human`) reads the presenting access to
 
 ### Claims
 
-A merchant-mode token states only the predicate the merchant needs: `poh.identity.strength_at_least` (the merchant's `min_identity_strength`) and `poh.policy.version`. It copies the approved `x402_purchase` entry without `resource_description`, which only the user needed to read. Neither mode carries `client_id`, `azp`, `ba_sub`, the user's own strength, humanity, or PII. Identity strength travels as `documentary`, `documentary_full`, or `cryptographic_chip`; no numeric level appears in a request, token, extension, or discovery document.
+A merchant-mode token states only the predicate the merchant needs: `poh.identity.strength_at_least` (the merchant's `min_identity_strength`) and `poh.policy.version`. It copies the approved `x402_purchase` entry without `resource_description`, which only the user needed to read, and carries neither the user's own strength nor the humanity axis. A client-mode token states the user's own axes to the client the user signed in to: `poh.identity.verified`, `poh.identity.strength`, `poh.humanity.proven`, and `poh.policy.version`. Neither mode carries `client_id`, `azp`, `ba_sub`, or PII. Identity strength travels as `documentary`, `documentary_full`, or `cryptographic_chip`; no numeric level appears in a request, token, extension, or discovery document.
 
 ### Lifetime and single use
 
