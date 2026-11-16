@@ -18,7 +18,9 @@
 # CI), then add the trusted publisher and use this workflow for later versions.
 #
 # Release steps: bump packages/sdk/package.json and CHANGELOG.md in a merged PR,
-# then run this workflow from main.
+# then run this workflow from main. The workflow does not run `changeset
+# version`, so fold any pending .changeset entries for @zentity/sdk into
+# CHANGELOG.md first.
 
 name: Release SDK
 
@@ -51,8 +53,7 @@ jobs:
           node-version: "26"
           registry-url: "https://registry.npmjs.org"
       - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
-      - run: pnpm install --frozen-lockfile
-        working-directory: packages/sdk
+      - run: pnpm install --frozen-lockfile --filter "@zentity/sdk..."
       - run: pnpm run typecheck
         working-directory: packages/sdk
       - run: pnpm test
