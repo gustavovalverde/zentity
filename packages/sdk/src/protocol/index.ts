@@ -74,6 +74,41 @@ export {
 	parsePaymentAuthorization,
 	paymentUriToCaip10,
 } from "./payment-authorization";
+export type { RegisteredAsset } from "./asset-registry";
+export {
+	findRegisteredAsset,
+	formatAtomic,
+	REGISTERED_ASSETS,
+	toAtomic,
+} from "./asset-registry";
+export type {
+	AuthorizationDetailsType,
+	TaskHashInput,
+} from "./authorization-details";
+export {
+	AUTHORIZATION_DETAILS_TYPES,
+	canonicalJson,
+	taskHash,
+	taskHashPayload,
+} from "./authorization-details";
+export type {
+	IdentityStrength,
+	PurchaseAuthorization,
+	X402PaymentRequirements,
+	X402PurchaseAuthorization,
+} from "./purchase-authorization";
+export {
+	IDENTITY_STRENGTHS,
+	IdentityStrengthSchema,
+	isAllowedResourceUrl,
+	isLoopbackHttpUrl,
+	meetsIdentityStrength,
+	PURCHASE_TYPE,
+	PurchaseAuthorizationSchema,
+	X402_PURCHASE_TYPE,
+	X402PaymentRequirementsSchema,
+	X402PurchaseAuthorizationSchema,
+} from "./purchase-authorization";
 export type { SignedPayload, SignedPayloadFormat } from "./signed-payload";
 export {
 	SIGNED_PAYLOAD_FORMAT_PCZT_V1,
