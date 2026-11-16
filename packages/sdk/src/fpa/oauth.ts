@@ -8,7 +8,12 @@ export interface ExchangeAuthorizationCodeOptions {
   code: string;
   codeVerifier: string;
   dpopClient: DpopClient;
-  redirectUri: string;
+  /**
+   * The `redirect_uri` of the browser authorization request that issued the
+   * code. Omit it for a code from the Authorization Challenge Endpoint, which
+   * is bound to none.
+   */
+  redirectUri?: string;
   resource?: string;
   tokenEndpoint: string;
 }
@@ -26,6 +31,11 @@ export interface ExchangeTokenOptions {
 export interface TokenResult {
   accessToken: string;
   accountSub?: string;
+  /**
+   * The `auth_session` for a later step-up (draft-ietf-oauth-first-party-apps
+   * §6.1). It replaces the handle the challenge rounds used.
+   */
+  authSession?: string;
   expiresAt: number;
   idToken?: string;
   loginHint?: string;
@@ -43,6 +53,7 @@ export interface ExchangeTokenResult {
 
 interface TokenResponse {
   access_token: string;
+  auth_session?: string;
   expires_in?: number;
   id_token?: string;
   refresh_token?: string;
@@ -152,8 +163,10 @@ export async function exchangeAuthorizationCode(
     code: options.code,
     code_verifier: options.codeVerifier,
     client_id: options.clientId,
-    redirect_uri: options.redirectUri,
   });
+  if (options.redirectUri) {
+    body.set("redirect_uri", options.redirectUri);
+  }
   if (options.resource) {
     body.set("resource", options.resource);
   }
@@ -170,6 +183,9 @@ export async function exchangeAuthorizationCode(
   return {
     accessToken: data.access_token,
     ...(accountSub ? { accountSub } : {}),
+    ...(typeof data.auth_session === "string" && data.auth_session
+      ? { authSession: data.auth_session }
+      : {}),
     expiresAt,
     ...(data.id_token ? { idToken: data.id_token } : {}),
     ...(loginHint ? { loginHint } : {}),

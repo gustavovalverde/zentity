@@ -93,7 +93,35 @@ describe("oauth helpers", () => {
     expect(body.get("code")).toBe("code-123");
     expect(body.get("code_verifier")).toBe("verifier-123");
     expect(body.get("client_id")).toBe("client-123");
+    expect(body.get("redirect_uri")).toBe("http://127.0.0.1/callback");
     expect(body.get("resource")).toBe("https://resource.example");
+  });
+
+  it("redeems a challenge code without redirect_uri and returns the new auth_session", async () => {
+    mockFetchUserInfo.mockResolvedValue({ sub: "pairwise-subject" });
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          access_token: "access-token",
+          auth_session: "auth-session-rotated",
+          token_type: "DPoP",
+        }),
+        { status: 200 }
+      )
+    );
+
+    const result = await exchangeAuthorizationCode("https://issuer.example", {
+      clientId: "client-123",
+      code: "code-123",
+      codeVerifier: "verifier-123",
+      dpopClient: createMockDpopClient(),
+      tokenEndpoint: "https://issuer.example/oauth/token",
+    });
+
+    expect(result.authSession).toBe("auth-session-rotated");
+    const [, init] = vi.mocked(fetch).mock.calls[0]!;
+    const body = new URLSearchParams((init as RequestInit).body as string);
+    expect(body.has("redirect_uri")).toBe(false);
   });
 
   it("extracts the subject from an exchanged token", async () => {

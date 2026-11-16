@@ -115,7 +115,6 @@ describe("createFirstPartyAuth", () => {
         claims: JSON.stringify({ userinfo: { name: null } }),
         clientId: "client-123",
         identifier: "user@example.com",
-        redirectUri: "http://127.0.0.1/callback",
         scope: "profile",
         strategies: {
           password: {
@@ -146,10 +145,133 @@ describe("createFirstPartyAuth", () => {
     fpaMocks.exchangeAuthorizationCode.mockResolvedValue({
       accessToken: "access-token",
       accountSub: "pairwise-subject",
+      authSession: "auth-session-rotated",
       expiresAt: Date.now() + 3_600_000,
       loginHint: "user@example.com",
       refreshToken: "refresh-token",
       scopes: ["openid", "offline_access"],
+    });
+
+    const fetchSpy = vi.spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            authorization_challenge_endpoint:
+              "https://issuer.example/api/oauth2/authorize-challenge",
+            authorization_endpoint: "https://issuer.example/oauth/authorize",
+            issuer: "https://issuer.example",
+            token_endpoint: "https://issuer.example/oauth/token",
+          }),
+          { status: 200 }
+        )
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            auth_session: "auth-session-1",
+            challenge_type: "opaque",
+            error: "insufficient_authorization",
+            server_public_key: "server-public-key",
+          }),
+          { status: 403 }
+        )
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            auth_session: "auth-session-1",
+            challenge_type: "opaque",
+            error: "insufficient_authorization",
+            opaque_login_response: "opaque-login-response",
+          }),
+          { status: 403 }
+        )
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            authorization_code: "authorization-code-1",
+          }),
+          { status: 200 }
+        )
+      );
+
+    const result = await auth.authenticate({
+      clientId: "client-123",
+      identifier: "user@example.com",
+      scope: "openid offline_access",
+      strategies: {
+        password: {
+          password: "correct horse battery staple",
+        },
+      },
+    });
+
+    expect(result).toEqual(
+      expect.objectContaining({
+        accessToken: "access-token",
+        authSession: "auth-session-rotated",
+        exportKey: "export-key",
+        loginMethod: "opaque",
+      })
+    );
+    const exchange = fpaMocks.exchangeAuthorizationCode.mock.calls[0]?.[1];
+    expect(exchange).toEqual(
+      expect.objectContaining({
+        clientId: "client-123",
+        code: "authorization-code-1",
+        codeVerifier: TEST_PKCE.codeVerifier,
+      })
+    );
+    // A challenge code is bound to no redirect_uri (draft §6).
+    expect(exchange).not.toHaveProperty("redirectUri");
+    // The token response's auth_session replaces the challenge's.
+    expect(authStateStorage.read()).toEqual(
+      expect.objectContaining({
+        accessToken: "access-token",
+        authSession: "auth-session-rotated",
+        clientId: "client-123",
+        dpopKeyPair: TEST_KEY_PAIR,
+        refreshToken: "refresh-token",
+      })
+    );
+
+    const [, round1] = fetchSpy.mock.calls[1]!;
+    const round1Init = round1 as RequestInit;
+    expect(new Headers(round1Init.headers).get("content-type")).toBe(
+      "application/x-www-form-urlencoded"
+    );
+    const round1Body = new URLSearchParams(round1Init.body as string);
+    expect(round1Body.get("login_hint")).toBe("user@example.com");
+    expect(round1Body.get("response_type")).toBe("code");
+    expect(round1Body.has("identifier")).toBe(false);
+    expect(round1Body.has("redirect_uri")).toBe(false);
+
+    const [, round2] = fetchSpy.mock.calls[2]!;
+    const round2Init = round2 as RequestInit;
+    expect(new Headers(round2Init.headers).get("content-type")).toBe(
+      "application/json"
+    );
+    expect(JSON.parse(round2Init.body as string)).toEqual({
+      auth_session: "auth-session-1",
+      opaque_login_request: "opaque-start-request",
+    });
+  });
+
+  it("raises StepUpRequiredError when the code waits for a higher assurance tier", async () => {
+    const authStateStorage = createMemoryAuthStateStorage();
+    const auth = createFirstPartyAuth({
+      issuerUrl: "https://issuer.example",
+      storage: authStateStorage.storage,
+    });
+    fpaMocks.startLogin.mockReturnValue({
+      clientLoginState: "client-state",
+      startLoginRequest: "opaque-start-request",
+    });
+    fpaMocks.finishLogin.mockReturnValue({
+      exportKey: "export-key",
+      finishLoginRequest: "opaque-finish-request",
+      serverStaticPublicKey: "server-public-key",
     });
 
     vi.spyOn(globalThis, "fetch")
@@ -170,62 +292,45 @@ describe("createFirstPartyAuth", () => {
           JSON.stringify({
             auth_session: "auth-session-1",
             challenge_type: "opaque",
+            error: "insufficient_authorization",
           }),
-          { status: 401 }
+          { status: 403 }
         )
       )
       .mockResolvedValueOnce(
         new Response(
           JSON.stringify({
+            auth_session: "auth-session-1",
+            challenge_type: "opaque",
+            error: "insufficient_authorization",
             opaque_login_response: "opaque-login-response",
           }),
-          { status: 200 }
+          { status: 403 }
         )
       )
       .mockResolvedValueOnce(
         new Response(
           JSON.stringify({
-            authorization_code: "authorization-code-1",
+            auth_session: "auth-session-1",
+            error: "insufficient_authorization",
+            error_description: "User assurance is tier-0",
           }),
-          { status: 200 }
+          { status: 403 }
         )
       );
 
-    const result = await auth.authenticate({
-      clientId: "client-123",
-      identifier: "user@example.com",
-      redirectUri: "http://127.0.0.1/callback",
-      scope: "openid offline_access",
-      strategies: {
-        password: {
-          password: "correct horse battery staple",
-        },
-      },
-    });
-
-    expect(result).toEqual(
-      expect.objectContaining({
-        accessToken: "access-token",
-        authSession: "auth-session-1",
-        exportKey: "export-key",
-        loginMethod: "opaque",
-      })
-    );
-    expect(fpaMocks.exchangeAuthorizationCode).toHaveBeenCalledWith(
-      "https://issuer.example",
-      expect.objectContaining({
+    await expect(
+      auth.authorize({
         clientId: "client-123",
-        code: "authorization-code-1",
-        codeVerifier: TEST_PKCE.codeVerifier,
+        identifier: "user@example.com",
+        pkce: TEST_PKCE,
+        scope: "openid",
+        strategies: { password: { password: "correct horse battery staple" } },
       })
-    );
-    expect(authStateStorage.read()).toEqual(
-      expect.objectContaining({
-        accessToken: "access-token",
+    ).rejects.toEqual(
+      expect.objectContaining<Partial<StepUpRequiredError>>({
         authSession: "auth-session-1",
-        clientId: "client-123",
-        dpopKeyPair: TEST_KEY_PAIR,
-        refreshToken: "refresh-token",
+        name: "StepUpRequiredError",
       })
     );
   });
@@ -304,10 +409,10 @@ describe("createFirstPartyAuth", () => {
       .mockResolvedValueOnce(
         new Response(
           JSON.stringify({
-            auth_session: "auth-session-passkey",
             error: "redirect_to_web",
+            error_description: "The user must continue in the browser",
           }),
-          { status: 400 }
+          { status: 403 }
         )
       );
 
@@ -323,11 +428,7 @@ describe("createFirstPartyAuth", () => {
           },
         },
       })
-    ).rejects.toEqual(
-      expect.objectContaining<Partial<RedirectToWebError>>({
-        authSession: "auth-session-passkey",
-      })
-    );
+    ).rejects.toBeInstanceOf(RedirectToWebError);
   });
 
   it("completes wallet-based authorization by signing the SIWE message", async () => {
@@ -368,9 +469,10 @@ describe("createFirstPartyAuth", () => {
           JSON.stringify({
             auth_session: "wallet-session-1",
             challenge_type: "siwe",
+            error: "insufficient_authorization",
             message: siweMessage,
           }),
-          { status: 401 }
+          { status: 403 }
         )
       )
       .mockResolvedValueOnce(

@@ -70,11 +70,11 @@ import { getAccountAssurance } from "@/lib/assurance/posture";
 import {
   AUTHENTICATION_CONTEXT_CLAIM,
   createSessionAuthenticationContext,
+  deleteUnreferencedAuthenticationContext,
   getAuthenticationStateBySessionId,
   resolveAuthenticationContext,
 } from "@/lib/auth/auth-context";
 import { getHardenedJWKSet } from "@/lib/auth/jwt";
-import { authorizeChallengePlugin } from "@/lib/auth/oidc/authorize-challenge";
 import {
   cibaApprovalPlugin,
   cibaApprovalUrl,
@@ -119,6 +119,10 @@ import {
   PROOF_SCOPES,
 } from "@/lib/auth/oidc/disclosure/registry";
 import { verifiedClaimsPlugin } from "@/lib/auth/oidc/disclosure/verified-claims";
+import {
+  deleteExpiredFirstPartyRows,
+  firstPartyAppsPlugin,
+} from "@/lib/auth/oidc/first-party-apps";
 import { getJarmDecryptionKey } from "@/lib/auth/oidc/haip/jarm-key";
 import {
   getProtectedResourceAudiences,
@@ -184,6 +188,8 @@ import {
 } from "@/lib/db/schema/auth";
 import { cibaRequests } from "@/lib/db/schema/ciba";
 import {
+  firstPartyAuthSessions,
+  firstPartyFailureBudgets,
   haipVpSessions,
   jwks,
   oauthAccessTokens,
@@ -240,6 +246,8 @@ const betterAuthSchema = {
   oidc4vciStatusList: oidc4vciStatusLists,
   haipVpSession: haipVpSessions,
   cibaRequest: cibaRequests,
+  firstPartyAuthSession: firstPartyAuthSessions,
+  firstPartyFailureBudget: firstPartyFailureBudgets,
 };
 
 function toScopeList(scopes: unknown): string[] {
@@ -802,7 +810,7 @@ async function beforeCibaTokenLoadRequest(ctx: HookCtx) {
   if (row?.status !== "approved") {
     return;
   }
-  await enforceCibaTokenAcr(ctx, db, row);
+  await enforceCibaTokenAcr(ctx, row);
 
   const releaseId = releaseIdFor(authReqIdHash, row.clientId);
   const releaseContext = await loadReleaseContext(releaseId);
@@ -1802,7 +1810,24 @@ export const auth = betterAuth({
         }),
       },
       delete: {
-        after: async (session) => {
+        after: async (session, context) => {
+          // The challenge endpoint deletes a session it created when the code
+          // cannot be issued, or after too many wrong answers. Neither is the
+          // user signing out.
+          if (context?.path === "/oauth2/authorize-challenge") {
+            const { authContextId } = session;
+            if (typeof authContextId === "string") {
+              await deleteUnreferencedAuthenticationContext(
+                authContextId
+              ).catch((error: unknown) =>
+                logError(error, {
+                  userId: session.userId,
+                  operation: "first-party-session-cleanup",
+                })
+              );
+            }
+            return;
+          }
           await denyPendingCibaRequestsForUser(session.userId).catch(
             (error: unknown) =>
               logError(error, {
@@ -1851,6 +1876,15 @@ export const auth = betterAuth({
       if (ctx.path === "/oauth2/bc-authorize") {
         if (ctx.body) {
           pinPaymentRequest(ctx.body);
+          normalizeUserTokenResources(ctx.body);
+        }
+        return;
+      }
+      if (ctx.path === "/oauth2/authorize-challenge") {
+        await deleteExpiredFirstPartyRows().catch((error: unknown) =>
+          logError(error, { operation: "first-party-row-cleanup" })
+        );
+        if (ctx.body) {
           normalizeUserTokenResources(ctx.body);
         }
         return;
@@ -2008,19 +2042,6 @@ export const auth = betterAuth({
         walletAudience: env.WALLET_AUDIENCE,
       }),
       enforcePerClientResources: false,
-      customTokenResponseFields: ({ grantType, verificationValue }) => {
-        // First-party-app step-up: when the authorization code was issued from
-        // a DPoP-bound auth_session (authorization challenge endpoint), echo it
-        // back so the FPA client can re-authenticate on a later acr step-up
-        // failure.
-        const authSession = (
-          verificationValue as Record<string, unknown> | undefined
-        )?.authSession;
-        return grantType === "authorization_code" &&
-          typeof authSession === "string"
-          ? { auth_session: authSession }
-          : {};
-      },
       // Registered ahead of every plugin's extension, so Zentity's discovery
       // fields win the provider's first-wins merge.
       extensions: [discoveryMetadataExtension, clientMetadataExtension],
@@ -2069,7 +2090,8 @@ export const auth = betterAuth({
       },
       // The ID token `acr` is the user's assurance tier and `amr` the methods
       // of the approving session. Unmet `acr_values` are rejected before this
-      // runs (enforceAuthorizeAcr). CIBA approvals state the same values to
+      // runs (enforceAuthorizeAcr, and the first-party apps policy for the
+      // challenge endpoint). CIBA approvals state the same values to
       // completeCibaRequest.
       authenticationContext: {
         acrValuesSupported: [...ACR_VALUES_SUPPORTED],
@@ -2314,7 +2336,7 @@ export const auth = betterAuth({
     cibaApprovalPlugin(cibaApproval),
     tokenExchangePlugin(),
     resourceAccessTokenPlugin(),
-    authorizeChallengePlugin(),
+    firstPartyAppsPlugin(),
     // Must stay last: forwards Set-Cookie from every prior plugin's after-hook.
     nextCookies(),
   ],
