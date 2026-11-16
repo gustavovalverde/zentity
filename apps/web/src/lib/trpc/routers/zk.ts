@@ -396,7 +396,8 @@ function dateIntToDaysSince1900(value: bigint): number | undefined {
 /**
  * A proof's date input must be the server's UTC day or the day before, so a
  * proof generated just before UTC midnight still stores after it. Later dates
- * are refused: they would let a client claim to be older than it is.
+ * are refused: they would make an age proof's subject older. For doc_validity
+ * the previous day grants a one-day expiry grace.
  */
 function assertProofDateInWindow(providedDays: number | undefined): void {
   const todayDays = getTodayDobDays();
