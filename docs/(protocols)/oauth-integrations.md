@@ -251,13 +251,13 @@ Ping mode eliminates polling overhead and reduces latency between approval and t
 
 Token Exchange enables audience narrowing and token repackaging at the standard token endpoint (`grant_type=urn:ietf:params:oauth:grant-type:token-exchange`). The current deployment publishes `delegation_chains: false`, so general multi-hop delegation-chain portability is not part of the active contract.
 
-One active use of token exchange is agent bootstrap. A client first receives a pairwise login token, then exchanges it for a dedicated DPoP-bound bootstrap token carrying narrow agent scopes (`agent:host.register`, `agent:session.register`, and `agent:session.revoke`). That bootstrap token is the credential used at the agent registration endpoints; it is intentionally distinct from the original login token and from downstream delegated purchase artifacts.
+One active use of token exchange is agent bootstrap. A client requests the narrow agent scopes (`agent:host.register`, `agent:session.register`, and `agent:session.revoke`) when the user signs in, receives a pairwise login token, then exchanges it for a dedicated DPoP-bound bootstrap token carrying only those scopes. That bootstrap token is the credential used at the agent registration endpoints; it is intentionally distinct from the original login token and from downstream delegated purchase artifacts.
 
 **Token types:** The source and the issued token are both access tokens: `subject_token_type` and `requested_token_type` (when sent) must be `urn:ietf:params:oauth:token-type:access_token`. Any other token type, including `urn:ietf:params:oauth:token-type:id_token`, gets `invalid_request`.
 
 **Who may exchange:** Only the client a source token was issued to may exchange it, with one exception. The protected resource an access token was issued for, as registered in its `zentity_protected_resource` client metadata, may exchange a JWT access token whose audience names that resource. Any other client gets `invalid_grant`.
 
-**Scope attenuation:** The requested scope must be a subset of the source token's scope, and requesting scopes beyond it is rejected. The one exception is agent bootstrap: an installed agent client exchanging its own login token may request only agent bootstrap scopes, even when the login token lacks them. Without a requested scope, the exchanged token keeps the source token's scope.
+**Scope attenuation:** The exchanged token's scope is always a subset of the source token's scope and of the scopes the exchanging client registered. A requested scope outside either gets `invalid_scope`. So does a requested `offline_access`, because token exchange never issues a refresh token. Without a requested scope, the exchanged token keeps the source token's scopes that the client registered, except `offline_access` and the agent bootstrap scopes, which it carries only when requested. A source token with no such scope gets `invalid_scope`.
 
 **DPoP binding:** If the source token is DPoP-bound, the exchange request must carry a DPoP proof signed with the same key, and the exchanged token stays bound to that key. A missing proof or a proof with another key gets `invalid_dpop_proof`. The exception is the protected resource the source token was issued for, as registered in its `zentity_protected_resource` client metadata. It never holds the caller's key, so it proves its own key instead and the exchanged token is bound to that key.
 
@@ -269,7 +269,7 @@ One active use of token exchange is agent bootstrap. A client first receives a p
 
 **`resource`/`audience` parameter:** The `resource` parameter (RFC 8707) specifies the intended audience for the exchanged token. Precedence: `resource` > `audience` > issuer URI.
 
-**Bootstrap exchange:** When the source token is a login token used for agent bootstrap, the exchanging client must be the installed agent client the login token was issued to. The output token carries only the agent bootstrap scopes, which replace the login token's scopes rather than narrowing them. It is DPoP-bound and audience-bound to Zentity's agent control plane, and it should not be reused for unrelated downstream APIs.
+**Bootstrap exchange:** The source token must have been granted the agent bootstrap scopes at sign-in, and the exchanging client must be the client it was issued to. A protected resource exchanging another client's token for them gets `invalid_scope`. The request may carry only agent bootstrap scopes, must target Zentity's app audience, and must carry a DPoP proof. The output token is marked `zentity_token_use: agent_bootstrap`, which the agent registration endpoints require, so a login or session token carrying the same scopes is not a bootstrap credential. It should not be reused for unrelated downstream APIs.
 
 ---
 
@@ -464,6 +464,8 @@ Vault-gated PII, delivered exclusively via the userinfo endpoint with exact disc
 | `agent:session.register` | Register an agent session |
 | `agent:session.revoke` | Revoke an agent session |
 | `agent:introspect` | Introspect agent state |
+
+The consent screen shows the three agent bootstrap scopes as one line, "Register and manage this agent on your behalf". An installed agent requests them at sign-in because token exchange issues only scopes its login token was granted.
 
 ### Consent and selective disclosure
 
