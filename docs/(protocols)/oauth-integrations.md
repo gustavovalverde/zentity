@@ -330,7 +330,7 @@ Discovery publishes `delegation_chains: false`: an exchanged token names no acto
 
 Clients cannot claim a resource themselves: a `zentity_protected_resource` registration field is ignored.
 
-**Scopes:** the requested scopes must be a subset of the subject token's scopes and of the exchanging client's registered scopes. A requested `offline_access` gets `invalid_scope`, because token exchange never issues a refresh token. Without `scope`, the exchanged token gets the subject's scopes the client registered, except `offline_access` and the agent bootstrap scopes, which it carries only when requested; a subject with no such scope gets `invalid_scope`. `openid` carries over, because the MCP HTTP server reads its pairwise subject from UserInfo with the exchanged token. Bootstrap scopes may not be mixed with other scopes.
+**Scopes:** the requested scopes must be a subset of the subject token's scopes and of the exchanging client's registered scopes. A requested `offline_access` gets `invalid_scope`, because token exchange never issues a refresh token. Without `scope`, the exchanged token gets the subject's scopes the client registered, except `offline_access` and the agent bootstrap scopes, which it carries only when requested; a subject with no such scope gets `invalid_scope`. `openid` carries over, because the MCP HTTP server reads its pairwise subject from UserInfo with the exchanged token. Bootstrap scopes may not be mixed with other scopes, and only a client exchanging its own DPoP-bound token may request them, so a resource server that holds a user's token cannot obtain a bootstrap token for that user (`invalid_scope` for both).
 
 **Subjects the grant refuses** (`invalid_request` unless noted):
 

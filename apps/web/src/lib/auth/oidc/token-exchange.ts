@@ -274,6 +274,15 @@ async function exchangeToken({
       "Bootstrap token exchanges may only request agent bootstrap scopes"
     );
   }
+  // A bootstrap token registers agents for the user, so only the agent that
+  // signed the user in may obtain one, from its own key-bound login token.
+  if (bootstrap && !(ownSubject && subjectJkt)) {
+    tokenError(
+      "BAD_REQUEST",
+      "invalid_scope",
+      "Bootstrap token exchanges must exchange the client's own DPoP-bound token"
+    );
+  }
 
   // A self-exchange stays bound to the subject's key; a resource server never
   // holds that key, so it binds its own.

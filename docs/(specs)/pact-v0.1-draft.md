@@ -693,6 +693,7 @@ An exchange the AS permits MUST reduce privilege:
 - The issued token MUST NOT outlive the subject token, and it MUST end with the subject token's session.
 - The issued token MUST be for the AS's own resources and MUST NOT carry `act` or any delegation member from §7.
 - Only the client the subject token was issued to, or a confidential client the AS linked to the subject token's audience, MAY exchange it. A public client MAY exchange only its own sender-constrained token and MUST prove its key; a linked resource server binds its own key.
+- A bootstrap token (§3.3) MUST be issued only to the client the subject token was issued to, from its own sender-constrained token, and MUST carry only bootstrap scopes. A linked resource server MUST NOT obtain one.
 
 ### 8.3 Request and Response
 

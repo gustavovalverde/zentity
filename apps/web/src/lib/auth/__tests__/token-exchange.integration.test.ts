@@ -457,6 +457,45 @@ describe("Token Exchange (RFC 8693)", () => {
   });
 
   describe("resource server exchange", () => {
+    // T3 leftover: a resource server holding a user's token could obtain a
+    // bootstrap token and register agents for that user.
+    it("refuses bootstrap scopes to a resource server", async () => {
+      const resourceServerId = "exchange-bootstrap-rs";
+      await insertClient(resourceServerId, {
+        clientSecret: hashToken(MCP_SECRET),
+        tokenEndpointAuthMethod: "client_secret_basic",
+        redirectUris: JSON.stringify([]),
+        responseTypes: JSON.stringify([]),
+        grantTypes: JSON.stringify([TOKEN_EXCHANGE_GRANT_TYPE]),
+        scopes: JSON.stringify(["openid", ...BOOTSTRAP_SCOPE.split(" ")]),
+        skipConsent: true,
+      });
+      await db
+        .insert(oauthClientResources)
+        .values({
+          id: crypto.randomUUID(),
+          clientId: resourceServerId,
+          resourceId: MCP_AUDIENCE,
+        })
+        .run();
+      const remote = await remoteHostToken(`openid ${BOOTSTRAP_SCOPE}`);
+
+      const { status, json } = await exchangeAsMcp(
+        remote.token,
+        { scope: BOOTSTRAP_SCOPE },
+        resourceServerId
+      );
+
+      expect({ status, json }).toEqual({
+        status: 400,
+        json: {
+          error: "invalid_scope",
+          error_description:
+            "Bootstrap token exchanges must exchange the client's own DPoP-bound token",
+        },
+      });
+    });
+
     it("lets the linked MCP client exchange a remote host's token, bound to its own key", async () => {
       const remote = await remoteHostToken();
 
