@@ -1,9 +1,11 @@
+import { decodeJwt } from "jose";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { auth } from "@/lib/auth/auth-config";
 import { db } from "@/lib/db/connection";
 import { oauthClients } from "@/lib/db/schema/oauth-provider";
-import { resetDatabase } from "@/test-utils/db-test-utils";
+import { redeemTestAuthorizationCode } from "@/test-utils/authorization-code-test-utils";
+import { createTestUser, resetDatabase } from "@/test-utils/db-test-utils";
 
 vi.mock("@better-auth/cimd/node", () => ({
   fetchClientMetadataResource: (input: RequestInfo | URL, init?: RequestInit) =>
@@ -279,6 +281,111 @@ describe("CIMD: Client ID Metadata Document Resolution", () => {
         where: (t, { eq }) => eq(t.clientId, cimdClientId),
       });
       expect(client?.name).toBe("Updated Name");
+    });
+  });
+
+  describe("pairwise sector", () => {
+    const RP_REDIRECT_URI = "https://rp.example/callback";
+    const RP_CLIENT_ID = "registered-rp";
+
+    async function idTokenSub(
+      clientId: string,
+      redirectUri: string,
+      userId: string
+    ) {
+      const { status, json } = await redeemTestAuthorizationCode({
+        clientId,
+        redirectUri,
+        userId,
+      });
+      if (status !== 200) {
+        throw new Error(`token request failed: ${JSON.stringify(json)}`);
+      }
+      return decodeJwt(json.id_token as string).sub;
+    }
+
+    async function storedSector() {
+      const client = await db.query.oauthClients.findFirst({
+        where: (t, { eq }) => eq(t.clientId, cimdClientId),
+      });
+      return client?.sectorIdentifier;
+    }
+
+    // The document names the other relying party's host first and its own
+    // second; neither is bound to the origin serving the document.
+    function claimingMetadata() {
+      return validMetadata({
+        redirect_uris: [RP_REDIRECT_URI, REDIRECT_URI],
+      });
+    }
+
+    let userId: string;
+
+    beforeEach(async () => {
+      userId = await createTestUser();
+      await db.insert(oauthClients).values({
+        clientId: RP_CLIENT_ID,
+        name: "Registered RP",
+        redirectUris: JSON.stringify([RP_REDIRECT_URI]),
+        grantTypes: JSON.stringify(["authorization_code"]),
+        responseTypes: JSON.stringify(["code"]),
+        tokenEndpointAuthMethod: "none",
+        subjectType: "pairwise",
+        sectorIdentifier: "rp.example",
+      });
+    });
+
+    it("gives a created client its own sector, not the first redirect host", async () => {
+      mockFetchMetadata(claimingMetadata());
+      const { status } = await postPar({
+        client_id: cimdClientId,
+        response_type: "code",
+        redirect_uri: REDIRECT_URI,
+        scope: "openid",
+        resource: "http://localhost:3000",
+        code_challenge: "test-challenge",
+        code_challenge_method: "S256",
+      });
+      expect(status).toBe(201);
+      expect(await storedSector()).toBe(`client/${cimdClientId}`);
+
+      const rpSub = await idTokenSub(RP_CLIENT_ID, RP_REDIRECT_URI, userId);
+      const cimdSub = await idTokenSub(cimdClientId, REDIRECT_URI, userId);
+      expect(cimdSub).not.toBe(rpSub);
+    });
+
+    it("keeps its own sector through a refresh during a token request", async () => {
+      // A row whose sector the provider re-derived from the document, with no
+      // validated response cache, so the token request refreshes it.
+      const pastTtl = new Date(Date.now() - 25 * 60 * 60 * 1000);
+      await db.insert(oauthClients).values({
+        clientId: cimdClientId,
+        name: "MCP Test Client",
+        redirectUris: JSON.stringify([RP_REDIRECT_URI, REDIRECT_URI]),
+        grantTypes: JSON.stringify(["authorization_code"]),
+        responseTypes: JSON.stringify(["code"]),
+        tokenEndpointAuthMethod: "none",
+        applicationType: "native",
+        clientDiscoveryId: "cimd",
+        subjectType: "pairwise",
+        sectorIdentifier: "rp.example",
+        trustLevel: 1,
+        metadataUrl: cimdClientId,
+        metadataFetchedAt: pastTtl,
+        createdAt: pastTtl,
+        updatedAt: pastTtl,
+      });
+      mockFetchMetadata(claimingMetadata());
+
+      const cimdSub = await idTokenSub(cimdClientId, REDIRECT_URI, userId);
+      expect(globalThis.fetch).toHaveBeenCalledWith(
+        cimdClientId,
+        expect.anything()
+      );
+      expect(await storedSector()).toBe(`client/${cimdClientId}`);
+      expect(cimdSub).not.toBe(
+        await idTokenSub(RP_CLIENT_ID, RP_REDIRECT_URI, userId)
+      );
     });
   });
 

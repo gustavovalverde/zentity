@@ -142,7 +142,7 @@ describe("access token subjects", () => {
       scope: "openid",
       login_hint: await computePairwiseSub(
         userId,
-        ["https://other-rp.example/callback"],
+        new URL("https://other-rp.example/callback").host,
         env.PAIRWISE_SECRET
       ),
     });
@@ -171,7 +171,7 @@ describe("access token subjects", () => {
     const payload = decodeJwt(await mintMcpAccessToken(userId));
     const pairwiseSub = await computePairwiseSub(
       userId,
-      [REDIRECT_URI],
+      new URL(REDIRECT_URI).host,
       env.PAIRWISE_SECRET
     );
 

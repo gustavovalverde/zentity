@@ -145,7 +145,6 @@ import {
   validateResourceUri,
 } from "@/lib/auth/oidc/oauth-request";
 import {
-  adoptZentityPairwiseSector,
   resolveSubForClientId,
   resolveUserIdFromSub,
 } from "@/lib/auth/oidc/pairwise";
@@ -336,27 +335,35 @@ const cimdLog = rootLogger.child({ component: "cimd" });
 
 // The CIMD plugin persists only the standard OAuth client fields. CIMD clients
 // are dynamic and untrusted, so stamp Zentity's posture columns: a pairwise
-// subject (per-RP privacy) in Zentity's sector, the discovery trust tier, and
-// the metadata source/timestamp for audit and staleness.
-async function applyCimdClientPosture(clientId: string) {
+// subject (per-RP privacy), the discovery trust tier, and the metadata
+// source/timestamp for audit and staleness. The sector is the client's own:
+// a document's redirect URIs are not bound to the origin that serves it, and
+// the provider refuses multi-host pairwise sets only for clients that are
+// pairwise at registration, so a first-host sector would let a document claim
+// another relying party's host. A refresh re-derives the stored sector and
+// returns this same client object to the request that resolved it, which may
+// mint an ID token, so the posture is applied to the object as well as the row.
+async function applyCimdClientPosture(client: { clientId: string }) {
+  const posture = {
+    metadataUrl: client.clientId,
+    metadataFetchedAt: new Date(),
+    trustLevel: 1,
+    subjectType: "pairwise",
+    sectorIdentifier: `client/${client.clientId}`,
+  };
   await db
     .update(oauthClients)
-    .set({
-      metadataUrl: clientId,
-      metadataFetchedAt: new Date(),
-      trustLevel: 1,
-      subjectType: "pairwise",
-      sectorIdentifier: null,
-    })
-    .where(eq(oauthClients.clientId, clientId))
+    .set(posture)
+    .where(eq(oauthClients.clientId, client.clientId))
     .run();
+  Object.assign(client, posture);
 }
 
 const cimdOptions = {
   fetchClientMetadataResource,
   metadataProfile: "mcp-2026-07-28" as const,
   onClientCreated: async ({ client }: { client: { clientId: string } }) => {
-    await applyCimdClientPosture(client.clientId);
+    await applyCimdClientPosture(client);
     cimdLog.info(
       { clientId: client.clientId },
       "CIMD client registered from metadata document"
@@ -372,7 +379,7 @@ const cimdOptions = {
       tokenEndpointAuthMethod?: unknown;
     };
   }) => {
-    await applyCimdClientPosture(client.clientId);
+    await applyCimdClientPosture(client);
     // Security-relevant client metadata can change between refreshes; record each
     // refresh for audit. The plugin re-validates the document first.
     cimdLog.info(
@@ -882,24 +889,6 @@ async function afterCibaTokenPersist(ctx: HookCtx) {
       audienceClientId,
       snapshot: pending.snapshot,
     });
-  }
-}
-
-// Every way a client is created, so the provider's stored sector never governs
-// `sub` (see adoptZentityPairwiseSector).
-const CLIENT_CREATION_PATHS = new Set([
-  "/oauth2/register",
-  "/oauth2/create-client",
-  "/admin/oauth2/create-client",
-]);
-
-async function afterClientCreatedUseZentitySector(ctx: HookCtx) {
-  const responseBody = await readReturnedResponseBody(
-    (ctx.context as { returned?: unknown }).returned
-  );
-  const clientId = responseBody?.client_id;
-  if (typeof clientId === "string") {
-    await adoptZentityPairwiseSector(clientId);
   }
 }
 
@@ -1956,9 +1945,6 @@ export const auth = betterAuth({
     }),
     after: createAuthMiddleware(async (ctx) => {
       await afterPersistAuthenticationContext(ctx);
-      if (ctx.path && CLIENT_CREATION_PATHS.has(ctx.path)) {
-        await afterClientCreatedUseZentitySector(ctx);
-      }
       if (ctx.path === "/oauth2/consent") {
         await afterConsentPairwiseCleanup(ctx);
         return;

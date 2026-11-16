@@ -2,8 +2,9 @@ import { eq } from "drizzle-orm";
 
 import { env } from "@/env";
 import {
+  clientSector,
   computePairwiseSub,
-  getPairwiseSector,
+  type SectorClient,
 } from "@/lib/auth/oidc/pairwise";
 import {
   resolvePairwiseSubjectId,
@@ -14,10 +15,9 @@ import { db } from "@/lib/db/connection";
 import { agentSessions } from "@/lib/db/schema/agent";
 import { oauthClients } from "@/lib/db/schema/oauth-provider";
 
-interface ClientPairwiseConfig {
+interface ClientPairwiseConfig extends SectorClient {
   clientId: string;
   metadata: string | null;
-  redirectUris: string[];
 }
 
 type AgentSubjectType = "pairwise" | "public";
@@ -46,6 +46,7 @@ async function getClientPairwiseConfig(
       clientId: oauthClients.clientId,
       metadata: oauthClients.metadata,
       redirectUris: oauthClients.redirectUris,
+      sectorIdentifier: oauthClients.sectorIdentifier,
     })
     .from(oauthClients)
     .where(eq(oauthClients.clientId, clientId))
@@ -73,13 +74,10 @@ export async function resolveAgentSubForClient(
     return sessionId;
   }
 
-  const sub = await computePairwiseSub(
-    sessionId,
-    client.redirectUris,
-    env.PAIRWISE_SECRET
-  );
+  const sector = clientSector(client);
+  const sub = await computePairwiseSub(sessionId, sector, env.PAIRWISE_SECRET);
   await upsertPairwiseSubjectIndex({
-    sector: getPairwiseSector(client.redirectUris),
+    sector,
     sub,
     subjectId: sessionId,
     subjectType: "agent_session",
@@ -107,7 +105,7 @@ export async function resolveAgentSessionIdFromPairwiseSub(
   }
 
   return await resolvePairwiseSubjectId({
-    sector: getPairwiseSector(client.redirectUris),
+    sector: clientSector(client),
     sub: pairwiseSub,
     subjectType: "agent_session",
   });

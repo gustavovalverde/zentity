@@ -143,7 +143,7 @@ describe("jwt-signer multi-algorithm dispatcher", () => {
         });
         const expected = await computePairwiseSub(
           "user-1",
-          ["http://localhost:4100/callback"],
+          new URL("http://localhost:4100/callback").host,
           env.PAIRWISE_SECRET
         );
         expect(decodePayload(token).sub).toBe(expected);

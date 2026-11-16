@@ -572,7 +572,7 @@ Agent pairwise identifiers are derived from:
 - the target client's sector identifier
 - the shared `PAIRWISE_SECRET`
 
-The server uses the same sector-identifier logic as human pairwise subject derivation. In the current deployment that sector is derived from the first registered `redirect_uri` host because registrations are constrained to a single host until `sector_identifier_uri` support exists.
+The server uses the same sector as human pairwise subject derivation: the sector the OAuth provider stored on the client at registration. That is the first redirect host for a client whose redirect URIs are all `https`, and `client/<client_id>` for loopback, custom-scheme, metadata-document, and redirect-less clients (see [Pairwise subject identifiers](<../(protocols)/oauth-integrations.md#pairwise-subject-identifiers>)).
 
 Actor publicity is controlled independently from the human `sub`. Client metadata may set `agent_subject_type` to `public` or `pairwise`; when absent, the actor layer defaults to pairwise identifiers. Using a dedicated `agent_subject_type` avoids coupling where making `act.sub` public also makes the human `sub` public. When the effective agent subject type is `public`, the actor identifier falls back to the raw session ID. Otherwise it becomes a pairwise pseudonym derived from the session ID and the client's sector.
 

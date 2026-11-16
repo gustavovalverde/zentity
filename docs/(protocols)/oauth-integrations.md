@@ -808,7 +808,24 @@ All DCR clients use `subject_type: "pairwise"`. Each (user, client) pair gets a 
 sub = Base64(HMAC-SHA256(PAIRWISE_SECRET, sectorId + "." + userId))
 ```
 
-Current implementation note: `sectorId` is derived from the host of the client's first registered `redirect_uri`, mirroring the provider library's current pairwise derivation. This is an implementation detail, not full `sector_identifier_uri` support, so registrations are constrained to redirect URIs that share the same host.
+`sectorId` is the sector the OAuth provider stores on the client at registration, and Zentity reads the same stored value everywhere it derives a subject (CIBA login hints, agent actors, validity notices). The provider's rule:
+
+| Client | `sectorId` |
+|---|---|
+| Every redirect URI is `https` | the host of the first redirect URI |
+| Any loopback or custom-scheme redirect URI, or none (a confidential resource server) | `client/<client_id>` |
+| Registered from a Client ID Metadata Document | always `client/<client_id>` |
+
+A `/` cannot appear in a host, so a `client/<client_id>` sector never equals a host sector. Two loopback clients that register the same `http://127.0.0.1/callback` therefore get different subjects for the same user. A client row created before sectors were stored falls back to its first redirect host; the deploy backfill (`apps/web/scripts/backfill-oauth-token-transition.ts`) stores a sector on every such row.
+
+A metadata-document client never gets a host sector, because its redirect URIs are not bound to the origin that serves the document. A document at `https://evil.example/c.json` could otherwise list `https://rp.example/cb` first and receive the user's `rp.example` subject at its own redirect. The provider refuses multi-host pairwise sets only for clients that are pairwise at registration, and Zentity makes metadata-document clients pairwise after creation, so Zentity stores `client/<client_id>` on creation and on every refresh.
+
+What registration does and does not validate: neither dynamic registration nor a metadata document proves control of a redirect host. A dynamically registered client's host sector is still safe for two reasons:
+
+- Dynamic registration defaults to pairwise before the provider checks the set, so the provider refuses pairwise clients whose redirect URIs span several hosts or use a custom scheme with a host. The authorization code is only ever delivered to the sector's host.
+- CIBA names the user only by the subject the client already received (`login_hint`), so a CIBA request reveals nothing the client did not hold.
+
+CIBA Core 1.0 §4 derives a pairwise poll or ping client's sector from `jwks_uri` or `sector_identifier_uri` and requires a valid `jwks_uri`. Zentity's agents are DPoP clients without `jwks_uri`, and the two properties above replace that check. This is a recorded deviation. `sector_identifier_uri` is not supported.
 
 ### Double anonymity (ARCOM)
 

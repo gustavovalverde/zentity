@@ -1,10 +1,10 @@
-import { eq } from "drizzle-orm";
 import { NextResponse } from "next/server";
 
 import { getAapClaimsFromPayload } from "@/lib/agents/claims";
 import { observeSessionLifecycle } from "@/lib/agents/session";
 import { resolveTokenSnapshotForTokenJti } from "@/lib/agents/token-snapshot";
 import {
+  findPairwiseClient,
   resolveSubForClient,
   resolveUserIdFromSubForClient,
 } from "@/lib/auth/oidc/pairwise";
@@ -16,9 +16,6 @@ import {
   type ClientCredentialsPrincipal,
   requireClientCredentials,
 } from "@/lib/auth/resource-auth";
-import { parseStoredStringArray } from "@/lib/db/adapter-compat";
-import { db } from "@/lib/db/connection";
-import { oauthClients } from "@/lib/db/schema/oauth-provider";
 
 export const runtime = "nodejs";
 
@@ -49,24 +46,6 @@ async function extractToken(request: Request): Promise<string | null> {
   }
 
   return null;
-}
-
-async function findClient(clientId: string) {
-  const row = await db
-    .select({
-      redirectUris: oauthClients.redirectUris,
-      subjectType: oauthClients.subjectType,
-    })
-    .from(oauthClients)
-    .where(eq(oauthClients.clientId, clientId))
-    .limit(1)
-    .get();
-  return row
-    ? {
-        subjectType: row.subjectType,
-        redirectUris: parseStoredStringArray(row.redirectUris),
-      }
-    : undefined;
 }
 
 export async function POST(request: Request) {
@@ -105,8 +84,8 @@ async function introspect(
   }
 
   const [tokenClient, callerClient] = await Promise.all([
-    findClient(tokenClientId),
-    findClient(principal.clientId),
+    findPairwiseClient(tokenClientId),
+    findPairwiseClient(principal.clientId),
   ]);
 
   const tokenScopes =

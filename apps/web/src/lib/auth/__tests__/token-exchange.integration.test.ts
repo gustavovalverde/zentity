@@ -1386,7 +1386,7 @@ describe("Token Exchange (RFC 8693)", () => {
       expect(userinfo.sub).toBe(
         await computePairwiseSub(
           userId,
-          [PAIRWISE_REDIRECT],
+          new URL(PAIRWISE_REDIRECT).host,
           process.env.PAIRWISE_SECRET as string
         )
       );
@@ -1411,7 +1411,7 @@ describe("Token Exchange (RFC 8693)", () => {
       expect(payload.sub).toBe(
         await computePairwiseSub(
           userId,
-          [PAIRWISE_REDIRECT],
+          new URL(PAIRWISE_REDIRECT).host,
           process.env.PAIRWISE_SECRET as string
         )
       );
@@ -1437,6 +1437,7 @@ describe("Token Exchange (RFC 8693)", () => {
       await createPairwiseClient();
 
       const pairwiseSub = await resolveSubForClient(userId, {
+        sectorIdentifier: null,
         subjectType: "pairwise",
         redirectUris: [PAIRWISE_REDIRECT],
       });

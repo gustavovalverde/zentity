@@ -108,6 +108,7 @@ describe("pairwise agent identifiers", () => {
     const sessionId = await createAgentSession(userId, clientId);
 
     const userSub = await resolveSubForClient(userId, {
+      sectorIdentifier: null,
       redirectUris: ["https://rp.example.com/callback"],
       subjectType: "pairwise",
     });
@@ -130,6 +131,7 @@ describe("pairwise agent identifiers", () => {
     const sessionId = await createAgentSession(userId, clientId);
 
     const userSub = await resolveSubForClient(userId, {
+      sectorIdentifier: null,
       redirectUris: ["https://rp.example.com/callback"],
       subjectType: "public",
     });
