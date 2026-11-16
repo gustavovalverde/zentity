@@ -24,6 +24,11 @@ const RECOVERY_VAULT_URL = /\/recovery\/vault/;
 const RECOVERY_PASSKEY_URL = /\/recovery\/passkey/;
 const VERIFY_URL = /\/dashboard\/verify/;
 const SIGN_IN_URL = /\/sign-in/;
+const CONFIRM_PASSKEY = /^use passkey$/i;
+const EMAIL_ME_A_LINK = /^email me a link$/i;
+const LINK_SENT = /we sent a sign-in link/i;
+const START_OVER = /^start over with new keys$/i;
+const CANT_USE_ANY = /^i can't use any of these$/i;
 const BREACH_CHECK_DONE =
   /not found in known breaches|couldn't check breaches/i;
 
@@ -46,7 +51,15 @@ async function unlockWithPassword(page: Page, password: string) {
   await dialog.getByRole("button", { name: UNLOCK }).click();
 }
 
-async function saveRecoveryKey(page: Page): Promise<string> {
+/** Answers the dialog that asks the user to confirm a recovery change. */
+function confirmationDialog(page: Page) {
+  return page.getByRole("alertdialog");
+}
+
+async function saveRecoveryKey(
+  page: Page,
+  options: { confirmWithPasskey?: boolean } = {}
+): Promise<string> {
   const words = page.getByTestId("recovery-key-words");
   await expect(words.locator("li")).toHaveCount(24, { timeout: 30_000 });
   const phrase = (await words.locator("li span:last-child").allTextContents())
@@ -57,6 +70,11 @@ async function saveRecoveryKey(page: Page): Promise<string> {
   });
   await page.getByLabel(SAVED_CONFIRMATION).check();
   await page.getByRole("button", { name: SAVE_RECOVERY_KEY }).click();
+  if (options.confirmWithPasskey) {
+    await confirmationDialog(page)
+      .getByRole("button", { name: CONFIRM_PASSKEY })
+      .click();
+  }
   await expect(page.getByText(RECOVERY_KEY_CREATED)).toBeVisible();
   return phrase;
 }
@@ -65,7 +83,7 @@ async function resetPassword(page: Page, email: string): Promise<string> {
   await page.goto("/recovery/password");
   await page.getByRole("textbox", { name: EMAIL_LABEL }).fill(email);
   await page.getByRole("button", { name: "Send Reset Link" }).click();
-  await page.goto(await mail.waitForLink(email));
+  await page.goto(await mail.waitForLink(email, "/recovery/password/reset"));
 
   await expect(page.getByText(RESET_NOTICE)).toBeVisible();
   const newPassword = `Reset-${crypto.randomUUID()}`;
@@ -105,7 +123,9 @@ test.describe("Vault recovery", () => {
       .getByRole("dialog")
       .getByRole("button", { name: USE_PASSKEY })
       .click();
-    const phrase = await saveRecoveryKey(page);
+    // The account now holds a passkey, and the session signed in with the
+    // password, so the recovery key needs a passkey confirmation.
+    const phrase = await saveRecoveryKey(page, { confirmWithPasskey: true });
 
     await authenticator.remove();
     await page.context().clearCookies();
@@ -113,7 +133,7 @@ test.describe("Vault recovery", () => {
     await page.goto("/recovery/passkey");
     await page.getByLabel(EMAIL_LABEL).fill(email);
     await page.getByRole("button", { name: "Send sign-in link" }).click();
-    await page.goto(await mail.waitForLink(email));
+    await page.goto(await mail.waitForLink(email, "/magic-link/verify"));
     await page.waitForURL(RECOVERY_PASSKEY_URL);
 
     await addPrfAuthenticator(page);
@@ -191,9 +211,43 @@ test.describe("Vault recovery", () => {
       path: test.info().outputPath("no-credential.png"),
     });
 
-    await page
-      .getByRole("button", { name: "Start over with new keys" })
-      .click();
+    await page.getByRole("button", { name: START_OVER }).click();
+    await page.waitForURL(VERIFY_URL);
+  });
+
+  test("starts over by email link after losing the only passkey", async ({
+    page,
+  }) => {
+    await page.goto("/");
+    const authenticator = await addPrfAuthenticator(page);
+    const { email, password } = await createPasswordVaultUser(page, {
+      firstName: "Barbara",
+    });
+    await page.goto("/dashboard/settings");
+    await page.getByRole("button", { name: ADD_PASSKEY }).click();
+    await unlockWithPassword(page, password);
+    await expect(page.getByText("Passkey 1")).toBeVisible({ timeout: 30_000 });
+
+    await authenticator.remove();
+    await page.context().clearCookies();
+    await resetPassword(page, email);
+
+    // A password session cannot reset the vault of an account that holds a
+    // passkey; the user has no passkey, so they ask for an email link.
+    await page.getByRole("button", { name: CANT_USE_ANY }).click();
+    await page.getByRole("button", { name: START_OVER }).click();
+    const dialog = confirmationDialog(page);
+    await expect(dialog).toContainText(email);
+    await page.screenshot({
+      path: test.info().outputPath("confirm-by-email.png"),
+    });
+    await dialog.getByRole("button", { name: EMAIL_ME_A_LINK }).click();
+    await expect(page.getByText(LINK_SENT)).toBeVisible();
+
+    await page.goto(await mail.waitForLink(email, "/magic-link/verify"));
+    await page.waitForURL(RECOVERY_VAULT_URL);
+    await page.getByRole("button", { name: CANT_USE_ANY }).click();
+    await page.getByRole("button", { name: START_OVER }).click();
     await page.waitForURL(VERIFY_URL);
   });
 });

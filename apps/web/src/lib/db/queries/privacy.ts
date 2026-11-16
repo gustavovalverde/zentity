@@ -106,6 +106,17 @@ export async function getEncryptedSecretById(
   return row ?? null;
 }
 
+/** Whether any account stores a secret under this id. */
+export async function isSecretIdStored(secretId: string): Promise<boolean> {
+  const row = await db
+    .select({ id: encryptedSecrets.id })
+    .from(encryptedSecrets)
+    .where(eq(encryptedSecrets.id, secretId))
+    .limit(1)
+    .get();
+  return Boolean(row);
+}
+
 export async function getSecretWrappersBySecretId(
   secretId: string
 ): Promise<SecretWrapperRecord[]> {

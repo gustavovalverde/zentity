@@ -2,11 +2,11 @@ import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 
 import { sql } from "drizzle-orm";
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 
 import { db } from "@/lib/db/connection";
 import { oauthAccessTokens } from "@/lib/db/schema/oauth-provider";
-import { createTestUser } from "@/test-utils/db-test-utils";
+import { createTestUser, resetDatabase } from "@/test-utils/db-test-utils";
 
 const TRAILING_COMMA_BEFORE_CLOSE = /,\n\)$/;
 
@@ -87,6 +87,10 @@ async function dropAccessTokenAuthContext(): Promise<void> {
 }
 
 describe("deploy backfill", () => {
+  beforeEach(async () => {
+    await resetDatabase();
+  });
+
   it("creates ciba_approval exactly as db:push does, before the release serves traffic", async () => {
     const pushed = await cibaApprovalSchema();
     expect(pushed.map((row) => row.name)).toEqual([

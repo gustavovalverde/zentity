@@ -29,7 +29,11 @@ import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
 import { asyncHandler, reportRejection } from "@/lib/async-handler";
 import { authClient } from "@/lib/auth/auth-client";
-import { listUserPasskeys, signInWithPasskey } from "@/lib/auth/passkey/client";
+import {
+  listUserPasskeys,
+  signInWithPasskey,
+  withPasskeyConfirmation,
+} from "@/lib/auth/passkey/client";
 import { checkPrfSupport } from "@/lib/auth/passkey/prf";
 import { recordClientMetric } from "@/lib/observability/client-metrics";
 import { setCachedBindingMaterial } from "@/lib/privacy/credentials/cache";
@@ -427,7 +431,11 @@ export function FheEnrollmentDialog({
 
       advanceStage("unlocking");
       const opaqueStart = performance.now();
-      const result = await authClient.opaque.setPassword({ password });
+      // Only a passkey account whose browser lacks PRF gets here, so setting
+      // the password needs a passkey sign-in (`recovery-factors.ts`).
+      const result = await withPasskeyConfirmation(() =>
+        authClient.opaque.setPassword({ password })
+      );
       recordClientMetric({
         name: "client.opaque.duration",
         value: performance.now() - opaqueStart,

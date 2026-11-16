@@ -145,6 +145,16 @@ function extractErrorMessage(
   return fallback;
 }
 
+/** A refused request, with the server's error code when it sent one. */
+class OpaqueRequestError extends Error {
+  readonly code: string | undefined;
+
+  constructor(message: string, code: string | undefined) {
+    super(message);
+    this.code = code;
+  }
+}
+
 function wrapError(error: unknown): Result<never> {
   let message = "An unknown error occurred";
 
@@ -157,7 +167,8 @@ function wrapError(error: unknown): Result<never> {
     }
   }
 
-  return { data: null, error: { message } };
+  const code = error instanceof OpaqueRequestError ? error.code : undefined;
+  return { data: null, error: code ? { code, message } : { message } };
 }
 
 interface RoundTripMessages {
@@ -185,7 +196,10 @@ async function fetchOrThrow<T>(
 ): Promise<T> {
   const response = await $fetch<T>(path, { method: "POST", body });
   if (response.error || !response.data) {
-    throw new Error(extractErrorMessage(response.error, fallback));
+    throw new OpaqueRequestError(
+      extractErrorMessage(response.error, fallback),
+      response.error?.code
+    );
   }
   return response.data;
 }

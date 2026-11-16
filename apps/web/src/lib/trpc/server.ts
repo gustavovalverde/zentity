@@ -32,6 +32,12 @@ import {
   type ResourceError,
 } from "@/lib/auth/oidc/resource-challenge";
 import { verifyResourceRequest } from "@/lib/auth/oidc/resource-principal";
+import {
+  checkRecoveryFactorChange,
+  REVERIFICATION_REQUIRED,
+  REVERIFICATION_REQUIRED_MESSAGE,
+  type RecoveryFactorChange,
+} from "@/lib/auth/recovery-factors";
 import { db } from "@/lib/db/connection";
 import { sessions, users } from "@/lib/db/schema/auth";
 import { logError, logWarn } from "@/lib/logging/error-logger";
@@ -43,9 +49,14 @@ import {
 } from "@/lib/observability/request-context";
 import { hashIdentifier, withSpan } from "@/lib/observability/telemetry";
 
+/** Marks a refusal so the client can ask for a passkey confirmation. */
+class RecoveryFactorChangeRefused extends Error {}
+
 /** Base context available to all procedures (public and protected). */
 interface TrpcContext {
   authContext?: AuthenticationState | null;
+  /** How the session was presented: the browser cookie, or an OAuth access token. */
+  authenticatedWith?: "session_cookie" | "access_token" | null;
   /** The next DPoP nonce for a client whose DPoP-bound token verified. */
   dpopNonce?: string | null;
   flowId: string | null;
@@ -230,10 +241,14 @@ export async function createTrpcContext(args: {
   const requestContext = resolveRequestContext(args.req.headers);
   let session: Session | null = null;
   let authContext: AuthenticationState | null = null;
+  let authenticatedWith: TrpcContext["authenticatedWith"] = null;
   let tokenChallenge: Headers | null = null;
   let dpopNonce: string | null = null;
   try {
     session = await auth.api.getSession({ headers: args.req.headers });
+    if (session) {
+      authenticatedWith = "session_cookie";
+    }
     if (session?.session?.id) {
       authContext = await resolveAuthenticationContext({
         authContextId:
@@ -253,6 +268,7 @@ export async function createTrpcContext(args: {
     try {
       const resolved = await resolveOAuthSession(args.req);
       session = resolved.session;
+      authenticatedWith = session ? "access_token" : null;
       authContext = resolved.authContext;
       tokenChallenge = resolved.challenge;
       dpopNonce = resolved.dpopNonce ?? null;
@@ -267,6 +283,7 @@ export async function createTrpcContext(args: {
   return {
     req: args.req,
     session: session ?? null,
+    authenticatedWith,
     tokenChallenge,
     dpopNonce,
     authContext,
@@ -314,6 +331,12 @@ const trpc = initTRPC.context<TrpcContext>().create({
         ? `An unexpected error occurred. (Ref: ${ref})`
         : "An unexpected error occurred.";
       return { ...shape, message };
+    }
+    if (error.cause instanceof RecoveryFactorChangeRefused) {
+      return {
+        ...shape,
+        data: { ...shape.data, reason: REVERIFICATION_REQUIRED },
+      };
     }
     return shape;
   },
@@ -566,4 +589,33 @@ export function requireFeature(feature: FeatureName) {
       },
     });
   });
+}
+
+/**
+ * Refuses a recovery factor change the account's state does not allow (see
+ * `recovery-factors.ts`). Only a browser session counts toward it: an access
+ * token's sign-in authorized an OAuth client, not this change.
+ */
+export async function requireRecoveryFactorChange(
+  ctx: Pick<TrpcContext, "authenticatedWith"> & {
+    session: Session;
+    userId: string;
+  },
+  change: RecoveryFactorChange
+): Promise<void> {
+  const decision = await checkRecoveryFactorChange({
+    change,
+    sessionId:
+      ctx.authenticatedWith === "session_cookie"
+        ? ctx.session.session.id
+        : null,
+    userId: ctx.userId,
+  });
+  if (!decision.allowed) {
+    throw new TRPCError({
+      code: "FORBIDDEN",
+      message: REVERIFICATION_REQUIRED_MESSAGE,
+      cause: new RecoveryFactorChangeRefused(REVERIFICATION_REQUIRED),
+    });
+  }
 }

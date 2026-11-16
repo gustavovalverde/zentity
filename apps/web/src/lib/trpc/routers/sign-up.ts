@@ -1,5 +1,7 @@
 import "server-only";
 
+import { TRPCError } from "@trpc/server";
+import { createEmailVerificationToken } from "better-auth/api";
 import z from "zod";
 
 import { auth } from "@/lib/auth/auth-config";
@@ -10,7 +12,8 @@ import {
   clearAnonymousFlag,
   deleteStaleAnonymousUserByEmail,
   emailBelongsToAnotherAccount,
-  linkWalletAddress,
+  isUserAnonymous,
+  isWalletLinkedToUser,
   updateUserEmail,
   updateUserWalletIdentity,
 } from "@/lib/db/queries/auth";
@@ -20,10 +23,41 @@ import { accountAlertLimiter } from "@/lib/http/rate-limit";
 import { logError } from "@/lib/logging/error-logger";
 import { hashIdentifier } from "@/lib/observability/telemetry";
 
-import { protectedProcedure, router } from "../server";
+import {
+  protectedProcedure,
+  requireRecoveryFactorChange,
+  router,
+} from "../server";
 
 const BUNDLE_ISSUER_ID = "zentity";
 const BUNDLE_POLICY_VERSION = "1.0";
+
+/**
+ * Sends the verification link for the address sign-up just set. The
+ * verification endpoint sends nothing for a session-less request about an
+ * account that holds a passkey, and a passkey sign-up holds one by now, so
+ * the link is built here the way that endpoint builds it.
+ */
+async function sendSignUpVerificationEmail(userId: string): Promise<void> {
+  const context = await auth.$context;
+  const user = await context.internalAdapter.findUserById(userId);
+  if (!user) {
+    return;
+  }
+  const token = await createEmailVerificationToken(
+    context.secret,
+    user.email,
+    undefined,
+    undefined,
+    { userId }
+  );
+  const callbackURL = encodeURIComponent("/dashboard");
+  await context.options.emailVerification.sendVerificationEmail({
+    user,
+    url: `${context.baseURL}/verify-email?token=${token}&callbackURL=${callbackURL}`,
+    token,
+  });
+}
 
 export const signUpRouter = router({
   completeAccountCreation: protectedProcedure
@@ -36,18 +70,31 @@ export const signUpRouter = router({
               message: "This email address can't be used",
             })
             .optional(),
-          wallet: z
-            .object({
-              address: z.string().min(1),
-              chainId: z.number().int().positive(),
-            })
-            .optional(),
+          wallet: z.object({ address: z.string().min(1) }).optional(),
         })
         .optional()
     )
     .mutation(async ({ ctx, input }) => {
+      // Completing sign-up sets the account's email and wallet without any
+      // other check, so it must not reach an account that already exists.
+      if (!(await isUserAnonymous(ctx.userId))) {
+        throw new TRPCError({
+          code: "FORBIDDEN",
+          message: "This account is already set up.",
+        });
+      }
+
       const email = input?.email?.trim() || null;
       const wallet = input?.wallet;
+      if (wallet) {
+        if (!(await isWalletLinkedToUser(ctx.userId, wallet.address))) {
+          throw new TRPCError({
+            code: "FORBIDDEN",
+            message: "Sign in with this wallet to link it to your account.",
+          });
+        }
+        await requireRecoveryFactorChange(ctx, "wallet");
+      }
 
       // Privacy: never reveal whether an email is registered. If the email
       // belongs to another account, no-op locally and dispatch an alert to
@@ -94,14 +141,6 @@ export const signUpRouter = router({
       try {
         await Promise.all([
           identityUpdate,
-          wallet
-            ? linkWalletAddress({
-                userId: ctx.userId,
-                address: wallet.address,
-                chainId: wallet.chainId,
-                isPrimary: true,
-              })
-            : Promise.resolve(),
           upsertIdentityBundle({
             userId: ctx.userId,
             validityStatus: "pending",
@@ -127,20 +166,16 @@ export const signUpRouter = router({
       }
 
       if (email) {
-        auth.api
-          .sendVerificationEmail({
-            body: { email, callbackURL: "/dashboard" },
-          })
-          .catch((sendError: unknown) => {
-            ctx.log.error(
-              {
-                event: "verification_email_send_failed",
-                emailHash: hashIdentifier(email),
-                err: sendError,
-              },
-              "failed to send verification email"
-            );
-          });
+        sendSignUpVerificationEmail(ctx.userId).catch((sendError: unknown) => {
+          ctx.log.error(
+            {
+              event: "verification_email_send_failed",
+              emailHash: hashIdentifier(email),
+              err: sendError,
+            },
+            "failed to send verification email"
+          );
+        });
       }
 
       return { success: true };

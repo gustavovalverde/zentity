@@ -59,7 +59,6 @@ import { useVaultKeyPrompt } from "@/components/vault-unlock";
 import { asyncHandler, reportRejection } from "@/lib/async-handler";
 import { authClient } from "@/lib/auth/auth-client";
 import {
-  deletePasskey,
   listUserPasskeys,
   registerPasskeyWithPrf,
   renamePasskey,
@@ -70,7 +69,7 @@ import { formatDate } from "@/lib/date-format";
 import { generatePrfSalt } from "@/lib/privacy/credentials/derivation";
 import {
   addVaultCredential,
-  removeVaultCredential,
+  removePasskey,
   type VaultKey,
 } from "@/lib/privacy/secrets/vault";
 
@@ -318,26 +317,19 @@ export function PasskeyManagementSection({
     // Close dialog immediately for instant feedback
     setDeleteConfirm(null);
 
-    const credentialId = passkeys.find((p) => p.id === id)?.credentialID;
-    const connected = access?.passkeys.some(
-      (p) => p.credentialId === credentialId && p.connected
+    const credentialId = passkeys.find((p) => p.id === id)?.credentialID ?? "";
+    const opensVault = Boolean(
+      credentialId &&
+        access?.passkeys.some(
+          (p) => p.credentialId === credentialId && p.connected
+        )
     );
-    if (credentialId && connected) {
-      try {
-        await removeVaultCredential(credentialId);
-      } catch (err) {
-        toast.error("Failed to remove passkey", {
-          description: err instanceof Error ? err.message : "Please try again",
-        });
-        return;
-      }
-    }
 
     // Apply optimistic update - item disappears instantly
     applyOptimistic({ type: "delete", id });
 
     try {
-      const result = await deletePasskey(id);
+      const result = await removePasskey({ id, credentialId, opensVault });
       if (result.error) {
         throw new Error(result.error.message || "Failed to remove passkey");
       }

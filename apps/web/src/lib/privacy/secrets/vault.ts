@@ -21,6 +21,7 @@ import type {
 } from "./catalog";
 
 import { authClient } from "@/lib/auth/auth-client";
+import { withPasskeyConfirmation } from "@/lib/auth/passkey/client";
 import {
   type ApprovalAssertion,
   evaluatePrf,
@@ -557,18 +558,21 @@ export async function storeSecretWithCredential(params: {
     payload: envelope.encryptedBlob,
   });
 
-  await trpc.secrets.storeSecret.mutate({
-    secretId,
-    secretType: params.secretType,
-    blobRef: blobMetadata.blobRef,
-    blobHash: blobMetadata.blobHash,
-    blobSize: blobMetadata.blobSize,
-    ...wrapper,
-    metadata: {
-      ...params.metadata,
-      [ENVELOPE_FORMAT_METADATA_KEY]: params.envelopeFormat,
-    },
-  });
+  // Replacing the vault root of a passkey account needs a passkey sign-in.
+  await withPasskeyConfirmation(() =>
+    trpc.secrets.storeSecret.mutate({
+      secretId,
+      secretType: params.secretType,
+      blobRef: blobMetadata.blobRef,
+      blobHash: blobMetadata.blobHash,
+      blobSize: blobMetadata.blobSize,
+      ...wrapper,
+      metadata: {
+        ...params.metadata,
+        [ENVELOPE_FORMAT_METADATA_KEY]: params.envelopeFormat,
+      },
+    })
+  );
 
   return { secretId, envelopeFormat: params.envelopeFormat };
 }
@@ -667,6 +671,27 @@ export async function removeVaultCredential(
   credentialId: string
 ): Promise<void> {
   await trpc.secrets.removeCredential.mutate({ credentialId });
+}
+
+/**
+ * Remove a passkey, and its vault wrapper when it opens the vault. The server
+ * refuses both steps under the same recovery factor rule, so the one
+ * confirmation runs before either step, and a cancelled confirmation leaves
+ * the passkey able to open the vault.
+ */
+export function removePasskey(passkey: {
+  credentialId: string;
+  id: string;
+  opensVault: boolean;
+}) {
+  return withPasskeyConfirmation(async () => {
+    if (passkey.opensVault) {
+      await trpc.secrets.removeCredential.mutate({
+        credentialId: passkey.credentialId,
+      });
+    }
+    return authClient.passkey.deletePasskey({ id: passkey.id });
+  });
 }
 
 /**

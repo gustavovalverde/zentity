@@ -5,6 +5,7 @@ import type { PublicKeyCredentialRequestOptionsJSON } from "@simplewebauthn/brow
 import { startAuthentication } from "@simplewebauthn/browser";
 
 import { authClient } from "@/lib/auth/auth-client";
+import { isSyntheticEmail } from "@/lib/auth/synthetic-email";
 
 import {
   type ApprovalAssertion,
@@ -249,5 +250,158 @@ export function renamePasskey(id: string, name: string) {
 }
 
 export function deletePasskey(id: string) {
-  return authClient.passkey.deletePasskey({ id });
+  return withPasskeyConfirmation(() =>
+    authClient.passkey.deletePasskey({ id })
+  );
+}
+
+// The code the server refuses a recovery factor change with until the user
+// confirms with a passkey (`recovery-factors.ts`).
+const REVERIFICATION_REQUIRED = "REVERIFICATION_REQUIRED";
+
+/**
+ * Whether the server refused a change to how the account is recovered until
+ * the user confirms with a passkey. Reads a Better Auth error's `code` and a
+ * tRPC error's `data.reason`.
+ */
+export function isReverificationRequired(error: unknown): boolean {
+  if (!(error && typeof error === "object")) {
+    return false;
+  }
+  const { code, data } = error as {
+    code?: unknown;
+    data?: { reason?: unknown } | null;
+  };
+  return (
+    code === REVERIFICATION_REQUIRED || data?.reason === REVERIFICATION_REQUIRED
+  );
+}
+
+export type PasskeyConfirmationChoice = "cancel" | "email_link" | "passkey";
+
+/** A change the server refused, waiting for the user to choose how to confirm. */
+export interface PasskeyConfirmationRequest {
+  choose: (choice: PasskeyConfirmationChoice) => void;
+  /** Where an email sign-in link that counts as confirmation can go. */
+  emailLinkTo: string | null;
+}
+
+let pendingConfirmation: PasskeyConfirmationRequest | null = null;
+const confirmationListeners = new Set<() => void>();
+
+function notifyConfirmationListeners() {
+  for (const listener of confirmationListeners) {
+    listener();
+  }
+}
+
+/** For `useSyncExternalStore` in the confirmation dialog. */
+export function subscribePasskeyConfirmation(listener: () => void) {
+  confirmationListeners.add(listener);
+  return () => {
+    confirmationListeners.delete(listener);
+  };
+}
+
+export function getPasskeyConfirmation(): PasskeyConfirmationRequest | null {
+  return pendingConfirmation;
+}
+
+function askForConfirmation(
+  emailLinkTo: string | null
+): Promise<PasskeyConfirmationChoice> {
+  pendingConfirmation?.choose("cancel");
+  return new Promise((resolve) => {
+    const request: PasskeyConfirmationRequest = {
+      emailLinkTo,
+      choose: (choice) => {
+        if (pendingConfirmation === request) {
+          pendingConfirmation = null;
+          notifyConfirmationListeners();
+        }
+        resolve(choice);
+      },
+    };
+    pendingConfirmation = request;
+    notifyConfirmationListeners();
+  });
+}
+
+type Attempt<T> = { refused: true } | { refused: false; result: T };
+
+async function attempt<T>(action: () => Promise<T>): Promise<Attempt<T>> {
+  try {
+    const result = await action();
+    return isReverificationRequired((result as { error?: unknown })?.error)
+      ? { refused: true }
+      : { refused: false, result };
+  } catch (error) {
+    if (isReverificationRequired(error)) {
+      return { refused: true };
+    }
+    throw error;
+  }
+}
+
+/**
+ * Runs an action that changes how the account is recovered. When the server
+ * asks for a confirmation, by throwing or by returning `{ error }`, the
+ * confirmation dialog asks the user to sign in again with a passkey and the
+ * action runs once more. A user with a verified address can ask for an email
+ * sign-in link instead, which counts once opened.
+ */
+export async function withPasskeyConfirmation<T>(
+  action: () => Promise<T>
+): Promise<T> {
+  const first = await attempt(action);
+  if (!first.refused) {
+    return first.result;
+  }
+
+  const { data: current } = await authClient.getSession();
+  const user = current?.user;
+  const emailLinkTo =
+    user?.emailVerified && !isSyntheticEmail(user.email) ? user.email : null;
+  const orEmail = emailLinkTo ? ", or ask for an email sign-in link" : "";
+
+  const choice = await askForConfirmation(emailLinkTo);
+  if (choice === "cancel") {
+    throw new Error("Nothing was changed.");
+  }
+  if (choice === "email_link" && emailLinkTo) {
+    const sent = await authClient.signIn.magicLink({
+      email: emailLinkTo,
+      callbackURL: `${globalThis.location.pathname}${globalThis.location.search}`,
+    });
+    if (sent?.error) {
+      throw new Error("We couldn't send a sign-in link. Try again.");
+    }
+    throw new Error(
+      `We sent a sign-in link to ${emailLinkTo}. Open it within 5 minutes, then try again.`
+    );
+  }
+
+  const confirmation = await signInWithPasskey();
+  if (!confirmation.ok) {
+    throw new Error(
+      `We couldn't confirm it's you with your passkey. Try again${orEmail}.`
+    );
+  }
+  const confirmedUserId = (
+    confirmation.data as { user?: { id?: unknown } } | undefined
+  )?.user?.id;
+  if (user && confirmedUserId !== user.id) {
+    throw new Error(
+      "That passkey belongs to another Zentity account, and you're now signed in to it. Sign in to the account you meant to change, then try again."
+    );
+  }
+
+  const retry = await attempt(action);
+  if (retry.refused) {
+    // The passkey plugin accepts assertions without user verification.
+    throw new Error(
+      `Your passkey didn't ask for your PIN, fingerprint, or face, so it can't confirm this change. Use a passkey that does${orEmail}.`
+    );
+  }
+  return retry.result;
 }

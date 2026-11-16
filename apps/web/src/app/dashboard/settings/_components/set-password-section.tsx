@@ -27,6 +27,7 @@ import { Spinner } from "@/components/ui/spinner";
 import { useVaultKeyPrompt } from "@/components/vault-unlock";
 import { reportRejection } from "@/lib/async-handler";
 import { authClient } from "@/lib/auth/auth-client";
+import { withPasskeyConfirmation } from "@/lib/auth/passkey/client";
 import { getPasswordLengthError } from "@/lib/auth/password";
 import { addVaultCredential } from "@/lib/privacy/secrets/vault";
 
@@ -72,9 +73,9 @@ export function SetPasswordSection({
           return;
         }
 
-        const result = await authClient.opaque.setPassword({
-          password: value.newPassword,
-        });
+        const result = await withPasskeyConfirmation(() =>
+          authClient.opaque.setPassword({ password: value.newPassword })
+        );
 
         if (!result.data || result.error) {
           const message =

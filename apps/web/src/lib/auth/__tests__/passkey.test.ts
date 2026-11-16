@@ -1,7 +1,9 @@
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const authMocks = vi.hoisted(() => ({
   addPasskey: vi.fn(),
+  getSession: vi.fn(),
+  signInMagicLink: vi.fn(),
   signInPasskey: vi.fn(),
   listUserPasskeys: vi.fn(),
   updatePasskey: vi.fn(),
@@ -10,6 +12,7 @@ const authMocks = vi.hoisted(() => ({
 
 vi.mock("@/lib/auth/auth-client", () => ({
   authClient: {
+    getSession: authMocks.getSession,
     passkey: {
       addPasskey: authMocks.addPasskey,
       listUserPasskeys: authMocks.listUserPasskeys,
@@ -17,6 +20,7 @@ vi.mock("@/lib/auth/auth-client", () => ({
       deletePasskey: authMocks.deletePasskey,
     },
     signIn: {
+      magicLink: authMocks.signInMagicLink,
       passkey: authMocks.signInPasskey,
     },
   },
@@ -31,8 +35,13 @@ const prfMocks = vi.hoisted(() => ({
 vi.mock("@/lib/auth/passkey/prf", () => prfMocks);
 
 import {
+  getPasskeyConfirmation,
+  isReverificationRequired,
+  type PasskeyConfirmationChoice,
   registerPasskeyWithPrf,
   signInWithPasskey,
+  subscribePasskeyConfirmation,
+  withPasskeyConfirmation,
 } from "@/lib/auth/passkey/client";
 
 describe("passkey auth wrapper", () => {
@@ -121,5 +130,165 @@ describe("passkey auth wrapper", () => {
       returnWebAuthnResponse: false,
       extensions: undefined,
     });
+  });
+});
+
+describe("withPasskeyConfirmation", () => {
+  const refusedByBetterAuth = {
+    data: null,
+    error: { code: "REVERIFICATION_REQUIRED", message: "Confirm it's you" },
+  };
+  const refusedByTrpc = Object.assign(new Error("Confirm it's you"), {
+    data: { code: "FORBIDDEN", reason: "REVERIFICATION_REQUIRED" },
+  });
+  const owner = {
+    id: "user-1",
+    email: "owner@example.com",
+    emailVerified: true,
+  };
+  const signedInAsOwner = { data: { session: {}, user: { id: owner.id } } };
+  let prompts: (string | null)[];
+  let unsubscribe: () => void;
+
+  /** Answers the confirmation dialog with `choice` whenever it opens. */
+  function answerWith(choice: PasskeyConfirmationChoice) {
+    unsubscribe = subscribePasskeyConfirmation(() => {
+      const request = getPasskeyConfirmation();
+      if (request) {
+        prompts.push(request.emailLinkTo);
+        queueMicrotask(() => request.choose(choice));
+      }
+    });
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    unsubscribe?.();
+    prompts = [];
+    authMocks.getSession.mockResolvedValue({ data: { user: owner } });
+    authMocks.signInPasskey.mockResolvedValue(signedInAsOwner);
+    vi.stubGlobal("location", { pathname: "/dashboard/settings", search: "" });
+  });
+
+  it("recognizes both refusal shapes and nothing else", () => {
+    expect(isReverificationRequired(refusedByBetterAuth.error)).toBe(true);
+    expect(isReverificationRequired(refusedByTrpc)).toBe(true);
+    expect(isReverificationRequired({ code: "SESSION_NOT_FRESH" })).toBe(false);
+    expect(isReverificationRequired(new Error("boom"))).toBe(false);
+  });
+
+  it("asks first, then signs in with a passkey and retries a refused Better Auth call", async () => {
+    answerWith("passkey");
+    const action = vi
+      .fn()
+      .mockResolvedValueOnce(refusedByBetterAuth)
+      .mockResolvedValueOnce({ data: { status: true }, error: null });
+
+    await expect(withPasskeyConfirmation(action)).resolves.toEqual({
+      data: { status: true },
+      error: null,
+    });
+    expect(prompts).toEqual([owner.email]);
+    expect(authMocks.signInPasskey).toHaveBeenCalledOnce();
+    expect(action).toHaveBeenCalledTimes(2);
+  });
+
+  it("signs in with a passkey and retries a refused tRPC call", async () => {
+    answerWith("passkey");
+    const action = vi
+      .fn()
+      .mockRejectedValueOnce(refusedByTrpc)
+      .mockResolvedValueOnce({ success: true });
+
+    await expect(withPasskeyConfirmation(action)).resolves.toEqual({
+      success: true,
+    });
+    expect(action).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not prompt for other failures", async () => {
+    answerWith("passkey");
+    const action = vi.fn().mockRejectedValue(new Error("boom"));
+
+    await expect(withPasskeyConfirmation(action)).rejects.toThrow("boom");
+    expect(prompts).toEqual([]);
+    expect(authMocks.signInPasskey).not.toHaveBeenCalled();
+  });
+
+  it("changes nothing when the user cancels", async () => {
+    answerWith("cancel");
+    const action = vi.fn().mockResolvedValue(refusedByBetterAuth);
+
+    await expect(withPasskeyConfirmation(action)).rejects.toThrow(
+      "Nothing was changed."
+    );
+    expect(authMocks.signInPasskey).not.toHaveBeenCalled();
+    expect(action).toHaveBeenCalledOnce();
+  });
+
+  it("emails a sign-in link back to this page instead", async () => {
+    answerWith("email_link");
+    authMocks.signInMagicLink.mockResolvedValue({ data: { status: true } });
+    const action = vi.fn().mockResolvedValue(refusedByBetterAuth);
+
+    await expect(withPasskeyConfirmation(action)).rejects.toThrow(
+      "We sent a sign-in link to owner@example.com"
+    );
+    expect(authMocks.signInMagicLink).toHaveBeenCalledWith({
+      email: owner.email,
+      callbackURL: "/dashboard/settings",
+    });
+    expect(authMocks.signInPasskey).not.toHaveBeenCalled();
+  });
+
+  it("offers no email link for an unverified or placeholder address", async () => {
+    answerWith("cancel");
+    const action = vi.fn().mockResolvedValue(refusedByBetterAuth);
+
+    for (const user of [
+      { ...owner, emailVerified: false },
+      { ...owner, email: "0xabc@wallet.zentity.app" },
+    ]) {
+      authMocks.getSession.mockResolvedValue({ data: { user } });
+      await expect(withPasskeyConfirmation(action)).rejects.toThrow();
+    }
+    expect(prompts).toEqual([null, null]);
+  });
+
+  it("stops when the passkey confirmation fails", async () => {
+    answerWith("passkey");
+    authMocks.signInPasskey.mockResolvedValue({
+      data: null,
+      error: { message: "cancelled" },
+    });
+    const action = vi.fn().mockResolvedValue(refusedByBetterAuth);
+
+    await expect(withPasskeyConfirmation(action)).rejects.toThrow(
+      "couldn't confirm it's you"
+    );
+    expect(action).toHaveBeenCalledOnce();
+  });
+
+  it("does not retry when the passkey signed in to another account", async () => {
+    answerWith("passkey");
+    authMocks.signInPasskey.mockResolvedValue({
+      data: { session: {}, user: { id: "someone-else" } },
+    });
+    const action = vi.fn().mockResolvedValue(refusedByBetterAuth);
+
+    await expect(withPasskeyConfirmation(action)).rejects.toThrow(
+      "belongs to another Zentity account"
+    );
+    expect(action).toHaveBeenCalledOnce();
+  });
+
+  it("explains a passkey that did not verify the user", async () => {
+    answerWith("passkey");
+    const action = vi.fn().mockResolvedValue(refusedByBetterAuth);
+
+    await expect(withPasskeyConfirmation(action)).rejects.toThrow(
+      "didn't ask for your PIN, fingerprint, or face"
+    );
+    expect(action).toHaveBeenCalledTimes(2);
   });
 });

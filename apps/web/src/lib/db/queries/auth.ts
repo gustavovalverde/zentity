@@ -1,15 +1,16 @@
 import { and, desc, eq, isNotNull, lt, ne, or } from "drizzle-orm";
 import { cache } from "react";
-import { getAddress } from "viem";
+import { getAddress, isAddress } from "viem";
 
 import { deletePairwiseSubjectsForUser } from "@/lib/auth/oidc/pairwise-subject-index";
+import { WALLET_EMAIL_DOMAIN } from "@/lib/auth/synthetic-email";
 
 import { db } from "../connection";
 import { accounts, users, walletAddresses } from "../schema/auth";
 
 /**
  * Updates a user's email, derives a display name from the local part,
- * and clears the anonymous flag.
+ * marks the address unverified, and clears the anonymous flag.
  *
  * Uses raw Drizzle instead of better-auth's API because:
  * - `auth.api.updateUser()` explicitly blocks email changes
@@ -33,6 +34,7 @@ export async function updateUserEmail(
     .set({
       email,
       name,
+      emailVerified: false,
       isAnonymous: false,
       updatedAt: new Date(),
     })
@@ -51,7 +53,7 @@ export async function updateUserWalletIdentity(
 ): Promise<void> {
   const checksummed = getAddress(walletAddress);
   const abbrev = `${checksummed.slice(0, 6)}...${checksummed.slice(-4)}`;
-  const walletEmail = `${checksummed.toLowerCase().slice(2, 10)}@wallet.zentity.app`;
+  const walletEmail = `${checksummed.toLowerCase().slice(2, 10)}@${WALLET_EMAIL_DOMAIN}`;
 
   await db
     .update(users)
@@ -79,6 +81,16 @@ export async function clearAnonymousFlag(userId: string): Promise<void> {
     })
     .where(eq(users.id, userId))
     .run();
+}
+
+/** Whether the user is still anonymous, i.e. has not finished sign-up. */
+export async function isUserAnonymous(userId: string): Promise<boolean> {
+  const row = await db
+    .select({ isAnonymous: users.isAnonymous })
+    .from(users)
+    .where(eq(users.id, userId))
+    .get();
+  return row?.isAnonymous === true;
 }
 
 export const getUserCreatedAt = cache(async function getUserCreatedAt(
@@ -228,42 +240,30 @@ export async function deleteIncompleteSignup(userId: string): Promise<void> {
 }
 
 /**
- * Links a wallet address to a user account.
- *
- * Called during wallet-based sign-up to store the wallet address in the
- * wallet_address table. This is critical for wallet sign-in: without this link,
- * the user would get a new account on their next login attempt, making their
- * FHE keys inaccessible.
- *
- * Uses INSERT OR IGNORE to handle idempotent calls (unique constraint on
- * address + chainId prevents duplicates).
- *
- * @param params.userId - The user ID to link the wallet to
- * @param params.address - The Ethereum wallet address (checksummed or lowercase)
- * @param params.chainId - The chain ID where the signature was made
- * @param params.isPrimary - Whether this is the user's primary wallet (default: true for first wallet)
+ * Whether the user's own sign-up linked this wallet. Only the Sign-In with
+ * Ethereum sign-up (`/sign-up/siwe/complete`) writes a `wallet_address` row,
+ * after it verifies the wallet's signatures, so a row proves the user
+ * controls the address.
  */
-export async function linkWalletAddress(params: {
-  userId: string;
-  address: string;
-  chainId: number;
-  isPrimary?: boolean;
-}): Promise<void> {
-  const { userId, address, chainId, isPrimary = true } = params;
-
-  // Use checksum address format to match wallet sign-in lookups
-  const normalizedAddress = getAddress(address);
-
-  await db
-    .insert(walletAddresses)
-    .values({
-      userId,
-      address: normalizedAddress,
-      chainId,
-      isPrimary,
-    })
-    .onConflictDoNothing()
-    .run();
+export async function isWalletLinkedToUser(
+  userId: string,
+  address: string
+): Promise<boolean> {
+  if (!isAddress(address, { strict: false })) {
+    return false;
+  }
+  const row = await db
+    .select({ id: walletAddresses.id })
+    .from(walletAddresses)
+    .where(
+      and(
+        eq(walletAddresses.userId, userId),
+        eq(walletAddresses.address, getAddress(address))
+      )
+    )
+    .limit(1)
+    .get();
+  return Boolean(row);
 }
 
 export async function getPrimaryWalletAddress(userId: string): Promise<{

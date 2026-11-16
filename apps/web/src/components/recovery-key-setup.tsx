@@ -10,6 +10,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { Spinner } from "@/components/ui/spinner";
 import { asyncHandler } from "@/lib/async-handler";
+import { withPasskeyConfirmation } from "@/lib/auth/passkey/client";
 import { generateRecoveryKey } from "@/lib/privacy/credentials/recovery-key";
 import { addVaultCredential, type VaultKey } from "@/lib/privacy/secrets/vault";
 
@@ -81,10 +82,12 @@ export function RecoveryKeySetup({
     setSaving(true);
     setError(null);
     try {
-      await addVaultCredential(vaultKey, {
-        type: "recovery_key",
-        recoveryKey: recoveryKey.key,
-      });
+      await withPasskeyConfirmation(() =>
+        addVaultCredential(vaultKey, {
+          type: "recovery_key",
+          recoveryKey: recoveryKey.key,
+        })
+      );
       recoveryKey.key.fill(0);
       onSaved();
     } catch (err) {

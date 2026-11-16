@@ -4,6 +4,7 @@ import { Geist, Geist_Mono } from "next/font/google";
 import { headers } from "next/headers";
 import { ThemeProvider } from "next-themes";
 
+import { PasskeyConfirmationDialog } from "@/components/passkey-confirmation-dialog";
 import { PrivacyModeProvider } from "@/components/providers/privacy-mode-provider";
 import { Toaster } from "@/components/ui/sonner";
 import { env } from "@/env";
@@ -81,6 +82,7 @@ export default async function RootLayout({
               Skip to main content
             </a>
             {children}
+            <PasskeyConfirmationDialog />
             <Toaster />
           </PrivacyModeProvider>
         </ThemeProvider>

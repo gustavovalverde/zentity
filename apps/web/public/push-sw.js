@@ -46,6 +46,21 @@ self.addEventListener("push", (event) => {
 
   const payload = event.data.json();
   const { title, body, data } = payload;
+
+  // A notice about the user's own account: nothing to approve.
+  if (data?.kind === "account_notice") {
+    event.waitUntil(
+      self.registration.showNotification(title, {
+        body,
+        icon: "/images/logo/icon-192.png",
+        badge: "/images/logo/icon-192.png",
+        tag: "account-notice",
+        data: { kind: "account_notice", url: data.url },
+      })
+    );
+    return;
+  }
+
   const requestId = data?.requestId;
   const approvalUrl = data?.approvalUrl ?? "/dashboard/agents";
   const requiresVaultUnlock = data?.requiresVaultUnlock === true;
@@ -129,8 +144,14 @@ self.addEventListener("notificationclick", (event) => {
     requiresVaultUnlock,
     kind,
     payment,
+    url,
   } = event.notification.data ?? {};
   const action = event.action;
+
+  if (kind === "account_notice") {
+    event.waitUntil(self.clients.openWindow(url ?? "/dashboard/settings"));
+    return;
+  }
 
   // Identity-scoped requests always route to the approval page.
   if (requiresVaultUnlock) {

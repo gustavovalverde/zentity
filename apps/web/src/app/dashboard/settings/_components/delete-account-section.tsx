@@ -33,6 +33,7 @@ import { Input } from "@/components/ui/input";
 import { Redacted } from "@/components/ui/redacted";
 import { Spinner } from "@/components/ui/spinner";
 import { asyncHandler } from "@/lib/async-handler";
+import { withPasskeyConfirmation } from "@/lib/auth/passkey/client";
 import { trpc } from "@/lib/trpc/client";
 
 interface DeleteAccountSectionProps {
@@ -62,7 +63,9 @@ export function DeleteAccountSection({
     setIsDeleting(true);
 
     try {
-      await trpc.account.deleteAccount.mutate({ confirmEmail });
+      await withPasskeyConfirmation(() =>
+        trpc.account.deleteAccount.mutate({ confirmEmail })
+      );
 
       toast.success("Account deleted", {
         description:

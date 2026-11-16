@@ -25,14 +25,17 @@ import {
 } from "@/components/vault-unlock";
 import { asyncHandler, reportRejection } from "@/lib/async-handler";
 import { authClient } from "@/lib/auth/auth-client";
-import { deletePasskey } from "@/lib/auth/passkey/client";
+import {
+  deletePasskey,
+  withPasskeyConfirmation,
+} from "@/lib/auth/passkey/client";
 import { evaluatePrf } from "@/lib/auth/passkey/prf";
 import { redirectTo } from "@/lib/auth/redirect";
 import { generatePrfSalt } from "@/lib/privacy/credentials/derivation";
 import { SECRET_TYPES } from "@/lib/privacy/secrets/catalog";
 import {
   addVaultCredential,
-  removeVaultCredential,
+  removePasskey,
   type VaultCredentialMaterial,
   type VaultKey,
   verifyVaultCredential,
@@ -161,10 +164,11 @@ export function VaultRecovery({
     );
 
   const retirePasskey = async (passkey: AccessPasskey) => {
-    if (passkey.connected) {
-      await removeVaultCredential(passkey.credentialId);
-    }
-    const result = await deletePasskey(passkey.id);
+    const result = await removePasskey({
+      id: passkey.id,
+      credentialId: passkey.credentialId,
+      opensVault: passkey.connected,
+    });
     if (result.error) {
       throw new Error(result.error.message || "Couldn't remove that passkey.");
     }
@@ -195,7 +199,7 @@ export function VaultRecovery({
     setBusy(true);
     setError(null);
     try {
-      await trpc.secrets.resetVault.mutate();
+      await withPasskeyConfirmation(() => trpc.secrets.resetVault.mutate());
       const [onlyCandidate, ...others] = lostCandidates(null);
       if (lostPasskey && onlyCandidate && others.length === 0) {
         await deletePasskey(onlyCandidate.id);

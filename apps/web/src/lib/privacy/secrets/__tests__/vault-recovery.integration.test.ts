@@ -6,9 +6,14 @@ import crypto from "node:crypto";
 import { eq } from "drizzle-orm";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { createSessionAuthenticationContext } from "@/lib/auth/auth-context";
+import {
+  getPasskeyConfirmation,
+  subscribePasskeyConfirmation,
+} from "@/lib/auth/passkey/client";
 import { db } from "@/lib/db/connection";
 import { detachVaultCredential } from "@/lib/db/queries/privacy";
-import { accounts } from "@/lib/db/schema/auth";
+import { accounts, sessions } from "@/lib/db/schema/auth";
 import { identityBundles } from "@/lib/db/schema/identity";
 import {
   credentialBindingCommitments,
@@ -21,16 +26,19 @@ import {
   createTestUser,
   resetDatabase,
 } from "@/test-utils/db-test-utils";
+import { TestAuthenticator } from "@/test-utils/webauthn-test-utils";
 
 const state = vi.hoisted(() => ({
   userId: "",
   sessionId: "",
   blobs: new Map<string, Uint8Array>(),
+  signInPasskey: vi.fn(),
 }));
 
 function caller() {
   return secretsRouter.createCaller({
     authContext: null,
+    authenticatedWith: "session_cookie",
     flowId: null,
     flowIdSource: "none",
     req: new Request("http://localhost/api/trpc"),
@@ -52,9 +60,18 @@ vi.mock("@/lib/trpc/client", () => ({
         ) => caller().getSecretBundle(input),
       },
       storeSecret: {
+        // A refusal reaches the browser with `data.reason` (see
+        // recovery-factor-refusal.integration.test.ts).
         mutate: (
           input: Parameters<ReturnType<typeof caller>["storeSecret"]>[0]
-        ) => caller().storeSecret(input),
+        ) =>
+          caller()
+            .storeSecret(input)
+            .catch((error: { cause?: { message?: string } }) => {
+              throw Object.assign(error, {
+                data: { reason: error.cause?.message },
+              });
+            }),
       },
       addWrapper: {
         mutate: (
@@ -74,6 +91,7 @@ vi.mock("@/lib/trpc/client", () => ({
 vi.mock("@/lib/auth/auth-client", () => ({
   authClient: {
     getSession: () => Promise.resolve({ data: { user: { id: state.userId } } }),
+    signIn: { passkey: state.signInPasskey },
   },
 }));
 
@@ -349,6 +367,62 @@ describe("vault recovery", () => {
       .get();
     expect(bundle?.fheKeyId).toBeNull();
     await expect(caller().access()).resolves.toBeNull();
+  });
+
+  it("confirms with a passkey before replacing the root of a passkey account", async () => {
+    const oldPassword = opaqueMaterial();
+    await createVault({
+      type: "opaque",
+      context: { userId: state.userId, exportKey: oldPassword.exportKey },
+    });
+    const oldRootId = (await caller().access())?.secretId;
+    // A password reset detaches the only wrapper, so setup starts over.
+    await detachVaultCredential(state.userId, "opaque");
+    await new TestAuthenticator().register(state.userId);
+    // A passkey sign-in starts a new session with a user-verified context.
+    state.signInPasskey.mockImplementation(async () => {
+      state.sessionId = crypto.randomUUID();
+      await db
+        .insert(sessions)
+        .values({
+          id: state.sessionId,
+          token: crypto.randomUUID(),
+          userId: state.userId,
+          expiresAt: new Date(Date.now() + 3_600_000),
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        })
+        .run();
+      await createSessionAuthenticationContext({
+        userId: state.userId,
+        loginMethod: "passkey",
+        sourceKind: "better_auth",
+        sessionId: state.sessionId,
+        amr: ["pop", "user", "mfa"],
+      });
+      return { data: { user: { id: state.userId } } };
+    });
+    const unsubscribe = subscribePasskeyConfirmation(() =>
+      queueMicrotask(() => getPasskeyConfirmation()?.choose("passkey"))
+    );
+
+    const newPassword = opaqueMaterial();
+    const { secretId } = await storeSecretWithCredential({
+      secretType: "fhe_keys",
+      plaintext: new Uint8Array(crypto.randomBytes(64)),
+      credential: {
+        type: "opaque",
+        context: { userId: state.userId, exportKey: newPassword.exportKey },
+      },
+      envelopeFormat: "msgpack",
+    });
+    unsubscribe();
+
+    expect(state.signInPasskey).toHaveBeenCalledOnce();
+    expect(secretId).not.toBe(oldRootId);
+    await expect(verifyVaultCredential(newPassword)).resolves.toEqual([
+      "fhe_keys",
+    ]);
   });
 
   it("refuses non-vault wrappers for secrets other than the root", async () => {

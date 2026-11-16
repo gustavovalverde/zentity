@@ -40,7 +40,7 @@ function parseDefaultTab(tab?: string): SettingsTab {
 export default async function SettingsPage({
   searchParams,
 }: Readonly<{
-  searchParams: Promise<{ tab?: string; walletRisk?: string }>;
+  searchParams: Promise<{ error?: string; tab?: string; walletRisk?: string }>;
 }>) {
   const headersObj = await headers();
   const session = await getCachedSession(headersObj);
@@ -139,7 +139,9 @@ export default async function SettingsPage({
             description="View your verified identity information"
             title="Your Information"
           />
-          <EmailSection />
+          <EmailSection
+            linkOutdated={params.error === "REVERIFICATION_REQUIRED"}
+          />
           <UserDataSection />
         </TabsContent>
 

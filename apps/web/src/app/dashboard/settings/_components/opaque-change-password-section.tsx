@@ -26,6 +26,7 @@ import { InputGroup, InputGroupInput } from "@/components/ui/input-group";
 import { Spinner } from "@/components/ui/spinner";
 import { reportRejection } from "@/lib/async-handler";
 import { authClient, useSession } from "@/lib/auth/auth-client";
+import { withPasskeyConfirmation } from "@/lib/auth/passkey/client";
 import { getPasswordLengthError } from "@/lib/auth/password";
 import {
   addVaultCredential,
@@ -93,10 +94,12 @@ export function OpaqueChangePasswordSection({
       setError(null);
 
       try {
-        const result = await authClient.opaque.changePassword({
-          currentPassword: value.currentPassword,
-          newPassword: value.newPassword,
-        });
+        const result = await withPasskeyConfirmation(() =>
+          authClient.opaque.changePassword({
+            currentPassword: value.currentPassword,
+            newPassword: value.newPassword,
+          })
+        );
 
         if (!result.data || result.error) {
           const message =

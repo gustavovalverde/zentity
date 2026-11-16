@@ -12,6 +12,10 @@ import { and, eq } from "drizzle-orm";
 import { z } from "zod";
 
 import { getAuthenticationStateBySessionId } from "@/lib/auth/auth-context";
+import {
+  notifyRecoveryFactorChange,
+  type RecoveryFactorChange,
+} from "@/lib/auth/recovery-factors";
 import { db } from "@/lib/db/connection";
 import { clearIdentityBundleFheKey } from "@/lib/db/queries/identity";
 import {
@@ -25,9 +29,11 @@ import {
 import { encryptedSecrets, secretWrappers } from "@/lib/db/schema/privacy";
 import {
   kekSourceSchema,
+  OPAQUE_CREDENTIAL_ID,
   prfSaltSchema,
   RECOVERY_KEY_CREDENTIAL_ID,
   secretTypeSchema,
+  type UnlockingKekSource,
   unlockingKekSourceSchema,
   VAULT_KEY_CREDENTIAL_ID,
   VAULT_ROOT_SECRET_TYPE,
@@ -41,12 +47,40 @@ import {
 } from "@/lib/privacy/secrets/storage.server";
 import { getVaultAccess } from "@/lib/privacy/secrets/vault-access";
 
-import { protectedProcedure, router } from "../server";
+import {
+  protectedProcedure,
+  requireRecoveryFactorChange,
+  router,
+} from "../server";
 
 const metadataSchema = z.record(z.string(), z.unknown()).nullable().optional();
 const sha256HexSchema = z.string().regex(/^[a-fA-F0-9]{64}$/);
 
 const VAULT_RESET_FRESHNESS_MS = 15 * 60 * 1000;
+
+/** The recovery factor that stops opening the vault when its wrapper goes. */
+const UNLOCKING_FACTORS: Partial<Record<string, RecoveryFactorChange>> = {
+  prf: "passkey",
+  opaque: "password",
+  wallet: "wallet",
+  recovery_key: "recovery_key",
+} satisfies Record<UnlockingKekSource, RecoveryFactorChange>;
+
+const WALLET_CREDENTIAL_PREFIX = "wallet:";
+
+/**
+ * Ids that name a factor other than a passkey. A passkey wrapper under one
+ * would replace that factor's wrapper, since wrappers are keyed by
+ * (secret, credential id).
+ */
+function isReservedCredentialId(credentialId: string): boolean {
+  return (
+    credentialId === OPAQUE_CREDENTIAL_ID ||
+    credentialId === RECOVERY_KEY_CREDENTIAL_ID ||
+    credentialId === VAULT_KEY_CREDENTIAL_ID ||
+    credentialId.startsWith(WALLET_CREDENTIAL_PREFIX)
+  );
+}
 
 function assertUnlockingWrapper(input: {
   credentialId: string;
@@ -54,10 +88,13 @@ function assertUnlockingWrapper(input: {
   prfSalt?: string | undefined;
 }) {
   const valid =
-    (input.kekSource === "prf" && Boolean(input.prfSalt)) ||
-    (input.kekSource === "opaque" && input.credentialId === "opaque") ||
+    (input.kekSource === "prf" &&
+      Boolean(input.prfSalt) &&
+      !isReservedCredentialId(input.credentialId)) ||
+    (input.kekSource === "opaque" &&
+      input.credentialId === OPAQUE_CREDENTIAL_ID) ||
     (input.kekSource === "wallet" &&
-      input.credentialId.startsWith("wallet:")) ||
+      input.credentialId.startsWith(WALLET_CREDENTIAL_PREFIX)) ||
     (input.kekSource === "recovery_key" &&
       input.credentialId === RECOVERY_KEY_CREDENTIAL_ID);
   if (!valid) {
@@ -173,7 +210,25 @@ export const secretsRouter = router({
 
       assertWrapperForSecretType(input);
       const isRoot = input.secretType === VAULT_ROOT_SECRET_TYPE;
-      if (!isRoot) {
+      let mayReplaceRoot = false;
+      if (isRoot) {
+        const root = await getEncryptedSecretByUserAndType(
+          ctx.userId,
+          VAULT_ROOT_SECRET_TYPE
+        );
+        if (root?.id === input.secretId) {
+          // A new vault key takes a new id, and a new credential takes
+          // `addWrapper`; rewriting the root in place would do either unchecked.
+          throw new TRPCError({
+            code: "CONFLICT",
+            message: "Encryption keys changed. Please try again.",
+          });
+        }
+        if (root) {
+          await requireRecoveryFactorChange(ctx, "vault_root");
+          mayReplaceRoot = true;
+        }
+      } else {
         await requireVaultRoot(ctx.userId);
       }
 
@@ -193,6 +248,16 @@ export const secretsRouter = router({
           .get();
 
         let replaced: string[] = [];
+        if (
+          isRoot &&
+          existing &&
+          !(mayReplaceRoot && existing.id !== input.secretId)
+        ) {
+          throw new TRPCError({
+            code: "CONFLICT",
+            message: "Encryption keys changed. Please try again.",
+          });
+        }
         if (existing && existing.id !== input.secretId) {
           if (isRoot) {
             // A new vault key orphans every secret wrapped under the old one.
@@ -262,6 +327,12 @@ export const secretsRouter = router({
           .filter((id) => id !== input.secretId)
           .map((id) => deleteSecretBlob(computeSecretBlobRef(id)))
       );
+      if (mayReplaceRoot) {
+        await notifyRecoveryFactorChange({
+          notice: "vault_root_replaced",
+          userId: ctx.userId,
+        });
+      }
 
       const secret = await getEncryptedSecretByUserAndType(
         ctx.userId,
@@ -296,6 +367,11 @@ export const secretsRouter = router({
     )
     .mutation(async ({ ctx, input }) => {
       assertUnlockingWrapper(input);
+      const writesRecoveryKey =
+        input.credentialId === RECOVERY_KEY_CREDENTIAL_ID;
+      if (writesRecoveryKey) {
+        await requireRecoveryFactorChange(ctx, "recovery_key");
+      }
       const root = await requireVaultRoot(ctx.userId);
       if (root.id !== input.secretId) {
         throw new TRPCError({
@@ -304,6 +380,11 @@ export const secretsRouter = router({
         });
       }
 
+      const replacing =
+        writesRecoveryKey &&
+        (await getSecretWrappersBySecretId(root.id)).some(
+          (w) => w.credentialId === input.credentialId
+        );
       const wrapper = await upsertSecretWrapper({
         secretId: root.id,
         userId: ctx.userId,
@@ -312,6 +393,12 @@ export const secretsRouter = router({
         prfSalt: input.prfSalt,
         kekSource: input.kekSource,
       });
+      if (writesRecoveryKey) {
+        await notifyRecoveryFactorChange({
+          notice: replacing ? "recovery_key_replaced" : "recovery_key_added",
+          userId: ctx.userId,
+        });
+      }
 
       return { wrapper };
     }),
@@ -322,12 +409,19 @@ export const secretsRouter = router({
       const root = await requireVaultRoot(ctx.userId);
       const wrappers = await getSecretWrappersBySecretId(root.id);
 
-      if (!wrappers.some((w) => w.credentialId === input.credentialId)) {
+      const wrapper = wrappers.find(
+        (w) => w.credentialId === input.credentialId
+      );
+      if (!wrapper) {
         throw new TRPCError({
           code: "NOT_FOUND",
           message: "This credential does not unlock your encrypted data.",
         });
       }
+      await requireRecoveryFactorChange(
+        ctx,
+        UNLOCKING_FACTORS[wrapper.kekSource] ?? "vault_root"
+      );
 
       const remaining = wrappers.filter(
         (w) => w.credentialId !== input.credentialId
@@ -341,6 +435,12 @@ export const secretsRouter = router({
       }
 
       await detachVaultCredential(ctx.userId, input.credentialId);
+      if (input.credentialId === RECOVERY_KEY_CREDENTIAL_ID) {
+        await notifyRecoveryFactorChange({
+          notice: "recovery_key_removed",
+          userId: ctx.userId,
+        });
+      }
       return { success: true };
     }),
 
@@ -358,12 +458,19 @@ export const secretsRouter = router({
         message: "Sign in again to start over with new keys.",
       });
     }
+    await requireRecoveryFactorChange(ctx, "vault_reset");
 
     const deletedSecretIds = await deleteVaultSecrets(ctx.userId);
     await clearIdentityBundleFheKey(ctx.userId);
     await Promise.all(
       deletedSecretIds.map((id) => deleteSecretBlob(computeSecretBlobRef(id)))
     );
+    if (deletedSecretIds.length > 0) {
+      await notifyRecoveryFactorChange({
+        notice: "vault_reset",
+        userId: ctx.userId,
+      });
+    }
 
     return { success: true };
   }),
