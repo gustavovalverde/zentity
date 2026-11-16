@@ -30,6 +30,24 @@ This is the main web application for Zentity, providing:
 | Zod | 4.x | Schema validation |
 | better-auth | Latest | Authentication (passkey, OPAQUE, wallet) |
 
+## Browser Support
+
+`package.json` declares the browser baseline in `browserslist`: Chrome and Edge
+116 or later, Firefox 128 or later, and Safari and iOS Safari 17.4 or later.
+
+The baseline is set by the strictest requirement in the client bundle:
+
+- Tailwind CSS 4 requires Chrome 111, Safari 16.4, and Firefox 128.
+- The multi-threaded Barretenberg WASM prover needs about Chrome 114 and
+  Safari 17.4.
+- `AbortSignal.any`, used for request timeouts, needs Chrome 116, Firefox 124,
+  and Safari 17.4.
+
+Passkeys with the WebAuthn PRF extension need newer versions (Chrome 116,
+Firefox 139, Safari 18) and also depend on the authenticator. They are not part
+of the baseline: the app feature-detects PRF at runtime
+(`src/lib/auth/passkey/prf.ts`) and offers password sign-in when it is missing.
+
 ## Getting Started
 
 ### Prerequisites

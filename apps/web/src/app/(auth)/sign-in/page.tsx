@@ -159,7 +159,7 @@ export default function SignInPage() {
               <AlertDescription className="ml-2 text-xs">
                 Your browser supports passkeys but not the PRF extension needed
                 for vault encryption. Identity verification requires a password
-                or a PRF-compatible browser (Chrome, Edge).
+                or a recent version of Chrome, Edge, Safari, or Firefox.
               </AlertDescription>
             </Alert>
           )}
