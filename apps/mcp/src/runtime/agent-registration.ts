@@ -6,10 +6,9 @@ import {
   signAgentAssertion as signSdkAgentAssertion,
 } from "@zentity/sdk";
 import { AGENT_BOOTSTRAP_SCOPES } from "@zentity/sdk/agent-contract";
-import { exchangeToken } from "@zentity/sdk/fpa";
 import type { AgentInfo } from "../agent.js";
 import { config } from "../config.js";
-import { discoverMcpOAuth } from "../oauth-client.js";
+import { exchangeMcpLoginToken } from "../oauth-client.js";
 import { discoverAgentConfiguration } from "./agent-configuration.js";
 import type { OAuthSessionContext } from "./auth-context.js";
 import {
@@ -27,19 +26,20 @@ const REQUESTED_CAPABILITIES = [
   "check_compliance",
 ];
 
+/**
+ * Exchanges the login token, which was granted the bootstrap scopes at
+ * sign-in, for the bootstrap token the registration endpoints require. The
+ * session token does not carry those scopes, so it cannot be exchanged for
+ * them.
+ */
 export async function prepareBootstrapRegistrationAuth(
   auth: OAuthSessionContext
 ): Promise<OAuthSessionContext> {
   const agentConfiguration = await discoverAgentConfiguration(
     config.zentityUrl
   );
-  const discovery = await discoverMcpOAuth();
-  const { accessToken } = await exchangeToken({
-    tokenEndpoint: discovery.token_endpoint,
-    subjectToken: auth.accessToken,
+  const accessToken = await exchangeMcpLoginToken({
     audience: agentConfiguration.bootstrap_token_exchange.audience,
-    clientId: auth.clientId,
-    dpopClient: auth.dpopClient,
     scope:
       agentConfiguration.bootstrap_token_exchange.scopes_supported.join(" ") ||
       AGENT_BOOTSTRAP_SCOPES.join(" "),

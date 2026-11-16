@@ -24,6 +24,16 @@ import { createServer } from "../server.js";
 
 const REFRESH_INTERVAL_MS = 4 * 60 * 1000;
 
+/** Whether the stored login cannot register the agent, so signing in again may. */
+function isUnsatisfiedByStoredLogin(error: unknown): boolean {
+  if (error instanceof AgentRegistrationError) {
+    return error.status === 403;
+  }
+  // The bootstrap token exchange refuses scopes the login was not granted,
+  // as for a login stored before they were requested at sign-in.
+  return error instanceof Error && error.message.includes("invalid_scope");
+}
+
 async function registerRuntime(
   oauth: OAuthSessionContext,
   clientInfo: Implementation | undefined
@@ -62,7 +72,7 @@ export async function bootstrapRegisteredRuntime(
       return registerRuntime(oauth, clientInfo);
     }
 
-    if (error instanceof AgentRegistrationError && error.status === 403) {
+    if (isUnsatisfiedByStoredLogin(error)) {
       console.error(
         "[auth] Stored credentials no longer satisfy agent registration, re-authenticating..."
       );
