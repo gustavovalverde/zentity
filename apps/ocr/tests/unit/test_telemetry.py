@@ -70,6 +70,14 @@ def restore_tracer_provider(monkeypatch):
     monkeypatch.setattr(trace, "set_tracer_provider", lambda provider: None)
 
 
+def test_service_version_is_the_build_commit(monkeypatch):
+    monkeypatch.setenv("APP_VERSION", "9.9.9")
+    monkeypatch.setenv("GIT_SHA", "abc123")
+    assert telemetry._service_version() == "abc123"
+    monkeypatch.delenv("GIT_SHA")
+    assert telemetry._service_version() == "unknown"
+
+
 def test_disabled_without_gate_or_endpoint():
     assert telemetry.configure_telemetry() is None
 
