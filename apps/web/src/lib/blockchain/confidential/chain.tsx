@@ -5,6 +5,7 @@ import type {
   ZamaSDKEvent,
   ZamaSDKEventType,
 } from "@zama-fhe/sdk";
+import type { FheChain } from "@zama-fhe/sdk/chains";
 import type { ReactNode } from "react";
 import type { EIP1193Provider } from "viem";
 
@@ -33,6 +34,7 @@ import { recordClientMetric } from "@/lib/observability/client-metrics";
 import {
   getConfidentialClientNetwork,
   HARDHAT_CONFIDENTIAL_CHAIN_ID,
+  resolveHardhatFhevmChain,
 } from "./client-networks";
 import {
   buildEncryptedIdentityAttributes,
@@ -104,10 +106,16 @@ function recordSdkEvent(event: ZamaSDKEvent) {
   }
 }
 
-function assertConfidentialSdk(sdk: ZamaSDK | null): asserts sdk is ZamaSDK {
+function assertConfidentialSdk(
+  sdk: ZamaSDK | null,
+  setupError: Error | null
+): asserts sdk is ZamaSDK {
   if (!sdk) {
-    throw new Error(
-      "Confidential chain client is not ready. Check wallet connection and network."
+    throw (
+      setupError ??
+      new Error(
+        "Confidential chain client is not ready. Check wallet connection and network."
+      )
     );
   }
 }
@@ -182,30 +190,32 @@ export function ConfidentialChainProvider({
       return;
     }
 
-    const { chain } = activeNetwork;
-    const nextSdk = new ZamaSDK(
-      createConfig({
-        chains: [chain],
-        publicClient,
-        walletClient,
-        ethereum: getBrowserEthereumProvider(),
-        relayers: {
-          [chain.id]: activeNetwork.mode === "cleartext" ? cleartext() : web(),
-        },
-        storage: new IndexedDBStorage(
-          "ZentityConfidentialCredentials",
-          1,
-          "credentials"
-        ),
-        permitStorage: new MemoryStorage(),
-        transportKeyPairTTL: CONFIDENTIAL_TRANSPORT_KEY_PAIR_TTL_SECONDS,
-        permitTTL: CONFIDENTIAL_PERMIT_TTL_DAYS,
-        onEvent: recordSdkEvent,
-        logger: confidentialLogger,
-      })
-    );
+    const createSdk = (chain: FheChain) =>
+      new ZamaSDK(
+        createConfig({
+          chains: [chain],
+          publicClient,
+          walletClient,
+          ethereum: getBrowserEthereumProvider(),
+          relayers: {
+            [chain.id]:
+              activeNetwork.mode === "cleartext" ? cleartext() : web(),
+          },
+          storage: new IndexedDBStorage(
+            "ZentityConfidentialCredentials",
+            1,
+            "credentials"
+          ),
+          permitStorage: new MemoryStorage(),
+          transportKeyPairTTL: CONFIDENTIAL_TRANSPORT_KEY_PAIR_TTL_SECONDS,
+          permitTTL: CONFIDENTIAL_PERMIT_TTL_DAYS,
+          onEvent: recordSdkEvent,
+          logger: confidentialLogger,
+        })
+      );
 
     let cancelled = false;
+    let nextSdk: ZamaSDK | null = null;
     const recordInitialization = (result: "ok" | "error") => {
       recordClientMetric({
         name: "client.confidential.init.duration",
@@ -218,15 +228,40 @@ export function ConfidentialChainProvider({
       });
     };
 
+    const failInitialization = (initError: unknown) => {
+      if (!cancelled) {
+        setStatus("error");
+        setError(
+          initError instanceof Error ? initError : new Error(String(initError))
+        );
+        recordInitialization("error");
+      }
+    };
+
+    setStatus("initializing");
+    setError(null);
     if (activeNetwork.mode === "cleartext") {
-      setStatus("ready");
-      setError(null);
+      setSdk(null);
+      resolveHardhatFhevmChain(
+        activeNetwork.chain,
+        publicClient.transport.request
+      )
+        .then((chain) => {
+          if (!cancelled) {
+            nextSdk = createSdk(chain);
+            setSdk(nextSdk);
+            setStatus("ready");
+            recordInitialization("ok");
+          }
+        })
+        .catch(failInitialization);
     } else {
+      const relayerSdk = createSdk(activeNetwork.chain);
+      nextSdk = relayerSdk;
+      setSdk(relayerSdk);
       // The SDK loads its FHE runtime lazily; fetching the network encryption
       // key up front surfaces relayer or WASM failures before the user acts.
-      setStatus("initializing");
-      setError(null);
-      nextSdk.relayer
+      relayerSdk.relayer
         .fetchFheEncryptionKeyBytes()
         .then(() => {
           if (!cancelled) {
@@ -234,24 +269,12 @@ export function ConfidentialChainProvider({
             recordInitialization("ok");
           }
         })
-        .catch((initError: unknown) => {
-          if (!cancelled) {
-            setStatus("error");
-            setError(
-              initError instanceof Error
-                ? initError
-                : new Error(String(initError))
-            );
-            recordInitialization("error");
-          }
-        });
+        .catch(failInitialization);
     }
-
-    setSdk(nextSdk);
 
     return () => {
       cancelled = true;
-      nextSdk.terminate();
+      nextSdk?.terminate();
     };
   }, [
     activeChainId,
@@ -270,7 +293,7 @@ export function ConfidentialChainProvider({
     ConfidentialChainContextValue["encryptIdentityAttributesForAttestation"]
   >(
     async ({ attributes, registryAddress, userAddress }) => {
-      assertConfidentialSdk(sdk);
+      assertConfidentialSdk(sdk, error);
       return await runMeasuredEncrypt(
         () =>
           sdk.encrypt({
@@ -298,14 +321,14 @@ export function ConfidentialChainProvider({
         }
       );
     },
-    [activeChainId, sdk]
+    [activeChainId, error, sdk]
   );
 
   const encryptTokenAmount = useCallback<
     ConfidentialChainContextValue["encryptTokenAmount"]
   >(
     async ({ amount, contractAddress, userAddress }) => {
-      assertConfidentialSdk(sdk);
+      assertConfidentialSdk(sdk, error);
       return await runMeasuredEncrypt(
         () =>
           sdk.encrypt({
@@ -316,14 +339,14 @@ export function ConfidentialChainProvider({
         buildEncryptedTokenAmount
       );
     },
-    [sdk]
+    [error, sdk]
   );
 
   const decryptIdentityAttributes = useCallback<
     ConfidentialChainContextValue["decryptIdentityAttributes"]
   >(
     async ({ attributeHandles, registryAddress }) => {
-      assertConfidentialSdk(sdk);
+      assertConfidentialSdk(sdk, error);
       try {
         const clearValues = await sdk.decryption.decryptValues(
           buildIdentityAttributeDecryptHandles({
@@ -351,7 +374,7 @@ export function ConfidentialChainProvider({
         throw decryptError;
       }
     },
-    [activeChainId, address, sdk]
+    [activeChainId, address, error, sdk]
   );
 
   const value = useMemo<ConfidentialChainContextValue>(

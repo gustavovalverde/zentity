@@ -1,6 +1,14 @@
 import type { Session } from "@/lib/auth/auth-config";
 
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vitest";
 
 import { POLICY_VERSION } from "@/lib/blockchain/attestation/policy";
 import {
@@ -204,6 +212,10 @@ async function createCaller(
 }
 
 describe("proof router replay and context binding", () => {
+  beforeAll(async () => {
+    await import("@/lib/trpc/routers/zk");
+  }, 120_000);
+
   beforeEach(async () => {
     [msgSenderHash, audienceHash, browserAudienceHash] = await Promise.all([
       contextField("user-123", HASH_TO_FIELD_INFO.IDENTITY_MSG_SENDER),
