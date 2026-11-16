@@ -303,6 +303,19 @@ export async function createWalletClient(
   if (!body.client_id) {
     throw new Error("Missing client_id from OAuth client creation");
   }
+  // The OIDC4VCI plugin looks the user up by the access token's `sub`, which
+  // is pairwise for a pairwise client (upstream ask U25), so the wallet is a
+  // public client, as only an administrator can create one.
+  const client = openE2eDatabase();
+  try {
+    await client.execute("PRAGMA busy_timeout = 5000");
+    await client.execute({
+      sql: "UPDATE oauth_client SET subject_type = 'public' WHERE client_id = ?",
+      args: [body.client_id],
+    });
+  } finally {
+    client.close();
+  }
   return body.client_id;
 }
 
@@ -692,6 +705,8 @@ export async function cibaLoginHint(
       throw new Error(`Client ${clientId} has no pairwise sector`);
     }
     const sub = await makeSignature(`${sector}.${userId}`, pairwiseSecret());
+    // The running server writes to the same file; wait for its lock.
+    await client.execute("PRAGMA busy_timeout = 5000");
     await client.execute({
       sql: `INSERT OR IGNORE INTO pairwise_subject (sector, sub, subject_type, subject_id)
         VALUES (?, ?, 'user', ?)`,

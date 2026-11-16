@@ -746,6 +746,8 @@ The credential endpoint answers `{ "credentials": [{ "credential": "<SD-JWT VC>"
 
 Credentials contain only derived claims (e.g., `verified`, `verification_level`, `age_verified`), never raw PII.
 
+**Known limitation:** the OIDC4VCI plugin looks the user up by the access token's `sub` and copies it into the credential's `sub`. A pairwise client's access token carries its pairwise `sub`, so the credential endpoint answers `user not found` to every pairwise wallet, which includes every dynamically registered one. Only a public client, which only an administrator can create, receives credentials, and their `sub` is the user id. The plugin needs to resolve the user from the provider's `ba_sub` and keep the pairwise `sub` in the credential.
+
 ---
 
 ## Credential Presentation (OIDC4VP)
