@@ -189,6 +189,41 @@ function secrets(
   });
 }
 
+async function wrapperIds(rootId: string): Promise<string[]> {
+  const rows = await db
+    .select({ credentialId: secretWrappers.credentialId })
+    .from(secretWrappers)
+    .where(eq(secretWrappers.secretId, rootId))
+    .all();
+  return rows.map((row) => row.credentialId).sort();
+}
+
+/** Lets the password and a wallet open the vault too. */
+async function addPasswordAndWalletWrappers(
+  userId: string,
+  rootId: string
+): Promise<void> {
+  await db
+    .insert(secretWrappers)
+    .values([
+      {
+        secretId: rootId,
+        userId,
+        credentialId: "opaque",
+        wrappedDek: WRAPPED_DEK,
+        kekSource: "opaque",
+      },
+      {
+        secretId: rootId,
+        userId,
+        credentialId: "wallet:1:0xabc",
+        wrappedDek: WRAPPED_DEK,
+        kekSource: "wallet",
+      },
+    ])
+    .run();
+}
+
 /** A vault root opened by a passkey and the recovery key. */
 async function createVault(userId: string): Promise<string> {
   const rootId = crypto.randomUUID();
@@ -440,6 +475,24 @@ describe("recovery factor changes on a passkey account", () => {
       expect(mockSendEmail).not.toHaveBeenCalled();
     });
 
+    it("refuses to detach a passkey, the password, or a wallet from the vault", async () => {
+      const rootId = await createVault(userId);
+      await addPasswordAndWalletWrappers(userId, rootId);
+      const before = await wrapperIds(rootId);
+      const caller = secrets(userId, session);
+
+      for (const credentialId of [
+        "passkey-credential",
+        "opaque",
+        "wallet:1:0xabc",
+      ]) {
+        await expect(
+          caller.removeCredential({ credentialId })
+        ).rejects.toMatchObject({ code: "FORBIDDEN" });
+      }
+      expect(await wrapperIds(rootId)).toEqual(before);
+    });
+
     it("refuses to remove the only passkey, so the rule still holds", async () => {
       expect(
         await refusal(
@@ -565,6 +618,16 @@ describe("recovery factor changes on a passkey account", () => {
 
       expect(await providerIds(userId)).toEqual(["eip712"]);
       expect(await passkeyCount(userId)).toBe(0);
+    });
+
+    it("allows a passkey to be detached from the vault", async () => {
+      const rootId = await createVault(userId);
+
+      await secrets(userId, session).removeCredential({
+        credentialId: "passkey-credential",
+      });
+
+      expect(await wrapperIds(rootId)).toEqual(["recovery_key"]);
     });
 
     it("does not lend the sign-in to an OAuth access token", async () => {
@@ -770,6 +833,9 @@ describe("recovery factor changes on an account without a passkey", () => {
     await secrets(userId, session).addWrapper({
       secretId: rootId,
       ...RECOVERY_KEY_WRAPPER,
+    });
+    await secrets(userId, session).removeCredential({
+      credentialId: "passkey-credential",
     });
   });
 

@@ -12,7 +12,10 @@ import { and, eq } from "drizzle-orm";
 import { z } from "zod";
 
 import { getAuthenticationStateBySessionId } from "@/lib/auth/auth-context";
-import { notifyRecoveryFactorChange } from "@/lib/auth/recovery-factors";
+import {
+  notifyRecoveryFactorChange,
+  type RecoveryFactorChange,
+} from "@/lib/auth/recovery-factors";
 import { db } from "@/lib/db/connection";
 import { clearIdentityBundleFheKey } from "@/lib/db/queries/identity";
 import {
@@ -30,6 +33,7 @@ import {
   prfSaltSchema,
   RECOVERY_KEY_CREDENTIAL_ID,
   secretTypeSchema,
+  type UnlockingKekSource,
   unlockingKekSourceSchema,
   VAULT_KEY_CREDENTIAL_ID,
   VAULT_ROOT_SECRET_TYPE,
@@ -53,6 +57,14 @@ const metadataSchema = z.record(z.string(), z.unknown()).nullable().optional();
 const sha256HexSchema = z.string().regex(/^[a-fA-F0-9]{64}$/);
 
 const VAULT_RESET_FRESHNESS_MS = 15 * 60 * 1000;
+
+/** The recovery factor that stops opening the vault when its wrapper goes. */
+const UNLOCKING_FACTORS: Partial<Record<string, RecoveryFactorChange>> = {
+  prf: "passkey",
+  opaque: "password",
+  wallet: "wallet",
+  recovery_key: "recovery_key",
+} satisfies Record<UnlockingKekSource, RecoveryFactorChange>;
 
 const WALLET_CREDENTIAL_PREFIX = "wallet:";
 
@@ -369,7 +381,7 @@ export const secretsRouter = router({
       }
 
       const replacing =
-        input.kekSource === "recovery_key" &&
+        writesRecoveryKey &&
         (await getSecretWrappersBySecretId(root.id)).some(
           (w) => w.credentialId === input.credentialId
         );
@@ -381,7 +393,7 @@ export const secretsRouter = router({
         prfSalt: input.prfSalt,
         kekSource: input.kekSource,
       });
-      if (input.kekSource === "recovery_key") {
+      if (writesRecoveryKey) {
         await notifyRecoveryFactorChange({
           notice: replacing ? "recovery_key_replaced" : "recovery_key_added",
           userId: ctx.userId,
@@ -394,18 +406,22 @@ export const secretsRouter = router({
   removeCredential: protectedProcedure
     .input(z.object({ credentialId: z.string().min(1) }))
     .mutation(async ({ ctx, input }) => {
-      if (input.credentialId === RECOVERY_KEY_CREDENTIAL_ID) {
-        await requireRecoveryFactorChange(ctx, "recovery_key");
-      }
       const root = await requireVaultRoot(ctx.userId);
       const wrappers = await getSecretWrappersBySecretId(root.id);
 
-      if (!wrappers.some((w) => w.credentialId === input.credentialId)) {
+      const wrapper = wrappers.find(
+        (w) => w.credentialId === input.credentialId
+      );
+      if (!wrapper) {
         throw new TRPCError({
           code: "NOT_FOUND",
           message: "This credential does not unlock your encrypted data.",
         });
       }
+      await requireRecoveryFactorChange(
+        ctx,
+        UNLOCKING_FACTORS[wrapper.kekSource] ?? "vault_root"
+      );
 
       const remaining = wrappers.filter(
         (w) => w.credentialId !== input.credentialId

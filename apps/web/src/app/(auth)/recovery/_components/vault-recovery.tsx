@@ -35,7 +35,7 @@ import { generatePrfSalt } from "@/lib/privacy/credentials/derivation";
 import { SECRET_TYPES } from "@/lib/privacy/secrets/catalog";
 import {
   addVaultCredential,
-  removeVaultCredential,
+  removePasskey,
   type VaultCredentialMaterial,
   type VaultKey,
   verifyVaultCredential,
@@ -164,10 +164,11 @@ export function VaultRecovery({
     );
 
   const retirePasskey = async (passkey: AccessPasskey) => {
-    if (passkey.connected) {
-      await removeVaultCredential(passkey.credentialId);
-    }
-    const result = await deletePasskey(passkey.id);
+    const result = await removePasskey({
+      id: passkey.id,
+      credentialId: passkey.credentialId,
+      opensVault: passkey.connected,
+    });
     if (result.error) {
       throw new Error(result.error.message || "Couldn't remove that passkey.");
     }

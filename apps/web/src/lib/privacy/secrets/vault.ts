@@ -674,6 +674,27 @@ export async function removeVaultCredential(
 }
 
 /**
+ * Remove a passkey, and its vault wrapper when it opens the vault. The server
+ * refuses both steps under the same recovery factor rule, so the one
+ * confirmation runs before either step, and a cancelled confirmation leaves
+ * the passkey able to open the vault.
+ */
+export function removePasskey(passkey: {
+  credentialId: string;
+  id: string;
+  opensVault: boolean;
+}) {
+  return withPasskeyConfirmation(async () => {
+    if (passkey.opensVault) {
+      await trpc.secrets.removeCredential.mutate({
+        credentialId: passkey.credentialId,
+      });
+    }
+    return authClient.passkey.deletePasskey({ id: passkey.id });
+  });
+}
+
+/**
  * Prove a credential opens the vault: unlock the vault key with it and
  * decrypt every other vault secret. Returns the secret types it opened.
  */
