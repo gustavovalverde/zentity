@@ -51,6 +51,7 @@ import {
 import { organization } from "better-auth/plugins/organization";
 import { and, eq, inArray } from "drizzle-orm";
 import { decodeJwt, jwtVerify } from "jose";
+import { PHASE_PRODUCTION_BUILD } from "next/constants";
 
 import { env } from "@/env";
 import { evaluateSessionGrants } from "@/lib/agents/approval-evaluate";
@@ -2044,7 +2045,19 @@ export const auth = betterAuth({
       },
       // Optional at the provider: remote MCP hosts authorize without PAR.
       pushedAuthorizationRequests: { enabled: true, expiresIn: 60 },
-      pairwiseSecret: env.PAIRWISE_SECRET,
+      // `next build` skips env validation but still builds this config, and
+      // the provider refuses pairwise subjects without a secret. The build
+      // never issues tokens, so a placeholder there is safe; env.ts requires
+      // the real secret at runtime.
+      pairwiseSecret:
+        env.PAIRWISE_SECRET ??
+        (process.env.NEXT_PHASE === PHASE_PRODUCTION_BUILD
+          ? "next-build-placeholder-pairwise-secret"
+          : undefined),
+      // A pairwise client's JWT access tokens carry its ID-token `sub`, and
+      // the provider adds the user id encrypted in `ba_sub`, which UserInfo,
+      // introspection, and every `validateAccessToken` caller read back.
+      accessTokenSubject: "pairwise",
       scopes: [...OAUTH_SCOPES, PAYMENT_AUTHORIZATION_SCOPE],
       grantTypes: [
         "authorization_code",

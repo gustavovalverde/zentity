@@ -95,7 +95,7 @@ User -> RP (adult site)
 The privacy boundary is what a client can decode. No token a client holds carries the real user id:
 
 - **Opaque access tokens** for every endpoint Zentity serves (`userinfo`, the app's APIs). Zentity resolves them server-side. The `before` hooks on `/oauth2/authorize`, `/oauth2/par`, `/oauth2/bc-authorize`, and `/oauth2/token` drop Zentity-hosted `resource` indicators from user token requests, so the OAuth provider issues an opaque token, and token exchange mints opaque tokens for those audiences.
-- **JWT access tokens** only for resource servers outside Zentity (the MCP server, an agent wallet) and the OID4VCI credential endpoint. Their `sub` is the requesting client's subject identifier: pairwise for pairwise clients. Introspection returns that `sub` unchanged, and Zentity maps it back to the user through the pairwise subject index when it needs to.
+- **JWT access tokens** only for resource servers outside Zentity (the MCP server, an agent wallet) and the OID4VCI credential endpoint. Their `sub` is the requesting client's subject identifier: pairwise for pairwise clients. The OAuth provider writes it and adds `ba_sub`, the user id encrypted under a provider key, which it decrypts at UserInfo, introspection, and token validation. Introspection returns the token's `sub` unchanged.
 
 The rule is recorded in [ADR privacy/0015](privacy/0015-disclosure-surface-assignment.md), rule 4.
 
@@ -117,3 +117,4 @@ This approach is compliant with all relevant OAuth/OIDC specifications:
 ## Revision History
 
 - 2026-09-27: Replaced the pairwise-client token guard with the access-token rule: opaque tokens for Zentity-served endpoints, and JWT access tokens that carry the client's subject identifier for resource servers outside Zentity.
+- 2026-11-16: JWT access tokens carry the provider-written `ba_sub`, so Zentity resolves their user without the pairwise subject index.

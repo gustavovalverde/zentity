@@ -178,6 +178,9 @@ describe("access token subjects", () => {
     expect(payload.aud).toContain(MCP_RESOURCE);
     expect(payload.sub).toBe(pairwiseSub);
     expect(payload.sub).not.toBe(userId);
+    // The provider writes the user id encrypted, for its own endpoints.
+    expect(payload.ba_sub).toEqual(expect.any(String));
+    expect(JSON.stringify(payload)).not.toContain(userId);
     await expect(resolveUserIdFromSub(pairwiseSub, CLIENT_ID)).resolves.toBe(
       userId
     );

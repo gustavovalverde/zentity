@@ -3,6 +3,7 @@ import crypto from "node:crypto";
 import { decodeJwt } from "jose";
 import { beforeEach, describe, expect, it } from "vitest";
 
+import { env } from "@/env";
 import { auth } from "@/lib/auth/auth-config";
 import { createAuthenticationContext } from "@/lib/auth/auth-context";
 import {
@@ -16,6 +17,7 @@ import { sessions, verifications } from "@/lib/db/schema/auth";
 import { cibaRequests } from "@/lib/db/schema/ciba";
 import { oauthClients } from "@/lib/db/schema/oauth-provider";
 import {
+  createTestCibaRequest,
   createTestUser,
   hashCibaAuthReqId,
   resetDatabase,
@@ -464,6 +466,51 @@ describe("userinfo disclosure binding", () => {
         given_name: "Grace",
         family_name: "Hopper",
       });
+    });
+  });
+
+  it("reads UserInfo with a pairwise client's JWT access token", async () => {
+    const clientId = "userinfo-pairwise-jwt-client";
+    await db
+      .insert(oauthClients)
+      .values({
+        clientId,
+        name: "Pairwise JWT Client",
+        redirectUris: JSON.stringify([REDIRECT_URI]),
+        grantTypes: JSON.stringify([CIBA_GRANT_TYPE]),
+        tokenEndpointAuthMethod: "none",
+        subjectType: "pairwise",
+        sectorIdentifier: `client/${clientId}`,
+        metadata: JSON.stringify({ backchannel_token_delivery_mode: "poll" }),
+      })
+      .run();
+    const { authReqId } = await createTestCibaRequest({
+      clientId,
+      userId,
+      status: "approved",
+      resources: JSON.stringify([env.MCP_PUBLIC_URL]),
+    });
+
+    const tokenResponse = await postTokenWithDpop({
+      grant_type: CIBA_GRANT_TYPE,
+      auth_req_id: authReqId,
+      client_id: clientId,
+    });
+    expect(tokenResponse.status).toBe(200);
+    const accessToken = tokenResponse.json.access_token as string;
+    const idTokenSub = decodeJwt(tokenResponse.json.id_token as string).sub;
+    const claims = decodeJwt(accessToken);
+    expect(idTokenSub).not.toBe(userId);
+    expect(claims.sub).toBe(idTokenSub);
+    expect(claims.ba_sub).toEqual(expect.any(String));
+
+    const userInfo = await fetchUserInfo({
+      accessToken,
+      dpopKeyPair: tokenResponse.dpopKeyPair,
+    });
+    expect(userInfo).toEqual({
+      status: 200,
+      body: expect.objectContaining({ sub: idTokenSub }),
     });
   });
 });

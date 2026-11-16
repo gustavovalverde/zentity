@@ -49,7 +49,10 @@ import {
   isZentityHostedResource,
 } from "@/lib/auth/oidc/haip/resource-metadata";
 import { signJwt } from "@/lib/auth/oidc/jwt-signer";
-import { resolveUserIdFromSub } from "@/lib/auth/oidc/pairwise";
+import {
+  resolveSubForClientId,
+  resolveUserIdFromSub,
+} from "@/lib/auth/oidc/pairwise";
 import { isZentityAccessToken } from "@/lib/auth/oidc/resource-access-token";
 import { getAuthIssuer, joinAuthIssuerPath } from "@/lib/auth/oidc/well-known";
 import { db } from "@/lib/db/connection";
@@ -658,7 +661,9 @@ function createTokenExchangeHandler(): OAuthExtensionGrantHandler {
       : await signJwt(
           {
             iss: authIssuer,
-            sub: rawUserId,
+            sub:
+              (await resolveSubForClientId(rawUserId, client.clientId)) ??
+              rawUserId,
             aud: targetAudience,
             azp: client.clientId,
             jti,

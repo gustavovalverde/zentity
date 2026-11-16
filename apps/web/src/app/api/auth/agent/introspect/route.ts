@@ -6,7 +6,6 @@ import { resolveTokenSnapshotForTokenJti } from "@/lib/agents/token-snapshot";
 import {
   findPairwiseClient,
   resolveSubForClient,
-  resolveUserIdFromSubForClient,
 } from "@/lib/auth/oidc/pairwise";
 import {
   introspectZentityAccessToken,
@@ -83,24 +82,14 @@ async function introspect(
     return NextResponse.json({ active: false });
   }
 
-  const [tokenClient, callerClient] = await Promise.all([
-    findPairwiseClient(tokenClientId),
-    findPairwiseClient(principal.clientId),
-  ]);
+  const callerClient = await findPairwiseClient(principal.clientId);
 
   const tokenScopes =
     typeof payload.scope === "string" ? payload.scope : undefined;
 
-  // A JWT carries the subject its client knows the user by; introspection of
-  // an opaque token reports the user id itself.
-  let rawUserId: string | null = null;
-  if (typeof payload.sub === "string") {
-    if (!isJwt) {
-      rawUserId = payload.sub;
-    } else if (tokenClient) {
-      rawUserId = await resolveUserIdFromSubForClient(payload.sub, tokenClient);
-    }
-  }
+  // The provider reports the user id for both formats: it restores a pairwise
+  // JWT's user from `ba_sub`.
+  const rawUserId = typeof payload.sub === "string" ? payload.sub : null;
 
   let projectedSub: string | undefined;
   if (rawUserId) {

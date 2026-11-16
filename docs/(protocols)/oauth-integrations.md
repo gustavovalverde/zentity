@@ -415,12 +415,12 @@ The `ath` claim is only included when presenting the access token at a resource 
 
 | Token | Format | Signing |
 | --- | --- | --- |
-| Access token, endpoints Zentity serves (except OID4VCI credential) | Opaque (random string) | n/a |
-| Access token, resource servers outside Zentity and the OID4VCI credential endpoint | JWT (`at+jwt`) | EdDSA |
+| Access token for a Zentity endpoint (`userinfo`, the app's APIs) | Opaque (random string) | n/a |
+| Access token for a resource server outside Zentity (the MCP server, the agent wallet) or the OID4VCI credential endpoint | JWT, `typ: at+jwt` | EdDSA |
 | ID token | JWT | RS256 |
 | Token type | `"DPoP"` | n/a |
 
-Endpoints Zentity serves receive opaque access tokens, which live in the provider's token store and keep DPoP binding server-side. The OID4VCI credential endpoint is the exception: it accepts only JWT access tokens. Resource servers outside Zentity, such as the MCP server, also receive JWT access tokens, from any grant that names them as the `resource` and from token exchange (`revocableJwtAccessTokens` is on, so those JWTs stay revocable). The `sub` of a JWT access token is projected to the identifier the audience client sees everywhere else, pairwise for pairwise clients, never the raw user id.
+Opaque access tokens keep the user and the DPoP binding server-side. A JWT access token carries the client's own subject identifier as `sub`, the same value as its ID tokens: the pairwise subject for a pairwise client. The OAuth provider writes that subject under `accessTokenSubject: "pairwise"` and adds `ba_sub`, the user id encrypted with a key only the provider holds. UserInfo, `/oauth2/introspect`, and Zentity's own endpoints that validate a JWT access token read the user from `ba_sub`. The ciphertext is randomized per token, so it does not link a user across clients.
 
 ### Token revocation
 
