@@ -768,7 +768,7 @@ Zentity supports OIDC Back-Channel Logout for notifying RPs when a user session 
 
 **RP registration:** Include `backchannel_logout_uri` in the DCR request. The provider validates it and stores it on the client record; the URI must be an HTTPS endpoint that accepts POST requests with a `logout_token` form parameter.
 
-**`sid` claim:** Injected into id_tokens for clients with a registered `backchannel_logout_uri` or with `enable_end_session` (granted to clients that register `post_logout_redirect_uris`). This allows the RP to correlate the logout token with a specific session.
+**`sid` claim:** Injected into id_tokens for clients with a registered `backchannel_logout_uri` or with `enable_end_session` (granted to clients that register `post_logout_redirect_uris` through dynamic client registration, each sharing an origin with one of the client's `redirect_uris`; clients created from a Client ID Metadata Document or through `createOAuthClient` do not get it). This allows the RP to correlate the logout token with a specific session.
 
 **Logout token format:** OIDC BCL §2.4 JWT with `typ: logout+jwt`, containing `sub`, `sid`, `events: { "http://schemas.openid.net/event/backchannel-logout": {} }`, `iat`, a two-minute `exp`, and `jti`.
 

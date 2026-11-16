@@ -15,10 +15,8 @@ import { APIError, createAuthEndpoint } from "better-auth/api";
 import { decodeProtectedHeader } from "jose";
 import { z } from "zod";
 
-import {
-  oauthProviderApi,
-  providerDpopSettings,
-} from "@/lib/auth/oidc/haip/dpop";
+import { providerDpopSettings } from "@/lib/auth/oidc/haip/dpop";
+import { oauthProviderApi } from "@/lib/auth/oidc/oauth-provider";
 
 /**
  * Access-token validation for Zentity's own protected resources (tRPC, agent

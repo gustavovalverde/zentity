@@ -1,10 +1,3 @@
-import type { GenericEndpointContext } from "@better-auth/core";
-
-import {
-  getOAuthProviderApi,
-  type OAuthOptions,
-  type Scope,
-} from "@better-auth/oauth-provider";
 import { eq } from "drizzle-orm";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
@@ -13,6 +6,7 @@ import { AgentApprovalView } from "@/components/agent-approval-view";
 import { resolveCibaApprovalData } from "@/lib/agents/approval-resolve";
 import { getAccountAssurance } from "@/lib/assurance/posture";
 import { auth } from "@/lib/auth/auth-config";
+import { hashProviderToken } from "@/lib/auth/oidc/oauth-provider";
 import { detectAuthMode, getFreshSession } from "@/lib/auth/session";
 import { db } from "@/lib/db/connection";
 import { cibaRequests } from "@/lib/db/schema/ciba";
@@ -25,19 +19,11 @@ import { cibaRequests } from "@/lib/db/schema/ciba";
 async function findCibaRequestIdByAuthReqId(
   rawAuthReqId: string
 ): Promise<string | undefined> {
-  const context = await auth.$context;
-  const plugin = context.getPlugin("oauth-provider") as {
-    options: OAuthOptions<Scope[]>;
-  } | null;
-  if (!plugin) {
-    return undefined;
-  }
-  // hashToken reads only the provider options, so the auth context suffices.
-  const provider = getOAuthProviderApi(
-    { context } as unknown as GenericEndpointContext,
-    plugin.options
+  const authReqIdHash = await hashProviderToken(
+    await auth.$context,
+    rawAuthReqId,
+    "auth_req_id"
   );
-  const authReqIdHash = await provider.hashToken(rawAuthReqId, "auth_req_id");
   const row = await db
     .select({ id: cibaRequests.id })
     .from(cibaRequests)

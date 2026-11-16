@@ -88,6 +88,28 @@ describe("POST /api/auth/oauth2/register", () => {
     return { status: response.status, payload, client };
   }
 
+  it("leaves RP-initiated logout off for clients without post-logout redirects", async () => {
+    const { status, client } = await register({
+      client_name: "Demo RP",
+      redirect_uris: [`${RP_ORIGIN}/callback`],
+    });
+
+    expect(status).toBe(201);
+    expect(client?.enableEndSession).toBeFalsy();
+  });
+
+  it("rejects post-logout redirects outside the redirect URI origins", async () => {
+    const { status, payload, client } = await register({
+      client_name: "Demo RP",
+      post_logout_redirect_uris: ["https://elsewhere.example/bank"],
+      redirect_uris: [`${RP_ORIGIN}/callback`],
+    });
+
+    expect(status).toBe(400);
+    expect(payload.error).toBe("invalid_client_metadata");
+    expect(client).toBeUndefined();
+  });
+
   it("registers loopback-only clients without application_type as native", async () => {
     const { status, client } = await register({
       client_name: "MCP Inspector",
