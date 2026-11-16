@@ -36,6 +36,7 @@ import {
 import { Spinner } from "@/components/ui/spinner";
 import { useVaultKeyPrompt } from "@/components/vault-unlock";
 import { asyncHandler, reportRejection } from "@/lib/async-handler";
+import { withPasskeyConfirmation } from "@/lib/auth/passkey/client";
 import { formatDate } from "@/lib/date-format";
 import { RECOVERY_KEY_CREDENTIAL_ID } from "@/lib/privacy/secrets/catalog";
 import {
@@ -73,7 +74,9 @@ export function RecoveryKeySection({
   const remove = async () => {
     setBusy(true);
     try {
-      await removeVaultCredential(RECOVERY_KEY_CREDENTIAL_ID);
+      await withPasskeyConfirmation(() =>
+        removeVaultCredential(RECOVERY_KEY_CREDENTIAL_ID)
+      );
       toast.success("Recovery key removed");
       router.refresh();
     } catch (err) {

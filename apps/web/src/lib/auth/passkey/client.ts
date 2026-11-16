@@ -251,3 +251,52 @@ export function renamePasskey(id: string, name: string) {
 export function deletePasskey(id: string) {
   return authClient.passkey.deletePasskey({ id });
 }
+
+// The code the server refuses a recovery factor change with until the user
+// confirms with a passkey (`recovery-factors.ts`).
+const REVERIFICATION_REQUIRED = "REVERIFICATION_REQUIRED";
+
+/**
+ * Whether the server refused a change to how the account is recovered until
+ * the user confirms with a passkey. Reads a Better Auth error's `code` and a
+ * tRPC error's `data.reason`.
+ */
+export function isReverificationRequired(error: unknown): boolean {
+  if (!(error && typeof error === "object")) {
+    return false;
+  }
+  const { code, data } = error as {
+    code?: unknown;
+    data?: { reason?: unknown } | null;
+  };
+  return (
+    code === REVERIFICATION_REQUIRED || data?.reason === REVERIFICATION_REQUIRED
+  );
+}
+
+/**
+ * Runs an action that changes how the account is recovered. When the server
+ * asks for a passkey confirmation, by throwing or by returning `{ error }`,
+ * the user signs in again with a passkey and the action runs once more.
+ */
+export async function withPasskeyConfirmation<T>(
+  action: () => Promise<T>
+): Promise<T> {
+  try {
+    const result = await action();
+    if (!isReverificationRequired((result as { error?: unknown })?.error)) {
+      return result;
+    }
+  } catch (error) {
+    if (!isReverificationRequired(error)) {
+      throw error;
+    }
+  }
+  const confirmation = await signInWithPasskey();
+  if (!confirmation.ok) {
+    throw new Error(
+      "We couldn't confirm it's you with your passkey. Try again, or sign in again with an email link."
+    );
+  }
+  return action();
+}

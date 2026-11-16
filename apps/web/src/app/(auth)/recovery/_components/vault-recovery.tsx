@@ -25,7 +25,10 @@ import {
 } from "@/components/vault-unlock";
 import { asyncHandler, reportRejection } from "@/lib/async-handler";
 import { authClient } from "@/lib/auth/auth-client";
-import { deletePasskey } from "@/lib/auth/passkey/client";
+import {
+  deletePasskey,
+  withPasskeyConfirmation,
+} from "@/lib/auth/passkey/client";
 import { evaluatePrf } from "@/lib/auth/passkey/prf";
 import { redirectTo } from "@/lib/auth/redirect";
 import { generatePrfSalt } from "@/lib/privacy/credentials/derivation";
@@ -195,7 +198,7 @@ export function VaultRecovery({
     setBusy(true);
     setError(null);
     try {
-      await trpc.secrets.resetVault.mutate();
+      await withPasskeyConfirmation(() => trpc.secrets.resetVault.mutate());
       const [onlyCandidate, ...others] = lostCandidates(null);
       if (lostPasskey && onlyCandidate && others.length === 0) {
         await deletePasskey(onlyCandidate.id);

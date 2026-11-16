@@ -8,6 +8,7 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { asyncHandler } from "@/lib/async-handler";
 import { authClient } from "@/lib/auth/auth-client";
+import { withPasskeyConfirmation } from "@/lib/auth/passkey/client";
 import { isSyntheticEmail } from "@/lib/auth/synthetic-email";
 
 export function EmailVerificationBanner({
@@ -16,6 +17,7 @@ export function EmailVerificationBanner({
 }: Readonly<{ email: string; emailVerified: boolean }>) {
   const [sent, setSent] = useState(false);
   const [sending, setSending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   if (emailVerified) {
     return null;
@@ -43,12 +45,24 @@ export function EmailVerificationBanner({
 
   const handleResend = async () => {
     setSending(true);
+    setError(null);
     try {
-      await authClient.sendVerificationEmail({
-        email,
-        callbackURL: "/dashboard",
-      });
+      const result = await withPasskeyConfirmation(() =>
+        authClient.sendVerificationEmail({
+          email,
+          callbackURL: "/dashboard",
+        })
+      );
+      if (result.error) {
+        throw new Error(result.error.message);
+      }
       setSent(true);
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Couldn't send the verification email. Try again."
+      );
     } finally {
       setSending(false);
     }
@@ -67,6 +81,7 @@ export function EmailVerificationBanner({
               Verify your email to receive notifications and enable account
               recovery.
             </p>
+            {error ? <p role="alert">{error}</p> : null}
             <Button
               disabled={sending}
               onClick={asyncHandler(handleResend)}

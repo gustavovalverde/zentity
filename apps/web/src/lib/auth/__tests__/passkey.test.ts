@@ -31,8 +31,10 @@ const prfMocks = vi.hoisted(() => ({
 vi.mock("@/lib/auth/passkey/prf", () => prfMocks);
 
 import {
+  isReverificationRequired,
   registerPasskeyWithPrf,
   signInWithPasskey,
+  withPasskeyConfirmation,
 } from "@/lib/auth/passkey/client";
 
 describe("passkey auth wrapper", () => {
@@ -121,5 +123,70 @@ describe("passkey auth wrapper", () => {
       returnWebAuthnResponse: false,
       extensions: undefined,
     });
+  });
+});
+
+describe("withPasskeyConfirmation", () => {
+  const refusedByBetterAuth = {
+    data: null,
+    error: { code: "REVERIFICATION_REQUIRED", message: "Confirm it's you" },
+  };
+  const refusedByTrpc = Object.assign(new Error("Confirm it's you"), {
+    data: { code: "FORBIDDEN", reason: "REVERIFICATION_REQUIRED" },
+  });
+
+  it("recognizes both refusal shapes and nothing else", () => {
+    expect(isReverificationRequired(refusedByBetterAuth.error)).toBe(true);
+    expect(isReverificationRequired(refusedByTrpc)).toBe(true);
+    expect(isReverificationRequired({ code: "SESSION_NOT_FRESH" })).toBe(false);
+    expect(isReverificationRequired(new Error("boom"))).toBe(false);
+  });
+
+  it("signs in with a passkey and retries a refused Better Auth call", async () => {
+    authMocks.signInPasskey.mockResolvedValue({ data: { session: {} } });
+    const action = vi
+      .fn()
+      .mockResolvedValueOnce(refusedByBetterAuth)
+      .mockResolvedValueOnce({ data: { status: true }, error: null });
+
+    await expect(withPasskeyConfirmation(action)).resolves.toEqual({
+      data: { status: true },
+      error: null,
+    });
+    expect(authMocks.signInPasskey).toHaveBeenCalledOnce();
+    expect(action).toHaveBeenCalledTimes(2);
+  });
+
+  it("signs in with a passkey and retries a refused tRPC call", async () => {
+    authMocks.signInPasskey.mockResolvedValue({ data: { session: {} } });
+    const action = vi
+      .fn()
+      .mockRejectedValueOnce(refusedByTrpc)
+      .mockResolvedValueOnce({ success: true });
+
+    await expect(withPasskeyConfirmation(action)).resolves.toEqual({
+      success: true,
+    });
+    expect(action).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not prompt for other failures", async () => {
+    const action = vi.fn().mockRejectedValue(new Error("boom"));
+
+    await expect(withPasskeyConfirmation(action)).rejects.toThrow("boom");
+    expect(authMocks.signInPasskey).not.toHaveBeenCalled();
+  });
+
+  it("stops when the passkey confirmation fails", async () => {
+    authMocks.signInPasskey.mockResolvedValue({
+      data: null,
+      error: { message: "cancelled" },
+    });
+    const action = vi.fn().mockResolvedValue(refusedByBetterAuth);
+
+    await expect(withPasskeyConfirmation(action)).rejects.toThrow(
+      "couldn't confirm it's you"
+    );
+    expect(action).toHaveBeenCalledOnce();
   });
 });

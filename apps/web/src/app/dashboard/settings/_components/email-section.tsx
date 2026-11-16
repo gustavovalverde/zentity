@@ -21,6 +21,7 @@ import { Redacted } from "@/components/ui/redacted";
 import { Spinner } from "@/components/ui/spinner";
 import { asyncHandler, reportRejection } from "@/lib/async-handler";
 import { authClient, useSession } from "@/lib/auth/auth-client";
+import { withPasskeyConfirmation } from "@/lib/auth/passkey/client";
 import { isSyntheticEmail } from "@/lib/auth/synthetic-email";
 
 type EmailState = "synthetic" | "unverified" | "verified";
@@ -53,10 +54,12 @@ function EmailForm({
       setError(null);
 
       try {
-        const result = await authClient.changeEmail({
-          newEmail: value.newEmail,
-          callbackURL: "/dashboard/settings?tab=profile",
-        });
+        const result = await withPasskeyConfirmation(() =>
+          authClient.changeEmail({
+            newEmail: value.newEmail,
+            callbackURL: "/dashboard/settings?tab=profile",
+          })
+        );
 
         if (result.error) {
           const message =
@@ -162,7 +165,9 @@ function EmailForm({
   );
 }
 
-export function EmailSection() {
+export function EmailSection({
+  linkOutdated = false,
+}: Readonly<{ linkOutdated?: boolean }>) {
   const { data: sessionData } = useSession();
   const [showForm, setShowForm] = useState(false);
   const [resending, setResending] = useState(false);
@@ -174,15 +179,22 @@ export function EmailSection() {
   const handleResend = async () => {
     setResending(true);
     try {
-      await authClient.sendVerificationEmail({
-        email,
-        callbackURL: "/dashboard",
-      });
+      const result = await withPasskeyConfirmation(() =>
+        authClient.sendVerificationEmail({
+          email,
+          callbackURL: "/dashboard",
+        })
+      );
+      if (result.error) {
+        throw new Error(result.error.message);
+      }
       toast.success("Verification email sent", {
         description: "Check your inbox for a verification link.",
       });
-    } catch {
-      toast.error("Failed to send verification email");
+    } catch (err) {
+      toast.error("Failed to send verification email", {
+        description: err instanceof Error ? err.message : undefined,
+      });
     } finally {
       setResending(false);
     }
@@ -201,7 +213,15 @@ export function EmailSection() {
             : "Manage your email address and verification status."}
         </CardDescription>
       </CardHeader>
-      <CardContent>
+      <CardContent className="space-y-3">
+        {linkOutdated ? (
+          <Alert variant="warning">
+            <AlertDescription>
+              That email link was sent before you added a passkey and no longer
+              works. Change your email again to get a new one.
+            </AlertDescription>
+          </Alert>
+        ) : null}
         {showForm ? (
           <EmailForm
             action={state === "synthetic" ? "add" : "change"}
