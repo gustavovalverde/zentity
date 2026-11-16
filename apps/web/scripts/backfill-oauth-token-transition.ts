@@ -62,19 +62,40 @@
  *    actor subjects are no longer indexed, and the schema no longer allows
  *    the type.
  *
- * Rollout order:
+ * Rollout order. Production moves to this release in one deploy of the web
+ * service, the MCP server, and demo-rp. Merging a pull request deploys
+ * nothing, and no earlier commit of this release may be deployed on its own:
+ * earlier commits refuse MCP purchases at bc-authorize, and some read the
+ * authentication context of a sessionless opaque token from a claim instead
+ * of `oauth_access_token.auth_context_id`. Each such switch costs the tokens
+ * issued in the hour before it their authentication context.
  *
  *   a. Run this script.
- *   b. Deploy the web service.
- *   c. Once the new release serves all traffic, run this script again. It
+ *   b. Prepare the other services:
+ *      - Set `skip_consent` on every first-party client that keeps using the
+ *        Authorization Challenge Endpoint.
+ *      - Set `OAUTH_DPOP_KEY_SEED` (min 32 characters, different from
+ *        `ZPAY_DPOP_KEY_SEED`) in the demo-rp Vercel project.
+ *      - Run `pnpm mcp:provision` with the web service's environment
+ *        (`railway run --service web`), and set the `MCP_CLIENT_ID` and
+ *        `MCP_CLIENT_SECRET` it prints on the MCP HTTP host. The HTTP
+ *        transport refuses to start without them.
+ *      - Run `pnpm db:push` against the demo-rp database, which adds
+ *        `presentation_replay` and drops `oauth_dpop_key`. The previous
+ *        demo-rp reads `oauth_dpop_key`, so its sign-in fails until the new
+ *        demo-rp serves, and signed-in demo-rp users sign in again.
+ *   c. Deploy the web service, the MCP server, and demo-rp together. The web
+ *      service, the SDK, and the MCP server compute the Agent-Assertion task
+ *      hash the same way only within one release.
+ *   d. Once the new release serves all traffic, run this script again. It
  *      covers revocations and exchanged tokens the previous release wrote
  *      after step a.
- *   d. Run `pnpm db:push` once. It drops `auth_challenge_session`,
+ *   e. Run `pnpm db:push` once. It drops `auth_challenge_session`,
  *      `oauth_access_token.exchange_claims`, the `reason`, `actor_sub`, and
  *      `audience` columns of `revoked_token`, the approval columns and
  *      `pairwise_act_sub` of `ciba_request`, and `agent_token_snapshot`,
  *      which the previous release reads or writes, so it must not run before
- *      step c. When they hold rows, it asks to confirm the data loss;
+ *      step d. When they hold rows, it asks to confirm the data loss;
  *      `--force` confirms it without a terminal. drizzle-kit exits 0 even
  *      when SQLite rejects a statement and rolls the push back, so check its
  *      output for an error.
@@ -84,7 +105,7 @@
  * release already writes ISO timestamps to these columns next to
  * `datetime('now')` ones, so step a changes only the format of the rows it
  * leaves to a default. In-flight `auth_challenge_session` handles (10-minute
- * lifetime) stop working at step b.
+ * lifetime) stop working at step c.
  *
  *   TURSO_DATABASE_URL=... TURSO_AUTH_TOKEN=... pnpm exec tsx scripts/backfill-oauth-token-transition.ts
  */

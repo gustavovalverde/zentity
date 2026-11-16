@@ -160,6 +160,8 @@ Current cases that need a push:
 - `dcr_client.registrationFingerprint`: a new nullable column. Each cached scenario client registers again on its next use, because it has no fingerprint yet.
 - `presentation_replay`: a new table, where the x402 merchant records the Proof-of-Human and DPoP proof `jti` values it accepted. Push it before a release that serves x402 resources.
 
+For the OAuth token transition release, push at the step the header of `apps/web/scripts/backfill-oauth-token-transition.ts` names, right before demo-rp deploys with the web service and the MCP server.
+
 ## Environment Variables
 
 | Variable | Default | Description |

@@ -217,6 +217,7 @@ Notes:
 
 - Railway CLI honors `.gitignore` (not `.dockerignore`) when filtering uploads. The web staging script works around this by rsync-filtering before upload.
 - The web service has `RAILWAY_DOCKERFILE_PATH=apps/web/Dockerfile` set so Railway finds the Dockerfile inside the repo-root upload.
+- Deploy the OAuth token transition release in the order the header of `apps/web/scripts/backfill-oauth-token-transition.ts` gives. It covers the web, MCP, and demo-rp deploys and both database pushes.
 
 **Service URLs (production)**:
 
