@@ -173,7 +173,7 @@ The FHE key secret is the vault root, and its DEK is the vault key. Every unlock
 
 The recovery key is 256 bits of browser-generated entropy shown once as 24 BIP-39 words. Its KEK is HKDF-SHA256 with its own info string; the server stores only its wrapper.
 
-On an account that holds a passkey, creating, replacing, or removing the recovery key, resetting the vault, and replacing the vault root need a user-verified passkey sign-in in the last 5 minutes, or a magic-link sign-in in the last 10 minutes to an address verified before that sign-in. Otherwise the server refuses with `REVERIFICATION_REQUIRED`, and the page asks the user to confirm with their passkey and tries again. Accounts without a passkey need only their session, and a vault reset also needs a sign-in in the last 15 minutes.
+On an account that holds a passkey, creating, replacing, or removing the recovery key, resetting the vault, and replacing the vault root need a user-verified passkey sign-in in the last 5 minutes, or a magic-link sign-in in the last 10 minutes to an address verified before that sign-in. Otherwise the server refuses with `REVERIFICATION_REQUIRED`, and the page asks the user to confirm with their passkey, or to request an email sign-in link when the address is verified, and tries again. Accounts without a passkey need only their session, and a vault reset also needs a sign-in in the last 15 minutes.
 
 ## Related Documentation
 
