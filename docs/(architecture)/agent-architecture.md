@@ -480,13 +480,15 @@ Key points:
 
 RFC 8693 token exchange has a single output in the agent flow: an access token re-bound to the target audience. Only the client the subject token was issued to, or the protected resource it was issued for, may perform the exchange.
 
-The exchanged token keeps the AAP profile of the subject token (`agent`, `task`, `capabilities`, `oversight`, `audit`) and adds `delegation` to project the chain. `sub` and `act.sub` are pairwise for the exchanging client. The exchange does not carry the subject token's `authorization_details`.
+The exchanged token keeps the AAP profile of the subject token (`agent`, `task`, `capabilities`, `oversight`, `audit`) and adds `delegation` to project the chain. `act.sub` is the agent session's pairwise identifier for the exchanging client. The exchange does not carry the subject token's `authorization_details`.
+
+An exchanged JWT names the user by the internal user id in `sub`, not by a pairwise identifier. Audiences outside Zentity that receive exchanged JWTs for the same user therefore see the same `sub`.
 
 ```json
 {
   "iss": "https://app.zentity.xyz/api/auth",
   "aud": "https://mcp.example.com",
-  "sub": "user_pairwise_sub_for_client",
+  "sub": "internal_user_id",
   "act": {
     "sub": "agent_pairwise_sub_for_client"
   },
@@ -616,7 +618,14 @@ The delegated access token carries:
 - `act.sub` for the acting agent session
 - AAP `agent`, `task`, `capabilities`, `oversight`, and `audit`
 
-Tokens issued by token exchange to a non-agent audience outside Zentity are JWTs carrying pairwise `sub`, pairwise `act.sub`, and `cnf.jkt`, all rebound for the target audience. They do not carry the subject token's `authorization_details`. For an audience Zentity serves, token exchange returns an opaque token.
+Token exchange to a non-agent audience outside Zentity returns a JWT with these claims:
+
+- `aud` set to the target audience
+- `sub` set to the internal user id
+- `act.sub` set to the agent session's pairwise identifier for the exchanging client
+- `cnf.jkt` binding the DPoP key that signed the exchange request
+
+The JWT does not carry the subject token's `authorization_details`. For an audience Zentity serves, token exchange returns an opaque token.
 
 The full binding chain is:
 
@@ -845,7 +854,7 @@ The runtime proof is bound to a specific consent request rather than floating as
 
 Once consent is obtained, the question shifts from "does the human approve?" to "how does the approved action reach the right party with the right identifiers?" Four specs shape the answer.
 
-**Token exchange** (RFC 8693) rebinds the CIBA access token for a different audience. Without it, the agent would present the same token to every relying party, leaking cross-party correlation. Token exchange performs scope attenuation (narrowing what the downstream RP can see) and audience rebinding (recomputing pairwise identifiers for the target client). The exchanged token keeps the subject token's AAP sections and `cnf.jkt`, but not its `authorization_details`. The current deployment does not advertise general delegation-chain support, so multi-hop chain portability is not part of the published contract.
+**Token exchange** (RFC 8693) rebinds the CIBA access token for a different audience. Without it, the agent would present the same token to every relying party, leaking cross-party correlation. Token exchange performs scope attenuation (narrowing what the downstream RP can see) and audience rebinding (setting `aud` to the target and recomputing the agent's pairwise `act.sub` for the exchanging client). The exchanged JWT's `sub` stays the internal user id. The exchanged token keeps the subject token's AAP sections and `cnf.jkt`, but not its `authorization_details`. The current deployment does not advertise general delegation-chain support, so multi-hop chain portability is not part of the published contract.
 
 Token exchange also issues the agent bootstrap token used for host/session registration. That bootstrap token is DPoP-bound and carries only the narrow agent scopes needed for bootstrap and revocation; it is intentionally separate from the login token and from downstream RP-bound tokens.
 

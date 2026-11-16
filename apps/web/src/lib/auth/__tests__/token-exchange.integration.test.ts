@@ -956,6 +956,8 @@ describe("Token Exchange (RFC 8693)", () => {
         cnf: { jkt: await calculateJwkThumbprint(dpopKeyPair.jwk) },
         iss: authIssuer,
         scope: "openid",
+        // Current behavior, not a privacy requirement: a pairwise sub for the
+        // audience would be an intended change.
         sub: userId,
       });
       expect(payload.jti).not.toBe(decodeJwt(subjectToken).jti);
