@@ -31,6 +31,8 @@ import { cn } from "@/lib/cn";
  *   hard block by our client schema or Better Auth.
  */
 
+const BREACH_CHECK_TIMEOUT_MS = 6000;
+
 type PwnedStatus =
   | { state: "idle" }
   | { state: "checking" }
@@ -198,16 +200,14 @@ export function PasswordRequirements({
     notifyBreachStatus("checking", null);
 
     let isActive = true;
-    const timeoutId = globalThis.window.setTimeout(
-      () => controller.abort(),
-      6000
-    );
+    const signal = AbortSignal.any([
+      controller.signal,
+      AbortSignal.timeout(BREACH_CHECK_TIMEOUT_MS),
+    ]);
 
     (async () => {
       try {
-        const data = await checkPasswordPwned(password, {
-          signal: controller.signal,
-        });
+        const data = await checkPasswordPwned(password, { signal });
 
         if (!isActive) {
           return;
@@ -238,7 +238,6 @@ export function PasswordRequirements({
 
     return () => {
       isActive = false;
-      globalThis.window.clearTimeout(timeoutId);
       controller.abort();
     };
   }, [breachCheckKey, password]);

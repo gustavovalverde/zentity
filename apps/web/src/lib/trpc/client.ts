@@ -35,29 +35,6 @@ function getTrpcUrl(): string {
 
 const TRPC_REQUEST_TIMEOUT_MS = 60_000;
 
-function createTimeoutSignal(original: AbortSignal | null | undefined) {
-  const controller = new AbortController();
-  const timeoutId = setTimeout(
-    () => controller.abort(),
-    TRPC_REQUEST_TIMEOUT_MS
-  );
-
-  if (original) {
-    if (original.aborted) {
-      controller.abort();
-    } else {
-      original.addEventListener("abort", () => controller.abort(), {
-        once: true,
-      });
-    }
-  }
-
-  return {
-    signal: controller.signal,
-    cleanup: () => clearTimeout(timeoutId),
-  };
-}
-
 const links = [
   // Logs requests in dev mode or errors in production for debugging.
   loggerLink({
@@ -90,11 +67,15 @@ const links = [
       const flowId = getFlowId();
       return flowId ? { "X-Zentity-Flow-Id": flowId } : {};
     },
-    // `AbortSignal.any` is not yet in this app's browser targets, so the
-    // timeout is chained to the caller's signal by hand.
     fetch(url, options) {
-      const { signal, cleanup } = createTimeoutSignal(options?.signal);
-      return globalThis.fetch(url, { ...options, signal }).finally(cleanup);
+      const signals = [AbortSignal.timeout(TRPC_REQUEST_TIMEOUT_MS)];
+      if (options?.signal) {
+        signals.push(options.signal);
+      }
+      return globalThis.fetch(url, {
+        ...options,
+        signal: AbortSignal.any(signals),
+      });
     },
   }),
 ];
