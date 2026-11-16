@@ -21,7 +21,11 @@ import type {
 } from "./catalog";
 
 import { authClient } from "@/lib/auth/auth-client";
-import { evaluatePrf } from "@/lib/auth/passkey/prf";
+import {
+  type ApprovalAssertion,
+  evaluatePrf,
+  serializeApprovalAssertion,
+} from "@/lib/auth/passkey/prf";
 import {
   clearPendingUnlock,
   getPendingUnlock,
@@ -79,12 +83,25 @@ export type VaultCredentialMaterial =
   | { type: "recovery_key"; recoveryKey: Uint8Array };
 
 /**
+ * A passkey prompt that also confirms a CIBA decision: it signs the server's
+ * challenge and hands the assertion back.
+ */
+export interface PasskeyStepUp {
+  challenge: Uint8Array;
+  onAssertion: (assertion: ApprovalAssertion) => void;
+}
+
+/**
  * How to unlock the vault: explicit credential material, or a WebAuthn
  * prompt over the vault's passkey wrappers (optionally narrowed).
  */
 export type VaultUnlock =
   | VaultCredentialMaterial
-  | { type: "passkey_prompt"; credentialIds?: readonly string[] };
+  | {
+      type: "passkey_prompt";
+      credentialIds?: readonly string[];
+      stepUp?: PasskeyStepUp;
+    };
 
 export interface VaultKey {
   key: Uint8Array;
@@ -139,26 +156,30 @@ async function resolveUserId(
 }
 
 async function resolvePasskeyUnlock(
-  credentialIdToSalt: Record<string, Uint8Array>
+  credentialIdToSalt: Record<string, Uint8Array>,
+  stepUp?: PasskeyStepUp
 ): Promise<{ credentialId: string; prfOutput: Uint8Array }> {
   const credentialIds = Object.keys(credentialIdToSalt);
   if (credentialIds.length === 0) {
     throw new Error("No passkeys are registered for this secret.");
   }
 
-  // Deduplicate concurrent WebAuthn prompts (not a time-based cache)
+  // Deduplicate concurrent WebAuthn prompts (not a time-based cache). A
+  // step-up signs its own challenge, so it never joins another prompt.
   const pendingKey = [...credentialIds]
     .sort((a, b) => a.localeCompare(b))
     .join("|");
-  const pending = getPendingUnlock();
+  const pending = stepUp ? null : getPendingUnlock();
   if (pending?.key === pendingKey) {
     return pending.promise;
   }
 
   const unlockPromise = (async () => {
-    const { prfOutputs, selectedCredentialId } = await evaluatePrf({
+    const { assertion, prfOutputs, selectedCredentialId } = await evaluatePrf({
       credentialIdToSalt,
+      challenge: stepUp?.challenge,
     });
+    stepUp?.onAssertion(serializeApprovalAssertion(assertion));
 
     const resolvedCredentialId =
       (selectedCredentialId && prfOutputs.has(selectedCredentialId)
@@ -311,8 +332,10 @@ async function resolveUnlockMaterial(
     }
   }
 
-  const { credentialId, prfOutput } =
-    await resolvePasskeyUnlock(saltByCredential);
+  const { credentialId, prfOutput } = await resolvePasskeyUnlock(
+    saltByCredential,
+    unlock.stepUp
+  );
   const prfSalt = saltByCredential[credentialId];
   if (!prfSalt) {
     throw new Error("Selected passkey is not registered for this secret.");
@@ -556,7 +579,7 @@ export async function storeSecretWithCredential(params: {
  * (credential material is never cached).
  */
 export async function loadSecret(
-  params: SecretReadOptions & { userId?: string }
+  params: SecretReadOptions & { passkeyStepUp?: PasskeyStepUp; userId?: string }
 ): Promise<SecretLoadResult | null> {
   const label = params.secretLabel ?? "secret";
   const [target, root] = await Promise.all([
@@ -569,7 +592,10 @@ export async function loadSecret(
 
   if (root.wrappers.some((w) => w.prfSalt)) {
     const vaultKey = await unlockVaultKey(
-      { type: "passkey_prompt" },
+      {
+        type: "passkey_prompt",
+        ...(params.passkeyStepUp ? { stepUp: params.passkeyStepUp } : {}),
+      },
       { userId: params.userId }
     );
     return vaultKey ? openVaultSecret(vaultKey, params) : null;

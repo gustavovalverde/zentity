@@ -8,7 +8,11 @@ import {
   evaluateSessionGrants,
   type GrantConstraint,
 } from "@/lib/agents/approval-evaluate";
-import { ensureCapabilitiesSeeded } from "@/lib/agents/capability";
+import {
+  type AuthorizationDetail,
+  approvalPolicy,
+  ensureCapabilitiesSeeded,
+} from "@/lib/agents/capability";
 import { db } from "@/lib/db/connection";
 import {
   agentHostPolicies,
@@ -78,6 +82,17 @@ describe("evaluateSessionGrants", () => {
   let hostId: string;
   let sessionId: string;
 
+  function evaluateRequest(
+    scope: string,
+    authorizationDetails: AuthorizationDetail[] = []
+  ) {
+    return evaluateSessionGrants(
+      sessionId,
+      approvalPolicy({ scope, authorizationDetails }),
+      authorizationDetails
+    );
+  }
+
   beforeEach(async () => {
     await resetDatabase();
     await ensureCapabilitiesSeeded();
@@ -100,47 +115,18 @@ describe("evaluateSessionGrants", () => {
       })
       .run();
 
-    const result = await evaluateSessionGrants(
-      sessionId,
+    const result = await evaluateRequest(
       "openid identity.name identity.address",
       []
     );
 
-    expect(result).toEqual(
-      expect.objectContaining({
-        approved: false,
-        approvalStrength: "session",
-        capabilityName: "my_profile",
-        reason: "identity scopes require explicit approval",
-      })
-    );
+    expect(result).toEqual({
+      approved: false,
+      reason: "identity scopes require explicit approval",
+    });
   });
 
-  it("prioritizes purchase details over identity scopes", async () => {
-    const result = await evaluateSessionGrants(
-      sessionId,
-      "openid identity.name",
-      [
-        {
-          type: "purchase",
-          merchant: "Acme",
-          item: "Widget",
-          amount: { value: "9.99", currency: "USD" },
-        },
-      ]
-    );
-
-    expect(result).toEqual(
-      expect.objectContaining({
-        approved: false,
-        approvalStrength: "biometric",
-        capabilityName: "purchase",
-        reason: "biometric approval required",
-      })
-    );
-  });
-
-  it("keeps purchase manual even when an active grant exists", async () => {
+  it("never approves a purchase from a grant", async () => {
     await db
       .insert(agentSessionGrants)
       .values({
@@ -152,7 +138,7 @@ describe("evaluateSessionGrants", () => {
       })
       .run();
 
-    const result = await evaluateSessionGrants(sessionId, "openid", [
+    const result = await evaluateRequest("openid", [
       {
         type: "purchase",
         merchant: "Acme",
@@ -161,13 +147,11 @@ describe("evaluateSessionGrants", () => {
       },
     ]);
 
-    expect(result).toEqual(
-      expect.objectContaining({
-        approved: false,
-        approvalStrength: "biometric",
-        reason: "biometric approval required",
-      })
-    );
+    expect(result).toEqual({
+      approved: false,
+      reason:
+        "request spans more than one capability or includes scopes no grant covers",
+    });
   });
 
   const PAYMENT_RECIPIENT = "zcash:test:utest1qqallowedrecipient0000";
@@ -203,11 +187,9 @@ describe("evaluateSessionGrants", () => {
       })
       .run();
 
-    const result = await evaluateSessionGrants(
-      sessionId,
-      "openid payment_authorization:sign",
-      [paymentRar()]
-    );
+    const result = await evaluateRequest("openid payment_authorization:sign", [
+      paymentRar(),
+    ]);
 
     expect(result.approved).toBe(true);
     expect(result.capabilityName).toBe("payment_authorization:sign");
@@ -225,11 +207,9 @@ describe("evaluateSessionGrants", () => {
       })
       .run();
 
-    const result = await evaluateSessionGrants(
-      sessionId,
-      "openid payment_authorization:sign",
-      [paymentRar()]
-    );
+    const result = await evaluateRequest("openid payment_authorization:sign", [
+      paymentRar(),
+    ]);
 
     expect(result.approved).toBe(false);
   });
@@ -248,11 +228,9 @@ describe("evaluateSessionGrants", () => {
       })
       .run();
 
-    const result = await evaluateSessionGrants(
-      sessionId,
-      "openid payment_authorization:sign",
-      [paymentRar({ value: "300000" })]
-    );
+    const result = await evaluateRequest("openid payment_authorization:sign", [
+      paymentRar({ value: "300000" }),
+    ]);
 
     expect(result.approved).toBe(false);
   });
@@ -278,11 +256,7 @@ describe("evaluateSessionGrants", () => {
     });
 
     function evaluate(detail: ReturnType<typeof paymentIn>) {
-      return evaluateSessionGrants(
-        sessionId,
-        "openid payment_authorization:sign",
-        [detail]
-      );
+      return evaluateRequest("openid payment_authorization:sign", [detail]);
     }
 
     it.each(["-50", "5abc", "1e3", ""])(
@@ -329,11 +303,9 @@ describe("evaluateSessionGrants", () => {
       })
       .run();
 
-    const result = await evaluateSessionGrants(
-      sessionId,
-      "openid payment_authorization:sign",
-      [paymentRar({ recipient: "zcash:test:utest1qqattackeraddr9999" })]
-    );
+    const result = await evaluateRequest("openid payment_authorization:sign", [
+      paymentRar({ recipient: "zcash:test:utest1qqattackeraddr9999" }),
+    ]);
 
     expect(result.approved).toBe(false);
   });
@@ -375,8 +347,7 @@ describe("evaluateSessionGrants", () => {
         })
         .run();
 
-      const result = await evaluateSessionGrants(
-        sessionId,
+      const result = await evaluateRequest(
         "openid payment_authorization:sign",
         [paymentRar()]
       );
@@ -398,16 +369,8 @@ describe("evaluateSessionGrants", () => {
       })
       .run();
 
-    const first = await evaluateSessionGrants(
-      sessionId,
-      "openid proof:age",
-      []
-    );
-    const second = await evaluateSessionGrants(
-      sessionId,
-      "openid proof:age",
-      []
-    );
+    const first = await evaluateRequest("openid proof:age");
+    const second = await evaluateRequest("openid proof:age");
 
     expect(first.approved).toBe(true);
     expect(second).toEqual({
@@ -439,9 +402,7 @@ describe("evaluateSessionGrants", () => {
         sql`UPDATE agent_session_grant SET constraints_json = ${stored} WHERE id = ${grant.id}`
       );
 
-      await expect(
-        evaluateSessionGrants(sessionId, "openid proof:age", [])
-      ).rejects.toThrow();
+      await expect(evaluateRequest("openid proof:age")).rejects.toThrow();
     }
   );
 
@@ -457,27 +418,23 @@ describe("evaluateSessionGrants", () => {
       })
       .run();
 
-    const result = await evaluateSessionGrants(
-      sessionId,
-      "openid proof:age",
-      []
-    );
+    const result = await evaluateRequest("openid proof:age", []);
 
     expect(result).toEqual(
       expect.objectContaining({
         approved: true,
-        approvalStrength: "none",
         capabilityName: "my_proofs",
       })
     );
   });
 
   it("returns no matching capability for openid-only requests", async () => {
-    const result = await evaluateSessionGrants(sessionId, "openid", []);
+    const result = await evaluateRequest("openid", []);
 
     expect(result).toEqual({
       approved: false,
-      reason: "no matching capability for request",
+      reason:
+        "request spans more than one capability or includes scopes no grant covers",
     });
   });
 

@@ -16,7 +16,7 @@ vi.doMock("@/lib/identity/verification/read-model", () => ({
 }));
 
 const { buildProofClaims } = await import("../claims");
-const { extractProofScopes, filterProofClaimsByScopes } = await import(
+const { filterProofClaimsByScopes, hasAnyProofScope } = await import(
   "../registry"
 );
 
@@ -24,10 +24,7 @@ async function simulateIdTokenProofClaims(
   userId: string,
   grantedScopes: string[]
 ): Promise<Record<string, unknown>> {
-  const hasProofScopes =
-    grantedScopes.includes("proof:identity") ||
-    extractProofScopes(grantedScopes).length > 0;
-  if (!hasProofScopes) {
+  if (!hasAnyProofScope(grantedScopes)) {
     return {};
   }
 

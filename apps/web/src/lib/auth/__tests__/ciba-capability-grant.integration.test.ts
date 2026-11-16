@@ -9,7 +9,10 @@ vi.hoisted(() => {
   process.env.WALLET_AUDIENCE = "urn:zentity:wallet:capability-grant-test";
 });
 
-import { ensureCapabilitiesSeeded } from "@/lib/agents/capability";
+import {
+  approvalPolicy,
+  ensureCapabilitiesSeeded,
+} from "@/lib/agents/capability";
 import { auth } from "@/lib/auth/auth-config";
 import {
   AUTHENTICATION_CONTEXT_CLAIM,
@@ -24,11 +27,16 @@ import {
   agentSessions,
   capabilityUsageLedger,
 } from "@/lib/db/schema/agent";
-import { cibaRequests } from "@/lib/db/schema/ciba";
+import { cibaApprovals, cibaRequests } from "@/lib/db/schema/ciba";
 import {
   oauthAccessTokens,
   oauthClients,
 } from "@/lib/db/schema/oauth-provider";
+import {
+  postDecision,
+  requestIdForAuthReqId,
+  signInApprover,
+} from "@/test-utils/ciba-decision-test-utils";
 import {
   createTestUser,
   hashCibaAuthReqId,
@@ -40,6 +48,7 @@ import {
   type DpopKeyPair,
   postTokenWithDpop,
 } from "@/test-utils/dpop-test-utils";
+import { TestAuthenticator } from "@/test-utils/webauthn-test-utils";
 
 const APP_URL = "http://localhost:3000";
 const BC_AUTHORIZE_URL = `${APP_URL}/api/auth/oauth2/bc-authorize`;
@@ -246,20 +255,48 @@ async function requestBackchannelAuth(
   return json.auth_req_id as string;
 }
 
-function readRequest(authReqId: string) {
+function readStoredRequest(authReqId: string) {
   return db
     .select({
-      approvalMethod: cibaRequests.approvalMethod,
-      approvedCapabilityName: cibaRequests.approvedCapabilityName,
-      approvedConstraints: cibaRequests.approvedConstraints,
-      approvedHostPolicyId: cibaRequests.approvedHostPolicyId,
-      authContextId: cibaRequests.authContextId,
+      authorizationDetails: cibaRequests.authorizationDetails,
+      scope: cibaRequests.scope,
       status: cibaRequests.status,
     })
     .from(cibaRequests)
     .where(eq(cibaRequests.authReqId, hashCibaAuthReqId(authReqId)))
     .limit(1)
     .get();
+}
+
+/** The request's status with what its decision record says, if any. */
+async function readRequest(authReqId: string) {
+  const referenceId = hashCibaAuthReqId(authReqId);
+  const [request, approval] = await Promise.all([
+    db
+      .select({
+        authContextId: cibaRequests.authContextId,
+        status: cibaRequests.status,
+      })
+      .from(cibaRequests)
+      .where(eq(cibaRequests.authReqId, referenceId))
+      .limit(1)
+      .get(),
+    db
+      .select()
+      .from(cibaApprovals)
+      .where(eq(cibaApprovals.referenceId, referenceId))
+      .limit(1)
+      .get(),
+  ]);
+  return {
+    status: request?.status,
+    authContextId: request?.authContextId,
+    approvalMethod: approval?.approvalMethod ?? null,
+    approvalChannel: approval?.approvalChannel ?? null,
+    approvedCapabilityName: approval?.capability ?? null,
+    approvedConstraints: approval?.constraints ?? null,
+    approvedHostPolicyId: approval?.hostPolicyId ?? null,
+  };
 }
 
 function ledgerEntries(sessionId: string) {
@@ -303,6 +340,7 @@ describe("CIBA approval from capability grants", () => {
       expect.objectContaining({
         status: "approved",
         approvalMethod: "capability_grant",
+        approvalChannel: "grant",
         approvedCapabilityName: "check_compliance",
         approvedHostPolicyId: expect.any(String),
         authContextId: delegationAuthContextId,
@@ -424,5 +462,96 @@ describe("CIBA approval from capability grants", () => {
     expect(await ledgerEntries(agent.sessionId)).toEqual([
       { capabilityName: "payment_authorization:sign" },
     ]);
+  });
+  // R13: one capability does not decide the whole request.
+  it("asks the user when a request spans more than the granted capability", async () => {
+    const agent = await registerAgent(userId, delegationAuthContextId);
+
+    const authReqId = await requestBackchannelAuth(agent, userId, {
+      scope: "openid compliance:read email offline_access proof:nationality",
+    });
+
+    const stored = await readStoredRequest(authReqId);
+    expect(stored?.status).toBe("pending");
+    expect(approvalPolicy({ scope: stored?.scope ?? "" }).pageOnly).toBe(true);
+    expect(await ledgerEntries(agent.sessionId)).toEqual([]);
+  });
+
+  const boundedPaymentPolicy: HostPolicyFixture = {
+    capabilityName: "payment_authorization:sign",
+    constraints: [{ field: "amount.value", op: "max", value: 100 }],
+    source: "user_grant",
+    status: "active",
+  };
+  const paymentEntry = (value: string) =>
+    JSON.stringify([
+      {
+        type: "payment_authorization",
+        chain: { namespace: "zcash", reference: "test" },
+        recipient: "zcash:test:utest1qq0",
+        amount: { currency: "ZEC", value, unit: "base" },
+        payment_id: `pay_${crypto.randomUUID()}`,
+        intent_hash: `v1:sha256:${"A".repeat(43)}`,
+        expires_at: { kind: "block_height", value: 4_056_276 },
+      },
+    ]);
+
+  // R14: a payment grant does not cover scopes added to the payment.
+  it("asks the user, with a passkey, when proof scopes ride along a bounded payment", async () => {
+    const agent = await registerAgent(userId, delegationAuthContextId, [
+      boundedPaymentPolicy,
+    ]);
+
+    const authReqId = await requestBackchannelAuth(agent, userId, {
+      scope: `openid ${PAYMENT_AUTHORIZATION_SCOPE} proof:age`,
+      authorization_details: paymentEntry("50"),
+    });
+
+    const stored = await readStoredRequest(authReqId);
+    expect(stored?.status).toBe("pending");
+    expect(
+      approvalPolicy({
+        scope: stored?.scope ?? "",
+        authorizationDetails: stored?.authorizationDetails,
+      }).ceremony
+    ).toBe("user_verification");
+    expect(await ledgerEntries(agent.sessionId)).toEqual([]);
+
+    // R3: the verified Agent-Assertion does not lower the ceremony either.
+    await new TestAuthenticator().register(userId);
+    const approver = await signInApprover(userId);
+    const decision = await postDecision(approver, {
+      request_id: await requestIdForAuthReqId(hashCibaAuthReqId(authReqId)),
+      channel: "page",
+    });
+    expect(decision.status).toBe(403);
+    expect(decision.json.error).toBe("insufficient_user_authentication");
+  });
+
+  // R22: the payment scope is a grantable item only with its payment entry.
+  it("approves the payment scope with its entry and asks the user without one", async () => {
+    const agent = await registerAgent(userId, delegationAuthContextId, [
+      boundedPaymentPolicy,
+    ]);
+
+    const withEntry = await requestBackchannelAuth(agent, userId, {
+      scope: `openid ${PAYMENT_AUTHORIZATION_SCOPE}`,
+      authorization_details: paymentEntry("50"),
+    });
+    const scopeOnly = await requestBackchannelAuth(agent, userId, {
+      scope: `openid ${PAYMENT_AUTHORIZATION_SCOPE}`,
+    });
+
+    expect((await readRequest(withEntry))?.status).toBe("approved");
+    const stored = await readStoredRequest(scopeOnly);
+    expect(stored?.status).toBe("pending");
+    expect(approvalPolicy({ scope: stored?.scope ?? "" })).toEqual(
+      expect.objectContaining({
+        ceremony: "user_verification",
+        grantCapability: null,
+        pageOnly: true,
+      })
+    );
+    expect(await ledgerEntries(agent.sessionId)).toHaveLength(1);
   });
 });

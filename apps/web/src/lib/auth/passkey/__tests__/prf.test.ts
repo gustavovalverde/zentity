@@ -162,4 +162,63 @@ describe("webauthn-prf", () => {
       expect(result).toEqual(output);
     });
   });
+
+  describe("serializeApprovalAssertion", () => {
+    it("posts no PRF output, whatever the extension results hold", async () => {
+      const { serializeApprovalAssertion } = await import("../prf");
+      const bytes = (fill: number) => new Uint8Array(8).fill(fill).buffer;
+      const credential = {
+        id: "cred-1",
+        rawId: bytes(1),
+        type: "public-key",
+        authenticatorAttachment: "platform",
+        response: {
+          authenticatorData: bytes(2),
+          clientDataJSON: bytes(3),
+          signature: bytes(4),
+          userHandle: bytes(5),
+        },
+        getClientExtensionResults: () => ({
+          prf: { results: { first: new Uint8Array(32).fill(9).buffer } },
+        }),
+      } as unknown as PublicKeyCredential;
+
+      const serialized = serializeApprovalAssertion(credential);
+
+      expect(serialized).toEqual({
+        id: "cred-1",
+        rawId: bytesToBase64Url(new Uint8Array(bytes(1))),
+        type: "public-key",
+        authenticatorAttachment: "platform",
+        response: {
+          authenticatorData: bytesToBase64Url(new Uint8Array(bytes(2))),
+          clientDataJSON: bytesToBase64Url(new Uint8Array(bytes(3))),
+          signature: bytesToBase64Url(new Uint8Array(bytes(4))),
+          userHandle: bytesToBase64Url(new Uint8Array(bytes(5))),
+        },
+        clientExtensionResults: {},
+      });
+      expect(JSON.stringify(serialized)).not.toContain("prf");
+    });
+
+    it("strips extension results from a JSON assertion", async () => {
+      const { toApprovalAssertion } = await import("../prf");
+
+      const stripped = toApprovalAssertion({
+        id: "cred-1",
+        rawId: "cred-1",
+        response: {
+          authenticatorData: "a",
+          clientDataJSON: "c",
+          signature: "s",
+        },
+        ...({
+          clientExtensionResults: { prf: { results: { first: "secret" } } },
+        } as object),
+      });
+
+      expect(stripped.clientExtensionResults).toEqual({});
+      expect(JSON.stringify(stripped)).not.toContain("secret");
+    });
+  });
 });

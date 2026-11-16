@@ -72,7 +72,8 @@ async function approvedCibaRequest(input: {
     requestId: row.id,
     userId: input.userId,
     authentication,
-    grant: { method: "user" },
+    channel: "page",
+    grant: { method: "session" },
   });
   return authReqId;
 }
@@ -91,7 +92,7 @@ async function seedTier1User(userId: string) {
 
 function createAuthContext(
   userId: string,
-  loginMethod: "opaque" | "passkey" = "passkey"
+  loginMethod: "eip712" | "oauth" | "opaque" | "passkey" = "passkey"
 ) {
   return createAuthenticationContext({
     userId,
@@ -131,11 +132,11 @@ describe("assurance claims in ID tokens", () => {
     const claims = decodeJwt(idToken);
     // The approval states the tier as acr and the approving session's amr.
     expect(claims.acr).toBe("urn:zentity:assurance:tier-1");
-    expect(claims.amr).toEqual(["pop", "hwk", "user"]);
+    expect(claims.amr).toEqual(["pop", "user"]);
     const assurance = claims.zentity_assurance as Record<string, unknown>;
     expect(assurance.acr).toBe("urn:zentity:assurance:tier-1");
     expect(assurance.acr_eidas).toBe("http://eidas.europa.eu/LoA/low");
-    expect(assurance.amr).toEqual(["pop", "hwk", "user"]);
+    expect(assurance.amr).toEqual(["pop", "user"]);
     expect(claims[AUTHENTICATION_CONTEXT_CLAIM]).toBe(authContext.id);
     expect(claims.auth_time).toBeDefined();
     expect(typeof claims.auth_time).toBe("number");
@@ -218,5 +219,28 @@ describe("assurance claims in ID tokens", () => {
     expect(claims.at_hash).toBe(
       digest.subarray(0, digest.length / 2).toString("base64url")
     );
+  });
+
+  // R9: amr states observed methods only, and is absent when there are none.
+  it.each([
+    ["eip712", ["pop"]],
+    ["oauth", undefined],
+  ] as const)("gives a %s approval the amr %j", async (loginMethod, amr) => {
+    const authContext = await createAuthContext(userId, loginMethod);
+    const authReqId = await approvedCibaRequest({
+      userId,
+      authContextId: authContext.id,
+    });
+
+    const { status, json } = await postTokenWithDpop({
+      grant_type: CIBA_GRANT_TYPE,
+      auth_req_id: authReqId,
+      client_id: TEST_CLIENT_ID,
+    });
+
+    expect(status).toBe(200);
+    const claims = decodeJwt(json.id_token as string);
+    expect(claims.amr).toEqual(amr);
+    expect(JSON.stringify(claims)).not.toContain("hwk");
   });
 });

@@ -22,6 +22,7 @@ export async function GET(
       inputSchema: agentCapabilities.inputSchema,
       outputSchema: agentCapabilities.outputSchema,
       approvalStrength: agentCapabilities.approvalStrength,
+      grantable: agentCapabilities.grantable,
     })
     .from(agentCapabilities)
     .where(eq(agentCapabilities.name, name))
@@ -41,5 +42,6 @@ export async function GET(
     input_schema: capability.inputSchema,
     output_schema: capability.outputSchema,
     approval_strength: capability.approvalStrength,
+    grantable: capability.grantable,
   });
 }

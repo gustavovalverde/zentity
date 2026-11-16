@@ -113,3 +113,80 @@ describe("CIBA approval origin", () => {
     expect(await requestStatus(requestId)).toBe("denied");
   });
 });
+
+// R18: the options and decision endpoints each have their own limit.
+describe("CIBA approval rate limits", () => {
+  let userId: string;
+  let sessionToken: string;
+  let rateLimit: { enabled: boolean };
+  let wasEnabled: boolean;
+
+  beforeEach(async () => {
+    rateLimit = ((await auth.$context) as { rateLimit: { enabled: boolean } })
+      .rateLimit;
+    wasEnabled = rateLimit.enabled;
+    rateLimit.enabled = true;
+    await resetDatabase();
+    userId = await createTestUser();
+    await db
+      .insert(oauthClients)
+      .values({
+        clientId: CLIENT_ID,
+        redirectUris: JSON.stringify(["http://localhost/callback"]),
+        grantTypes: JSON.stringify(["urn:openid:params:grant-type:ciba"]),
+        tokenEndpointAuthMethod: "none",
+      })
+      .run();
+    const { token } = await createTestSession(userId);
+    sessionToken = `${token}.${await makeSignature(token, env.BETTER_AUTH_SECRET)}`;
+  });
+
+  afterEach(() => {
+    rateLimit.enabled = wasEnabled;
+  });
+
+  function post(path: string, body: Record<string, unknown>, ip: string) {
+    return auth.handler(
+      new Request(`${AUTH_BASE}${path}`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          cookie: `better-auth.session_token=${sessionToken}`,
+          "x-forwarded-for": ip,
+        },
+        body: JSON.stringify(body),
+      })
+    );
+  }
+
+  it("counts options calls apart from decisions", async () => {
+    const ip = `203.0.113.${Math.floor(Math.random() * 200) + 1}`;
+    const { requestId } = await createTestCibaRequest({
+      clientId: CLIENT_ID,
+      userId,
+    });
+
+    for (let call = 0; call < 20; call++) {
+      const response = await post(
+        "/ciba/decision/options",
+        { request_id: requestId },
+        ip
+      );
+      expect(response.status).not.toBe(429);
+    }
+
+    const decision = await post(
+      "/ciba/decision",
+      { request_id: requestId, decision: "denied", channel: "page" },
+      ip
+    );
+    expect(decision.status).toBe(200);
+
+    const limited = await post(
+      "/ciba/decision/options",
+      { request_id: requestId },
+      ip
+    );
+    expect(limited.status).toBe(429);
+  });
+});

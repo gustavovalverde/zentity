@@ -106,7 +106,7 @@ function createTier2Posture(): SecurityPosture {
     auth: {
       id: "auth-context-1",
       loginMethod: "passkey",
-      amr: ["pop", "hwk", "user"],
+      amr: ["pop", "user", "mfa"],
       authStrength: "strong",
       authenticatedAt: 1_700_000_000,
       sourceKind: "better_auth",

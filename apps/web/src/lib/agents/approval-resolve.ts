@@ -1,12 +1,20 @@
-import type { AuthorizationDetail } from "./capability";
+import type {
+  ApprovalCeremony,
+  ApprovalPolicy,
+  AuthorizationDetail,
+  ScopeLabel,
+} from "./capability";
 
 import { and, eq } from "drizzle-orm";
 
+import { hasPasskey } from "@/lib/auth/passkey/step-up";
 import { parseStoredStringArray } from "@/lib/db/adapter-compat";
 import { db } from "@/lib/db/connection";
 import { agentHosts, agentSessions } from "@/lib/db/schema/agent";
 import { cibaRequests } from "@/lib/db/schema/ciba";
 import { oauthClients } from "@/lib/db/schema/oauth-provider";
+
+import { approvalPolicy, requiredCeremony } from "./capability";
 
 export type { AuthorizationDetail } from "./capability";
 
@@ -23,7 +31,33 @@ export interface RegisteredAgentInfo {
   sessionId: string;
 }
 
-export interface CibaRequestDetails {
+/** What approving the request takes from this user, for the approval page. */
+export interface ApprovalRequirementDetails {
+  /** The ceremony an approval needs from this user. */
+  approval_requirement: ApprovalCeremony;
+  /** Whether a notification may not approve it. */
+  page_only: boolean;
+  passkey_available: boolean;
+  /** Server text for every requested scope other than `openid`. */
+  scope_labels: ScopeLabel[];
+}
+
+export function describeApprovalRequirement(
+  policy: ApprovalPolicy,
+  userHasPasskey: boolean
+): ApprovalRequirementDetails {
+  return {
+    approval_requirement: requiredCeremony(policy, {
+      hasPasskey: userHasPasskey,
+    }),
+    page_only: policy.pageOnly,
+    passkey_available: userHasPasskey,
+    scope_labels: policy.labels,
+  };
+}
+
+export interface CibaRequestDetails
+  extends Partial<ApprovalRequirementDetails> {
   acr_values?: string;
   authorization_details?: AuthorizationDetail[];
   binding_message?: string;
@@ -121,7 +155,15 @@ export async function resolveCibaApprovalData(
   }
 
   const acrValues = parseStoredStringArray(row.acrValues).join(" ");
+  const requirement = describeApprovalRequirement(
+    approvalPolicy({
+      scope: row.scope,
+      authorizationDetails: row.authorizationDetails,
+    }),
+    await hasPasskey(userId)
+  );
   const request: CibaRequestDetails = {
+    ...requirement,
     request_id: requestId,
     expires_at: row.expiresAt.toISOString(),
     scope: row.scope,

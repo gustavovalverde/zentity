@@ -687,6 +687,7 @@ export async function decideCibaRequest(
     data: {
       request_id: await findCibaRequestId(input.authReqId),
       decision: input.decision ?? "approved",
+      channel: "page",
     },
     headers: { Cookie: input.cookieHeader, ...ORIGIN_HEADERS },
   });

@@ -2,7 +2,8 @@ import crypto from "node:crypto";
 
 import { makeSignature } from "better-auth/crypto";
 import { eq } from "drizzle-orm";
-import { beforeEach, describe, expect, it } from "vitest";
+import { decodeJwt } from "jose";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { env } from "@/env";
 import { auth } from "@/lib/auth/auth-config";
@@ -16,11 +17,22 @@ import {
   oauthClients,
 } from "@/lib/db/schema/oauth-provider";
 import {
+  confirmWithPasskey,
+  decisionRecord,
+  postDecision,
+  postDecisionOptions,
+  requestStatus,
+  signInApprover,
+  type TestApprover,
+} from "@/test-utils/ciba-decision-test-utils";
+import {
+  createTestCibaRequest,
   createTestUser,
   hashCibaAuthReqId,
   resetDatabase,
 } from "@/test-utils/db-test-utils";
 import { postTokenWithDpop } from "@/test-utils/dpop-test-utils";
+import { TestAuthenticator } from "@/test-utils/webauthn-test-utils";
 
 const CIBA_GRANT_TYPE = "urn:openid:params:grant-type:ciba";
 const TEST_CLIENT_ID = "step-up-ciba-test";
@@ -611,5 +623,276 @@ describe("CIBA step-up: first-party client (FPA) path", () => {
 
     expect(status).toBe(200);
     expect(json.access_token).toBeDefined();
+  });
+});
+
+describe("CIBA approval ceremony", () => {
+  let userId: string;
+  let approver: TestApprover;
+
+  beforeEach(async () => {
+    await resetDatabase();
+    userId = await createTestUser();
+    await createPollClient();
+    approver = await signInApprover(userId);
+  });
+
+  async function pendingRequest(scope: string) {
+    const { requestId, authReqId } = await createTestCibaRequest({
+      clientId: POLL_CLIENT_ID,
+      userId,
+      scope,
+    });
+    return { requestId, authReqId };
+  }
+
+  // R23: an old service worker posts without a channel from a notification.
+  it.each([
+    ["no channel", undefined],
+    ["the push channel", "push" as const],
+  ])(
+    "refuses a notification approval of a page-only request sent with %s",
+    async (_case, channel) => {
+      const { requestId } = await pendingRequest("openid email");
+
+      const response = await postDecision(approver, {
+        request_id: requestId,
+        ...(channel ? { channel } : {}),
+      });
+
+      expect(response.status).toBe(403);
+      expect(response.json).toEqual(
+        expect.objectContaining({
+          error: "review_required",
+          error_description: "Open the approval page to review this request",
+        })
+      );
+      expect(await requestStatus(requestId)).toBe("pending");
+    }
+  );
+
+  it.each([
+    ["no channel", undefined],
+    ["the push channel", "push" as const],
+  ])(
+    "accepts a notification approval of an inline request sent with %s",
+    async (_case, channel) => {
+      const { requestId } = await pendingRequest("openid compliance:read");
+
+      const response = await postDecision(approver, {
+        request_id: requestId,
+        ...(channel ? { channel } : {}),
+      });
+
+      expect(response.status).toBe(200);
+      expect(await decisionRecord(requestId)).toEqual(
+        expect.objectContaining({
+          approvalMethod: "session",
+          approvalChannel: "push",
+        })
+      );
+    }
+  );
+
+  it("accepts a page approval of a page-only request", async () => {
+    const { requestId } = await pendingRequest("openid email");
+
+    const response = await postDecision(approver, {
+      request_id: requestId,
+      channel: "page",
+    });
+
+    expect(response.status).toBe(200);
+  });
+
+  it("lets a notification deny a page-only request", async () => {
+    const { requestId } = await pendingRequest("openid email");
+
+    const response = await postDecision(approver, {
+      request_id: requestId,
+      decision: "denied",
+    });
+
+    expect(response.status).toBe(200);
+    expect(await decisionRecord(requestId)).toEqual(
+      expect.objectContaining({ decision: "denied", approvalChannel: "push" })
+    );
+  });
+
+  // R6 and R17: a verified assertion is recorded and stated to the client.
+  it("states a user-verified approval in the token response and the ID token", async () => {
+    const authenticator = await new TestAuthenticator().register(userId);
+    const { requestId, authReqId } = await pendingRequest(
+      "openid compliance:read"
+    );
+    const webauthn = await confirmWithPasskey(
+      approver,
+      requestId,
+      authenticator
+    );
+    const verifiedAt = new Date(Date.now() + 5000);
+
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(verifiedAt);
+    const response = await postDecision(approver, {
+      request_id: requestId,
+      channel: "page",
+      webauthn,
+    });
+    vi.useRealTimers();
+
+    expect(response.status).toBe(200);
+    expect(await decisionRecord(requestId)).toEqual(
+      expect.objectContaining({
+        approvalMethod: "user_verification",
+        approvalChannel: "page",
+      })
+    );
+    const { status, json } = await postTokenWithDpop({
+      grant_type: CIBA_GRANT_TYPE,
+      auth_req_id: authReqId,
+      client_id: POLL_CLIENT_ID,
+    });
+    expect(status).toBe(200);
+    const verifiedAtSeconds = Math.floor(verifiedAt.getTime() / 1000);
+    expect(json.oversight).toEqual({
+      method: "user_verification",
+      approved_at: verifiedAtSeconds,
+    });
+    const idToken = decodeJwt(json.id_token as string);
+    expect(idToken.amr).toEqual(["pop", "user", "mfa"]);
+    expect(idToken.auth_time).toBe(verifiedAtSeconds);
+  });
+
+  describe("decision errors", () => {
+    it("answers an unknown request with 404 on both endpoints", async () => {
+      for (const response of [
+        await postDecisionOptions(approver, "missing"),
+        await postDecision(approver, { request_id: "missing" }),
+      ]) {
+        expect(response.status).toBe(404);
+        expect(response.json).toEqual(
+          expect.objectContaining({
+            error: "invalid_request",
+            error_description: "Unknown request",
+          })
+        );
+      }
+    });
+
+    it("answers a decided request with 400 on both endpoints", async () => {
+      const { requestId } = await pendingRequest("openid");
+      expect(
+        (
+          await postDecision(approver, {
+            request_id: requestId,
+            channel: "page",
+          })
+        ).status
+      ).toBe(200);
+
+      for (const response of [
+        await postDecisionOptions(approver, requestId),
+        await postDecision(approver, {
+          request_id: requestId,
+          channel: "page",
+        }),
+      ]) {
+        expect(response.status).toBe(400);
+        expect(response.json.error_description).toBe(
+          "This request was already approved"
+        );
+      }
+    });
+
+    it("answers an expired request with expired_token on both endpoints", async () => {
+      const { requestId } = await createTestCibaRequest({
+        clientId: POLL_CLIENT_ID,
+        userId,
+        expiresAt: new Date(Date.now() - 1000),
+      });
+
+      for (const response of [
+        await postDecisionOptions(approver, requestId),
+        await postDecision(approver, {
+          request_id: requestId,
+          channel: "page",
+        }),
+      ]) {
+        expect(response.status).toBe(400);
+        expect(response.json.error).toBe("expired_token");
+      }
+    });
+
+    it("answers options for a user without a passkey with passkey_required", async () => {
+      const { requestId } = await pendingRequest("openid");
+
+      const response = await postDecisionOptions(approver, requestId);
+
+      expect(response.status).toBe(409);
+      expect(response.json.error).toBe("passkey_required");
+    });
+
+    it("asks to start again when no challenge was issued", async () => {
+      const authenticator = await new TestAuthenticator().register(userId);
+      const { requestId } = await pendingRequest("openid");
+
+      const response = await postDecision(approver, {
+        request_id: requestId,
+        channel: "page",
+        webauthn: authenticator.assert({ challenge: "bm90LWlzc3VlZA" }),
+      });
+
+      expect(response.status).toBe(400);
+      expect(response.json).toEqual(
+        expect.objectContaining({
+          error: "invalid_request",
+          error_description: "Start the passkey confirmation again",
+        })
+      );
+    });
+
+    it("refuses an assertion that fails verification", async () => {
+      const authenticator = await new TestAuthenticator().register(userId);
+      const { requestId } = await pendingRequest("openid");
+      const webauthn = await confirmWithPasskey(
+        approver,
+        requestId,
+        authenticator,
+        { userVerified: false }
+      );
+
+      const response = await postDecision(approver, {
+        request_id: requestId,
+        channel: "page",
+        webauthn,
+      });
+
+      expect(response.status).toBe(403);
+      expect(response.json).toEqual(
+        expect.objectContaining({
+          error: "insufficient_user_authentication",
+          error_description: "Passkey confirmation failed",
+        })
+      );
+      expect(await requestStatus(requestId)).toBe("pending");
+    });
+
+    it("asks a session without an authentication context to sign in again", async () => {
+      const { requestId } = await pendingRequest("openid");
+      await db
+        .update(sessions)
+        .set({ authContextId: null })
+        .where(eq(sessions.id, approver.sessionId))
+        .run();
+
+      const response = await postDecision(approver, {
+        request_id: requestId,
+        channel: "page",
+      });
+
+      expect(response.status).toBe(401);
+      expect(response.json.error).toBe("login_required");
+    });
   });
 });

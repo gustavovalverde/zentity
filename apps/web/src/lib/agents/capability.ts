@@ -1,26 +1,22 @@
 /**
  * Agent capability domain.
  *
- * Maps an authorization request (scopes + RAR authorization_details) to a
- * canonical capability name, resolves the configured approval strength, and
- * owns the canonical capability catalog synced into the agent_capabilities
- * table plus the durable host-policy defaults.
+ * Owns the capability catalog synced into agent_capabilities, the approval
+ * policy that maps a whole CIBA request (scopes plus RAR
+ * authorization_details) to the ceremony it needs, and the durable
+ * host-policy defaults.
  *
  * Kept separate from approval-evaluate.ts to avoid an import cycle with
- * agents/session.ts (which needs deriveCapabilityName /
- * resolveCapabilityApprovalStrength).
+ * agents/session.ts.
  */
 
 import {
   PAYMENT_AUTHORIZATION_CAPABILITY,
   PAYMENT_AUTHORIZATION_TYPE,
 } from "@zentity/sdk/protocol";
-import { eq, notInArray } from "drizzle-orm";
+import { notInArray } from "drizzle-orm";
 
-import {
-  extractProofScopes,
-  isIdentityScope,
-} from "@/lib/auth/oidc/disclosure/registry";
+import { isIdentityScope } from "@/lib/auth/oidc/disclosure/registry";
 import { db } from "@/lib/db/connection";
 import { agentCapabilities } from "@/lib/db/schema/agent";
 
@@ -49,65 +45,32 @@ export function normalizeAuthorizationDetails(
   return [];
 }
 
-export function deriveCapabilityName(
-  details: AuthorizationDetail[],
-  scope: string
-): string | null {
-  // Precedence is strict so a mixed request produces one deterministic
-  // capability: a payment_authorization spend outranks purchase details, which
-  // outrank identity scopes, which outrank proof scopes, which outrank
-  // openid-only requests.
-  if (details.some((detail) => detail.type === PAYMENT_AUTHORIZATION_TYPE)) {
-    return PAYMENT_AUTHORIZATION_CAPABILITY;
-  }
-
-  if (details.some((detail) => detail.type === "purchase")) {
-    return "purchase";
-  }
-
-  const scopes = scope.split(" ").filter((item) => item !== "openid");
-  if (scopes.some(isIdentityScope)) {
-    return "my_profile";
-  }
-
-  if (scopes.includes("compliance:read")) {
-    return "check_compliance";
-  }
-
-  if (
-    scopes.includes("proof:identity") ||
-    extractProofScopes(scopes).length > 0
-  ) {
-    return "my_proofs";
-  }
-
-  return null;
-}
-
-export async function resolveCapabilityApprovalStrength(
-  capabilityName: string | null | undefined
-): Promise<string | undefined> {
-  if (!capabilityName) {
-    return undefined;
-  }
-
-  const capability = await db
-    .select({ approvalStrength: agentCapabilities.approvalStrength })
-    .from(agentCapabilities)
-    .where(eq(agentCapabilities.name, capabilityName))
-    .limit(1)
-    .get();
-
-  return capability?.approvalStrength;
-}
-
 // ─── Capability catalog ─────────────────────────────────────────────
+
+/**
+ * How a person approves a request by hand: an active session, or a passkey
+ * assertion with the user-verified flag set (PIN or biometric, which the
+ * relying party cannot tell apart).
+ */
+export type ApprovalCeremony = "session" | "user_verification";
+
+interface CapabilityDefinition {
+  /** The ceremony a manual approval needs. */
+  approvalStrength: ApprovalCeremony;
+  description: string;
+  /** Whether an agent session grant may approve it without the user. */
+  grantable: boolean;
+  inputSchema: Record<string, unknown> | null;
+  name: string;
+  outputSchema: Record<string, unknown>;
+}
 
 const CAPABILITIES = [
   {
     name: "purchase",
     description: "Authorize and execute purchases on behalf of the user",
-    approvalStrength: "biometric",
+    approvalStrength: "user_verification",
+    grantable: false,
     inputSchema: {
       type: "object",
       properties: {
@@ -142,6 +105,7 @@ const CAPABILITIES = [
     description:
       "Read vault-gated profile fields such as full name, address, or birthdate",
     approvalStrength: "session",
+    grantable: false,
     inputSchema: {
       type: "object",
       properties: {
@@ -168,7 +132,8 @@ const CAPABILITIES = [
   {
     name: "check_compliance",
     description: "Check the user's on-chain attestation and compliance status",
-    approvalStrength: "none",
+    approvalStrength: "session",
+    grantable: true,
     inputSchema: null,
     outputSchema: {
       type: "object",
@@ -182,7 +147,8 @@ const CAPABILITIES = [
     name: "my_proofs",
     description:
       "Read verification-derived facts such as age status, verification checks, and verification method",
-    approvalStrength: "none",
+    approvalStrength: "session",
+    grantable: true,
     inputSchema: null,
     outputSchema: {
       type: "object",
@@ -208,7 +174,8 @@ const CAPABILITIES = [
     name: "whoami",
     description:
       "Read a safe account summary such as verification tier, login method, completed checks, and standard account email when the granted scopes include email",
-    approvalStrength: "none",
+    approvalStrength: "session",
+    grantable: true,
     inputSchema: null,
     outputSchema: {
       type: "object",
@@ -236,12 +203,11 @@ const CAPABILITIES = [
     name: PAYMENT_AUTHORIZATION_CAPABILITY,
     description:
       "Mint a payment_authorization RAR entry bounding a single on-chain spend (chain, recipient, amount, expiry, intent_hash)",
-    // "none" lets grant evaluation reach the boundary + ledger check, so a
-    // spend within a pre-authorized agent_session_grant auto-approves; over-limit
-    // or unlisted-recipient spends fall through to manual CIBA approval.
-    // "biometric" would dead-end evaluation before any boundary check, making
-    // the capability unreachable.
-    approvalStrength: "none",
+    // A bounded grant may approve a spend within its limits (see
+    // isBoundedPaymentGrant); any other spend goes to the user, who confirms
+    // it with a user-verified passkey assertion.
+    approvalStrength: "user_verification",
+    grantable: true,
     inputSchema: {
       type: "object",
       properties: {
@@ -318,7 +284,11 @@ const CAPABILITIES = [
       },
     },
   },
-] as const;
+] as const satisfies readonly CapabilityDefinition[];
+
+const CAPABILITY_CATALOG = new Map<string, CapabilityDefinition>(
+  CAPABILITIES.map((capability) => [capability.name, capability])
+);
 
 /**
  * Sync the agent capability catalog into agent_capabilities and prune stale
@@ -340,6 +310,7 @@ export async function ensureCapabilitiesSeeded(): Promise<void> {
           name: capability.name,
           description: capability.description,
           approvalStrength: capability.approvalStrength,
+          grantable: capability.grantable,
           inputSchema: capability.inputSchema,
           outputSchema: capability.outputSchema,
         })
@@ -348,6 +319,7 @@ export async function ensureCapabilitiesSeeded(): Promise<void> {
           set: {
             description: capability.description,
             approvalStrength: capability.approvalStrength,
+            grantable: capability.grantable,
             inputSchema: capability.inputSchema,
             outputSchema: capability.outputSchema,
           },
@@ -371,3 +343,245 @@ export const DEFAULT_HOST_POLICY_CAPABILITIES = [
 export const ATTESTED_HOST_POLICY_CAPABILITIES = [
   ...DEFAULT_HOST_POLICY_CAPABILITIES,
 ];
+
+// ─── Approval policy ────────────────────────────────────────────────
+
+/** What one requested scope or RAR type needs before it is approved. */
+interface ApprovalPolicyRow {
+  /** The capability a grant must hold to approve it, or null for none. */
+  capability: string | null;
+  ceremony: ApprovalCeremony;
+  /** Whether a capability grant may approve it without the user. */
+  grantable: boolean;
+  /** Whether a notification may approve it, because its label says enough. */
+  inline: boolean;
+  /** Short noun phrase that names what is shared, for notifications. */
+  label: string;
+}
+
+/** Ceremony and grantability come from the catalog entry of the capability. */
+function policyRow(
+  capability: string | null,
+  inline: boolean,
+  label: string
+): ApprovalPolicyRow {
+  const entry = capability ? CAPABILITY_CATALOG.get(capability) : undefined;
+  return {
+    capability,
+    ceremony: entry?.approvalStrength ?? "session",
+    grantable: entry?.grantable ?? false,
+    inline,
+    label,
+  };
+}
+
+// Until T3 removes the scope, the payment scope is grantable only together
+// with the payment entry it accompanies.
+const PAYMENT_AUTHORIZATION_SCOPE_ROW = policyRow(
+  PAYMENT_AUTHORIZATION_CAPABILITY,
+  false,
+  "payment signature"
+);
+
+/**
+ * The single list of what each scope and RAR type needs. Every approval
+ * surface (grant evaluation, the decision endpoint, push, and the approval
+ * page) reads it through `approvalPolicy`.
+ */
+const APPROVAL_POLICY = {
+  scopes: {
+    openid: policyRow(null, true, "sign-in"),
+    "compliance:read": policyRow("check_compliance", true, "compliance status"),
+    "proof:identity": policyRow("my_proofs", true, "verification records"),
+    "proof:verification": policyRow("my_proofs", true, "verification status"),
+    "proof:age": policyRow("my_proofs", true, "age proof"),
+    "proof:document": policyRow("my_proofs", true, "document verification"),
+    "proof:liveness": policyRow("my_proofs", true, "selfie check results"),
+    "proof:nationality": policyRow(
+      "my_proofs",
+      true,
+      "nationality verification"
+    ),
+    "proof:compliance": policyRow("my_proofs", true, "verification policy"),
+    "proof:chip": policyRow("my_proofs", true, "passport chip verification"),
+    "proof:humanity": policyRow("my_proofs", true, "proof you are human"),
+    "identity.name": policyRow("my_profile", false, "full legal name"),
+    "identity.dob": policyRow("my_profile", false, "date of birth"),
+    "identity.address": policyRow("my_profile", false, "residential address"),
+    "identity.document": policyRow("my_profile", false, "document details"),
+    "identity.nationality": policyRow("my_profile", false, "nationality"),
+    email: policyRow(null, false, "email address"),
+    offline_access: policyRow(null, false, "access while you are away"),
+    "proof:sybil": policyRow(null, false, "anonymous ID for this app"),
+    "proof:humanity:rp_unique": policyRow(
+      null,
+      false,
+      "anonymous human ID for this app"
+    ),
+    "agent:host.register": policyRow(null, false, "agent host registration"),
+    "agent:session.register": policyRow(
+      null,
+      false,
+      "agent session registration"
+    ),
+    "agent:session.revoke": policyRow(null, false, "agent session removal"),
+    "agent:introspect": policyRow(null, false, "agent status"),
+    identity_verification: policyRow(null, false, "verification credential"),
+    poh: policyRow(null, false, "proof-of-human tokens"),
+    [PAYMENT_AUTHORIZATION_CAPABILITY]: PAYMENT_AUTHORIZATION_SCOPE_ROW,
+  } satisfies Record<string, ApprovalPolicyRow>,
+  authorizationDetails: {
+    [PAYMENT_AUTHORIZATION_TYPE]: policyRow(
+      PAYMENT_AUTHORIZATION_CAPABILITY,
+      false,
+      "payment"
+    ),
+  } satisfies Record<string, ApprovalPolicyRow>,
+} as const;
+
+const SCOPE_POLICY: Readonly<Record<string, ApprovalPolicyRow>> =
+  APPROVAL_POLICY.scopes;
+const AUTHORIZATION_DETAILS_POLICY: Readonly<
+  Record<string, ApprovalPolicyRow>
+> = APPROVAL_POLICY.authorizationDetails;
+
+/** Unknown scopes go to the page, where the user sees the raw name. */
+function unknownScopeRow(scope: string): ApprovalPolicyRow {
+  return {
+    capability: null,
+    ceremony: "session",
+    grantable: false,
+    inline: false,
+    label: scope,
+  };
+}
+
+/** Details Zentity cannot read need the strongest ceremony. */
+const UNKNOWN_DETAIL_ROW: ApprovalPolicyRow = {
+  capability: null,
+  ceremony: "user_verification",
+  grantable: false,
+  inline: false,
+  label: "unrecognized request details",
+};
+
+export interface ScopeLabel {
+  /** Whether a notification may approve this item inline. */
+  inline: boolean;
+  label: string;
+  scope: string;
+}
+
+export interface ApprovalPolicy {
+  /** The strictest ceremony any requested item needs. */
+  ceremony: ApprovalCeremony;
+  /** The one capability a grant may approve the whole request with. */
+  grantCapability: string | null;
+  hasIdentityScopes: boolean;
+  inlineApprove: boolean;
+  /** A label for every requested scope other than `openid`. */
+  labels: ScopeLabel[];
+  /** Whether only the approval page may approve it. */
+  pageOnly: boolean;
+}
+
+interface ApprovalRequest {
+  /** RFC 9396 details as stored (a JSON string) or as parsed. */
+  authorizationDetails?: unknown;
+  scope: string;
+}
+
+function detailTypes(raw: unknown): (string | null)[] {
+  if (raw === undefined || raw === null || raw === "") {
+    return [];
+  }
+  let parsed: unknown = raw;
+  if (typeof raw === "string") {
+    try {
+      parsed = JSON.parse(raw) as unknown;
+    } catch {
+      return [null];
+    }
+  }
+  if (!Array.isArray(parsed)) {
+    return [null];
+  }
+  return parsed.map((entry: unknown) => {
+    const type =
+      entry && typeof entry === "object"
+        ? (entry as { type?: unknown }).type
+        : undefined;
+    return typeof type === "string" ? type : null;
+  });
+}
+
+/**
+ * Derives what the whole request needs from what it asks for, never from
+ * anything the agent asserts about itself.
+ */
+export function approvalPolicy(request: ApprovalRequest): ApprovalPolicy {
+  const scopes = [...new Set(request.scope.split(" ").filter(Boolean))].filter(
+    (scope) => scope !== "openid"
+  );
+  const types = detailTypes(request.authorizationDetails);
+  const hasPaymentEntry = types.includes(PAYMENT_AUTHORIZATION_TYPE);
+
+  const scopeRows = scopes.map(
+    (scope) => SCOPE_POLICY[scope] ?? unknownScopeRow(scope)
+  );
+  const detailRows = types.map((type) =>
+    type
+      ? (AUTHORIZATION_DETAILS_POLICY[type] ?? UNKNOWN_DETAIL_ROW)
+      : UNKNOWN_DETAIL_ROW
+  );
+  const rows = [...scopeRows, ...detailRows];
+
+  const ceremony: ApprovalCeremony = rows.some(
+    (row) => row.ceremony === "user_verification"
+  )
+    ? "user_verification"
+    : "session";
+  const pageOnly =
+    detailRows.length > 0 ||
+    ceremony === "user_verification" ||
+    rows.some((row) => !row.inline);
+
+  const capabilities = new Set(rows.map((row) => row.capability));
+  const allGrantable = rows.every(
+    (row) =>
+      row.grantable &&
+      (row !== PAYMENT_AUTHORIZATION_SCOPE_ROW || hasPaymentEntry)
+  );
+  const [onlyCapability] = capabilities;
+  const grantCapability =
+    rows.length > 0 && allGrantable && capabilities.size === 1
+      ? (onlyCapability ?? null)
+      : null;
+
+  return {
+    ceremony,
+    grantCapability,
+    hasIdentityScopes: scopes.some(isIdentityScope),
+    inlineApprove: !pageOnly,
+    labels: scopes.map((scope, index) => ({
+      scope,
+      label: scopeRows[index]?.label ?? scope,
+      inline: scopeRows[index]?.inline ?? false,
+    })),
+    pageOnly,
+  };
+}
+
+/**
+ * The ceremony a manual approval needs from this user. Identity releases also
+ * need user verification when the user has a passkey to give it with.
+ */
+export function requiredCeremony(
+  policy: ApprovalPolicy,
+  user: { hasPasskey: boolean }
+): ApprovalCeremony {
+  return policy.ceremony === "user_verification" ||
+    (policy.hasIdentityScopes && user.hasPasskey)
+    ? "user_verification"
+    : "session";
+}

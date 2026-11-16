@@ -58,12 +58,14 @@ async function seedCapabilities() {
     .insert(agentCapabilities)
     .values([
       {
-        approvalStrength: "none",
+        approvalStrength: "session",
+        grantable: true,
         description: "Compliance checks",
         name: "check_compliance",
       },
       {
-        approvalStrength: "none",
+        approvalStrength: "session",
+        grantable: true,
         description: "Safe account summary",
         name: "whoami",
       },
@@ -73,7 +75,8 @@ async function seedCapabilities() {
         name: "my_profile",
       },
       {
-        approvalStrength: "none",
+        approvalStrength: "session",
+        grantable: true,
         description: "Proof inventory",
         name: "my_proofs",
       },

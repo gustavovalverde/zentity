@@ -1,14 +1,19 @@
 "use client";
 
+import type { PublicKeyCredentialRequestOptionsJSON } from "@simplewebauthn/browser";
 import type {
   AgentIdentitySummary,
   CibaRequestDetails,
   RegisteredAgentInfo,
 } from "@/lib/agents/approval-resolve";
+import type { ScopeLabel } from "@/lib/agents/capability";
+import type { ApprovalAssertion } from "@/lib/auth/passkey/prf";
 import type { AuthMode } from "@/lib/auth/session";
+import type { ProfileSecretPayload } from "@/lib/privacy/secrets/profile";
 
 import { useQuery } from "@tanstack/react-query";
-import { AlertTriangle, BadgeCheck, Bot } from "lucide-react";
+import { AlertTriangle, BadgeCheck, Bot, KeyRound } from "lucide-react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
@@ -42,6 +47,9 @@ import {
   PROOF_SCOPE_DESCRIPTIONS,
   type ProofScope,
 } from "@/lib/auth/oidc/disclosure/registry";
+import { assertPasskeyForApproval } from "@/lib/auth/passkey/client";
+import { base64UrlToBytes } from "@/lib/privacy/primitives/symmetric";
+import { getStoredProfileWithPasskeyStepUp } from "@/lib/privacy/secrets/profile";
 import { useTRPC } from "@/lib/trpc/client";
 
 type PageState =
@@ -54,11 +62,21 @@ type PageState =
   | "expired"
   | "error";
 
-function RequestedClaimsSection({ scopes }: Readonly<{ scopes: string[] }>) {
+function RequestedClaimsSection({
+  labels,
+  scopes,
+}: Readonly<{ labels: ScopeLabel[]; scopes: string[] }>) {
   const proofScopes = scopes.filter(isProofScope) as ProofScope[];
   const identityScopes = scopes.filter(isIdentityScope) as IdentityScope[];
+  const otherLabels = labels.filter(
+    ({ scope }) => !(isProofScope(scope) || isIdentityScope(scope))
+  );
 
-  if (proofScopes.length === 0 && identityScopes.length === 0) {
+  if (
+    proofScopes.length === 0 &&
+    identityScopes.length === 0 &&
+    otherLabels.length === 0
+  ) {
     return null;
   }
 
@@ -86,6 +104,16 @@ function RequestedClaimsSection({ scopes }: Readonly<{ scopes: string[] }>) {
                 — requires unlocking your vault
               </span>
             </span>
+          </li>
+        ))}
+        {otherLabels.map(({ scope, label, inline }) => (
+          <li className="flex items-start gap-2" key={scope}>
+            {inline ? (
+              <BadgeCheck className="mt-0.5 size-3.5 shrink-0 text-success" />
+            ) : (
+              <AlertTriangle className="mt-0.5 size-3.5 shrink-0 text-warning" />
+            )}
+            <span className="first-letter:uppercase">{label}</span>
           </li>
         ))}
       </ul>
@@ -248,6 +276,45 @@ function deriveInitialState(req?: CibaRequestDetails): {
 }
 
 const CIBA_DECISION_PATH = "/api/auth/ciba/decision";
+const CIBA_DECISION_OPTIONS_PATH = "/api/auth/ciba/decision/options";
+
+/** Where the user opened the page: an approval email link, or anywhere else. */
+function decisionChannel(): "email" | "page" {
+  return typeof window !== "undefined" &&
+    new URLSearchParams(window.location.search).get("via") === "email"
+    ? "email"
+    : "page";
+}
+
+async function readErrorMessage(res: Response, fallback: string) {
+  const body = (await res.json().catch(() => ({}))) as {
+    error_description?: string;
+    message?: string;
+  };
+  return body.error_description ?? body.message ?? fallback;
+}
+
+async function fetchDecisionOptions(
+  requestId: string
+): Promise<PublicKeyCredentialRequestOptionsJSON> {
+  const res = await fetch(CIBA_DECISION_OPTIONS_PATH, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ request_id: requestId }),
+  });
+  if (!res.ok) {
+    throw new Error(
+      await readErrorMessage(res, "Unable to start passkey confirmation.")
+    );
+  }
+  return (await res.json()) as PublicKeyCredentialRequestOptionsJSON;
+}
+
+function passkeyErrorMessage(error: unknown): string | null {
+  return error instanceof DOMException && error.name === "NotAllowedError"
+    ? "Passkey confirmation was cancelled or timed out."
+    : null;
+}
 
 function cibaRequestPath(requestId: string): string {
   return `/api/auth/ciba/request?request_id=${encodeURIComponent(requestId)}`;
@@ -291,6 +358,13 @@ export function AgentApprovalView({
     initialRequest ?? null
   );
   const [error, setError] = useState<string | null>(null);
+  // A passkey that opened the vault at Approve, held while the user decides
+  // whether to share a profile that lacks requested fields.
+  const [partialApproval, setPartialApproval] = useState<{
+    assertion?: ApprovalAssertion;
+    missingFields: string[];
+    profile: ProfileSecretPayload;
+  } | null>(null);
   const [timeLeft, setTimeLeft] = useState<number>(initialDerived.secondsLeft);
 
   const hasInitialRequest = initialRequest != null;
@@ -408,7 +482,15 @@ export function AgentApprovalView({
   // Every CIBA-scoped call (intent, stage, unstage) names the request by id.
   const cibaRef = useMemo(() => ({ request_id: requestId }), [requestId]);
 
-  const vaultActive = hasIdentityScopes && state === "ready";
+  const needsPasskey = details?.approval_requirement === "user_verification";
+  const passkeyMissing = needsPasskey && details?.passkey_available === false;
+  // A passkey-wrapped vault opens with the same assertion that confirms the
+  // approval, so the user is prompted once, at Approve.
+  const unlockAtApprove =
+    needsPasskey && hasIdentityScopes && (authMode === "passkey" || !authMode);
+
+  const vaultActive =
+    hasIdentityScopes && state === "ready" && !unlockAtApprove;
 
   const fetchIntentToken = useCallback(
     () =>
@@ -466,69 +548,132 @@ export function AgentApprovalView({
   const { profileRef, identityIntent, hasValidIdentityIntent, clearIntent } =
     vault;
 
-  // biome-ignore lint/correctness/useExhaustiveDependencies: profileRef is a stable React ref — .current is intentionally read without dependency tracking
-  const stageIdentityAndApprove = useCallback(async (): Promise<void> => {
-    const profile = profileRef.current;
-    if (!profile) {
-      throw new Error("Unlock your vault to approve this request.");
-    }
+  const stageIdentity = useCallback(
+    async (profile: ProfileSecretPayload, intentToken: string) => {
+      const response = await fetch("/api/ciba/identity/stage", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ...cibaRef,
+          scopes,
+          identity: buildIdentityPayload(profile),
+          intent_token: intentToken,
+        }),
+      });
 
-    if (!(identityIntent && hasValidIdentityIntent)) {
-      throw new Error(
-        "Secure identity consent expired. Unlock your vault and try again."
-      );
-    }
+      const body = (await response.json().catch(() => null)) as {
+        staged?: boolean;
+        error?: string;
+      } | null;
 
-    const identityPayload = buildIdentityPayload(profile);
-
-    const response = await fetch("/api/ciba/identity/stage", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        ...cibaRef,
-        scopes,
-        identity: identityPayload,
-        intent_token: identityIntent.token,
-      }),
-    });
-
-    const body = (await response.json().catch(() => null)) as {
-      staged?: boolean;
-      error?: string;
-    } | null;
-
-    if (!response.ok) {
       clearIntent();
-      throw new Error(body?.error || "Unable to stage identity claims.");
-    }
-    if (!body?.staged) {
-      clearIntent();
-      throw new Error(
-        "Your profile does not contain the requested data. Complete identity verification first."
-      );
-    }
+      if (!response.ok) {
+        throw new Error(body?.error || "Unable to stage identity claims.");
+      }
+      if (!body?.staged) {
+        throw new Error(
+          "Your profile does not contain the requested data. Complete identity verification first."
+        );
+      }
+    },
+    [cibaRef, scopes, clearIntent]
+  );
 
-    clearIntent();
-  }, [cibaRef, identityIntent, hasValidIdentityIntent, scopes, clearIntent]);
+  /**
+   * Opens the vault, when the approval unlocks it, and confirms with the
+   * passkey. Returns the profile to stage and the assertion to post.
+   */
+  const confirmApproval = useCallback(
+    async (
+      unlockedProfile: ProfileSecretPayload | null
+    ): Promise<{
+      assertion?: ApprovalAssertion;
+      profile: ProfileSecretPayload | null;
+    }> => {
+      if (!needsPasskey) {
+        return { profile: unlockedProfile };
+      }
+      const options = await fetchDecisionOptions(requestId);
+      if (unlockAtApprove) {
+        const unlocked = await getStoredProfileWithPasskeyStepUp(
+          base64UrlToBytes(options.challenge)
+        );
+        return {
+          // A profile cached from an earlier unlock needs its own assertion.
+          assertion:
+            unlocked.assertion ?? (await assertPasskeyForApproval(options)),
+          profile: unlocked.profile,
+        };
+      }
+      return {
+        assertion: await assertPasskeyForApproval(options),
+        profile: unlockedProfile,
+      };
+    },
+    [needsPasskey, requestId, unlockAtApprove]
+  );
 
   const handleAction = useCallback(
     async (action: "authorize" | "reject") => {
       setState(action === "authorize" ? "approving" : "rejecting");
       setError(null);
+      // Leaving "ready" resets the vault hook, so read it before any await.
+      const unlockedProfile = profileRef.current;
+      const intentToken = hasValidIdentityIntent ? identityIntent?.token : null;
 
       let didStage = false;
+      if (action === "reject") {
+        setPartialApproval(null);
+      }
       try {
-        if (action === "authorize" && hasIdentityScopes) {
-          if (vault.vaultState.status !== "loaded") {
+        let assertion: ApprovalAssertion | undefined;
+        if (action === "authorize") {
+          if (
+            hasIdentityScopes &&
+            !unlockAtApprove &&
+            vault.vaultState.status !== "loaded"
+          ) {
             throw new Error("Unlock your vault to approve this request.");
           }
-          if (!hasValidIdentityIntent) {
-            throw new Error(
-              "Secure identity consent expired. Unlock your vault and try again."
+          const confirmed =
+            partialApproval ?? (await confirmApproval(unlockedProfile));
+          setPartialApproval(null);
+          assertion = confirmed.assertion;
+          if (!partialApproval && unlockAtApprove && confirmed.profile) {
+            // The challenge is spent only by the decision, so the user can
+            // still review the gaps before anything is shared.
+            const missingFields = findMissingIdentityFields(
+              buildIdentityPayload(confirmed.profile) as Record<
+                string,
+                unknown
+              >,
+              scopes
             );
+            if (missingFields.length > 0) {
+              setPartialApproval({
+                assertion,
+                missingFields,
+                profile: confirmed.profile,
+              });
+              setState("ready");
+              return;
+            }
           }
-          await stageIdentityAndApprove();
-          didStage = true;
+          if (hasIdentityScopes) {
+            if (!confirmed.profile) {
+              throw new Error("Unlock your vault to approve this request.");
+            }
+            const token = unlockAtApprove
+              ? (await fetchIntentToken()).intent_token
+              : intentToken;
+            if (!token) {
+              throw new Error(
+                "Secure identity consent expired. Unlock your vault and try again."
+              );
+            }
+            await stageIdentity(confirmed.profile, token);
+            didStage = true;
+          }
         }
 
         const res = await fetch(CIBA_DECISION_PATH, {
@@ -537,17 +682,13 @@ export function AgentApprovalView({
           body: JSON.stringify({
             request_id: requestId,
             decision: action === "authorize" ? "approved" : "denied",
+            channel: decisionChannel(),
+            ...(assertion ? { webauthn: assertion } : {}),
           }),
         });
 
         if (!res.ok) {
-          const body = (await res.json().catch(() => ({}))) as {
-            error_description?: string;
-            message?: string;
-          };
-          throw new Error(
-            body.error_description ?? body.message ?? `Failed to ${action}`
-          );
+          throw new Error(await readErrorMessage(res, `Failed to ${action}`));
         }
 
         setState(action === "authorize" ? "approved" : "rejected");
@@ -560,7 +701,9 @@ export function AgentApprovalView({
           }).catch(() => undefined);
         }
 
-        const message = err instanceof Error ? err.message : "Unknown error";
+        const message =
+          passkeyErrorMessage(err) ??
+          (err instanceof Error ? err.message : "Unknown error");
         const terminalState = resolveTerminalState(message);
         if (terminalState) {
           setState(terminalState);
@@ -573,10 +716,17 @@ export function AgentApprovalView({
     [
       requestId,
       cibaRef,
+      profileRef,
       hasIdentityScopes,
+      unlockAtApprove,
       vault.vaultState.status,
       hasValidIdentityIntent,
-      stageIdentityAndApprove,
+      identityIntent,
+      partialApproval,
+      scopes,
+      confirmApproval,
+      fetchIntentToken,
+      stageIdentity,
     ]
   );
 
@@ -589,6 +739,8 @@ export function AgentApprovalView({
   };
 
   const isActing = state === "approving" || state === "rejecting";
+  const shownMissingFields =
+    partialApproval?.missingFields ?? missingIdentityFields;
   const containerClass = onClose ? "" : "mx-auto max-w-md py-10";
 
   if (state === "loading") {
@@ -682,11 +834,12 @@ export function AgentApprovalView({
             {interactionCopy?.description ??
               (details?.binding_message ? (
                 <>
-                  Check that this message matches the one shown by{" "}
-                  {details.client_name ?? "the application"}:{" "}
+                  Stated by the agent:{" "}
                   <strong className="text-foreground">
                     {details.binding_message}
                   </strong>
+                  . Check that {details.client_name ?? "the application"} shows
+                  the same message.
                 </>
               ) : (
                 <>
@@ -816,7 +969,10 @@ export function AgentApprovalView({
           )}
 
           {/* Data requested — single section replacing profile fields + scopes + claims */}
-          <RequestedClaimsSection scopes={scopes} />
+          <RequestedClaimsSection
+            labels={details?.scope_labels ?? []}
+            scopes={scopes}
+          />
 
           <VaultUnlockPanel
             active={vaultActive}
@@ -825,6 +981,18 @@ export function AgentApprovalView({
             vault={vault}
             wallet={wallet}
           />
+
+          {passkeyMissing && (
+            <Alert>
+              <KeyRound className="size-4" />
+              <AlertDescription className="space-y-2">
+                <p>Add a passkey to approve this request.</p>
+                <Button asChild size="sm" variant="outline">
+                  <Link href="/dashboard/settings">Add a passkey</Link>
+                </Button>
+              </AlertDescription>
+            </Alert>
+          )}
 
           {verificationMissing && (
             <Alert>
@@ -836,12 +1004,12 @@ export function AgentApprovalView({
             </Alert>
           )}
 
-          {missingIdentityFields.length > 0 && (
+          {shownMissingFields.length > 0 && (
             <Alert>
               <AlertTriangle className="size-4" />
               <AlertDescription>
                 Some requested data is not available in your profile:{" "}
-                {missingIdentityFields.join(", ")}. If you continue, only the
+                {shownMissingFields.join(", ")}. If you continue, only the
                 available data will be shared.
               </AlertDescription>
             </Alert>
@@ -873,14 +1041,20 @@ export function AgentApprovalView({
               disabled={
                 isActing ||
                 verificationMissing ||
+                passkeyMissing ||
                 (hasIdentityScopes &&
+                  !unlockAtApprove &&
                   (vault.vaultState.status !== "loaded" ||
                     !vault.hasValidIdentityIntent ||
                     vault.intentLoading))
               }
               onClick={asyncHandler(() => handleAction("authorize"))}
             >
-              {state === "approving" ? "Approving..." : "Approve"}
+              {state === "approving" && "Approving..."}
+              {state !== "approving" &&
+                (needsPasskey && !partialApproval
+                  ? "Approve with passkey"
+                  : "Approve")}
             </Button>
           </div>
         </CardFooter>

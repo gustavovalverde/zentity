@@ -56,6 +56,10 @@ import { WebPushError } from "web-push";
 
 import { sendWebPush } from "../push-sender";
 
+function inFiveMinutes() {
+  return { expiresAt: new Date(Date.now() + 300_000) };
+}
+
 const TEST_VAPID = {
   VAPID_PUBLIC_KEY: "test-public-key",
   VAPID_PRIVATE_KEY: "test-private-key",
@@ -90,7 +94,11 @@ describe("sendWebPush", () => {
       },
     ];
     mockDbSelect.mockResolvedValue(subs);
-    await sendWebPush("user-1", { title: "Test", body: "Hello" });
+    await sendWebPush(
+      "user-1",
+      { title: "Test", body: "Hello" },
+      inFiveMinutes()
+    );
 
     expect(mockSendNotification).toHaveBeenCalledTimes(2);
     expect(mockSendNotification).toHaveBeenCalledWith(
@@ -118,7 +126,11 @@ describe("sendWebPush", () => {
     );
     mockDbDelete.mockResolvedValue(undefined);
 
-    await sendWebPush("user-1", { title: "Test", body: "Hello" });
+    await sendWebPush(
+      "user-1",
+      { title: "Test", body: "Hello" },
+      inFiveMinutes()
+    );
 
     expect(mockDbDelete).toHaveBeenCalled();
   });
@@ -136,14 +148,22 @@ describe("sendWebPush", () => {
       new WebPushError("Server error", 500, {}, "", "")
     );
 
-    await sendWebPush("user-1", { title: "Test", body: "Hello" });
+    await sendWebPush(
+      "user-1",
+      { title: "Test", body: "Hello" },
+      inFiveMinutes()
+    );
 
     expect(mockDbDelete).not.toHaveBeenCalled();
   });
 
   it("short-circuits when no subscriptions exist", async () => {
     mockDbSelect.mockResolvedValue([]);
-    await sendWebPush("user-1", { title: "Test", body: "Hello" });
+    await sendWebPush(
+      "user-1",
+      { title: "Test", body: "Hello" },
+      inFiveMinutes()
+    );
 
     expect(mockSendNotification).not.toHaveBeenCalled();
   });
@@ -160,7 +180,7 @@ describe("sendWebPush", () => {
     mockSendNotification.mockRejectedValue(new Error("network error"));
 
     await expect(
-      sendWebPush("user-1", { title: "Test", body: "Hello" })
+      sendWebPush("user-1", { title: "Test", body: "Hello" }, inFiveMinutes())
     ).resolves.toBeUndefined();
   });
 
@@ -173,11 +193,15 @@ describe("sendWebPush", () => {
         auth: "a",
       },
     ]);
-    await sendWebPush("user-1", {
-      title: "Auth Request",
-      body: "App: buy things",
-      data: { authReqId: "req-1", requiresVaultUnlock: true },
-    });
+    await sendWebPush(
+      "user-1",
+      {
+        title: "Auth Request",
+        body: "App: buy things",
+        data: { authReqId: "req-1", requiresVaultUnlock: true },
+      },
+      inFiveMinutes()
+    );
 
     const serialized = mockSendNotification.mock.calls[0]?.[1] as string;
     const parsed = JSON.parse(serialized);
@@ -186,9 +210,34 @@ describe("sendWebPush", () => {
 
   it("short-circuits when VAPID keys are not configured", async () => {
     mockEnv.VAPID_PUBLIC_KEY = undefined;
-    await sendWebPush("user-1", { title: "Test", body: "Hello" });
+    await sendWebPush(
+      "user-1",
+      { title: "Test", body: "Hello" },
+      inFiveMinutes()
+    );
 
     expect(mockSendNotification).not.toHaveBeenCalled();
     expect(mockDbSelect).not.toHaveBeenCalled();
+  });
+
+  it("keeps the notification only for the request's remaining lifetime", async () => {
+    mockDbSelect.mockResolvedValue([
+      { id: "1", endpoint: "https://push.example/1", p256dh: "k", auth: "a" },
+    ]);
+
+    await sendWebPush(
+      "user-1",
+      { title: "Test", body: "Hello" },
+      { expiresAt: new Date(Date.now() + 42_500) }
+    );
+    await sendWebPush(
+      "user-1",
+      { title: "Test", body: "Hello" },
+      { expiresAt: new Date(Date.now() - 1000) }
+    );
+
+    expect(mockSendNotification.mock.calls.map((call) => call[2]?.TTL)).toEqual(
+      [43, 0]
+    );
   });
 });

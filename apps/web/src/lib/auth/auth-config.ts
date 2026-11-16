@@ -5,7 +5,10 @@ import type { LoginMethod } from "@zentity/sdk/protocol";
 import { CIBA_GRANT_TYPE, ciba } from "@better-auth/ciba";
 import { cimd } from "@better-auth/cimd";
 import { fetchClientMetadataResource } from "@better-auth/cimd/node";
-import { tryGetCurrentAuthEndpointContext } from "@better-auth/core/context";
+import {
+  defineRequestState,
+  tryGetCurrentAuthEndpointContext,
+} from "@better-auth/core/context";
 import { drizzleAdapter } from "@better-auth/drizzle-adapter";
 import {
   createDcqlMatcher,
@@ -52,7 +55,8 @@ import { decodeJwt, jwtVerify } from "jose";
 import { env } from "@/env";
 import { evaluateSessionGrants } from "@/lib/agents/approval-evaluate";
 import {
-  deriveCapabilityName,
+  type ApprovalPolicy,
+  approvalPolicy,
   normalizeAuthorizationDetails,
 } from "@/lib/agents/capability";
 import { buildCibaPushPayload, sendWebPush } from "@/lib/agents/push-sender";
@@ -65,6 +69,7 @@ import {
   ACR_VALUES_SUPPORTED,
   buildNamespacedAssuranceClaim,
   computeAcr,
+  loginMethodToAmr,
 } from "@/lib/assurance/oidc-claims";
 import { getAccountAssurance } from "@/lib/assurance/posture";
 import {
@@ -169,12 +174,15 @@ import {
   joinAuthIssuerPath,
 } from "@/lib/auth/oidc/well-known";
 import { opaque } from "@/lib/auth/opaque/server";
-import { getTrustedOrigins } from "@/lib/auth/origin";
+import { getTrustedOrigins, PASSKEY_RP_ID } from "@/lib/auth/origin";
 import { canManageOAuthClients } from "@/lib/auth/rp-admin";
 import { siweAuth } from "@/lib/auth/siwe/server";
 import { parseStoredStringArray } from "@/lib/db/adapter-compat";
 import { db } from "@/lib/db/connection";
-import { denyPendingCibaRequestsForUser } from "@/lib/db/queries/ciba";
+import {
+  denyPendingCibaRequestsForUser,
+  findCibaApproval,
+} from "@/lib/db/queries/ciba";
 import { getActiveHumanityCredentials } from "@/lib/db/queries/humanity";
 import { detachVaultCredential } from "@/lib/db/queries/privacy";
 import {
@@ -787,7 +795,8 @@ function accessTokenJti(token: string): string | undefined {
 /**
  * Loads what a CIBA token poll needs from the request row before the plugin
  * consumes (deletes) it: the step-up re-check, the staged identity release,
- * the verified agent context, and the approval-time authentication context.
+ * the verified agent context, the approval-time authentication context, and
+ * the approval record's oversight.
  * The result is stashed for the claim contributors and the after-hook of the
  * same request. A refusal here leaves the approved request in place for
  * another poll.
@@ -824,14 +833,22 @@ async function beforeCibaTokenLoadRequest(ctx: HookCtx) {
     await touchReleaseContext(releaseId, Date.now() + 3600 * 1000);
   }
 
+  const approval = await findCibaApproval(authReqIdHash);
   const contribution = await buildCibaAgentContribution(
     row as unknown as Record<string, unknown>,
-    row.clientId
+    row.clientId,
+    approval
   );
   await setPendingCibaToken({
     agentClaims: contribution?.claims ?? null,
     authContextId: row.authContextId ?? "",
     authReqIdHash,
+    oversight: approval?.approvalMethod
+      ? {
+          method: approval.approvalMethod,
+          approved_at: Math.floor(approval.decidedAt.getTime() / 1000),
+        }
+      : null,
     snapshot: contribution?.snapshot ?? null,
   });
 }
@@ -1392,6 +1409,9 @@ function expireSessionDataCookie(ctx: HookCtx) {
   });
 }
 
+/** The user-verified flag of this request's passkey ceremony. */
+const passkeyUserVerified = defineRequestState<boolean>(() => false);
+
 async function afterPersistAuthenticationContext(ctx: HookCtx) {
   if (ctx.path?.startsWith("/sign-in/anonymous")) {
     return;
@@ -1414,6 +1434,13 @@ async function afterPersistAuthenticationContext(ctx: HookCtx) {
   await createSessionAuthenticationContext({
     userId: newSession.user.id,
     loginMethod: authMethod,
+    ...(authMethod === "passkey"
+      ? {
+          amr: loginMethodToAmr("passkey", {
+            userVerified: await passkeyUserVerified.get(),
+          }),
+        }
+      : {}),
     sourceKind: "better_auth",
     sessionId: newSession.session.id,
   });
@@ -1449,10 +1476,13 @@ interface RegisteredAgentNotice {
 async function approveFromCapabilityGrant(input: {
   agent: { authContextId: string | null; sessionId: string };
   authorizationDetails: ReturnType<typeof normalizeAuthorizationDetails>;
+  policy: ApprovalPolicy;
   requestId: string;
-  scope: string;
   userId: string;
 }): Promise<boolean> {
+  if (!input.policy.grantCapability) {
+    return false;
+  }
   // Resolved before evaluation, which consumes usage limits.
   const authentication = await resolveAuthenticationContext({
     authContextId: input.agent.authContextId,
@@ -1462,16 +1492,10 @@ async function approveFromCapabilityGrant(input: {
   }
   const grantResult = await evaluateSessionGrants(
     input.agent.sessionId,
-    input.scope,
+    input.policy,
     input.authorizationDetails
   );
-  if (!grantResult.approved) {
-    return false;
-  }
-  const capabilityName =
-    grantResult.capabilityName ??
-    deriveCapabilityName(input.authorizationDetails, input.scope);
-  if (!capabilityName) {
+  if (!(grantResult.approved && grantResult.capabilityName)) {
     return false;
   }
   try {
@@ -1479,13 +1503,13 @@ async function approveFromCapabilityGrant(input: {
       requestId: input.requestId,
       userId: input.userId,
       authentication,
+      channel: "grant",
       grant: {
         method: "capability_grant",
-        capabilityName,
+        capabilityName: grantResult.capabilityName,
         constraints: grantResult.constraints ?? null,
         grantId: grantResult.grantId ?? null,
         hostPolicyId: grantResult.hostPolicyId ?? null,
-        strength: grantResult.approvalStrength ?? null,
       },
     });
     return true;
@@ -1511,6 +1535,10 @@ async function notifyCibaRequest(
   const authDetails = normalizeAuthorizationDetails(
     notification.authorizationDetails
   );
+  const policy = approvalPolicy({
+    scope,
+    authorizationDetails: notification.authorizationDetails,
+  });
   const stored = await db
     .select({ authReqId: cibaRequests.authReqId })
     .from(cibaRequests)
@@ -1526,7 +1554,6 @@ async function notifyCibaRequest(
   let verifiedAgent:
     | { authContextId: string | null; sessionId: string }
     | undefined;
-  let requiresBiometric = false;
   const assertionHeader =
     ctx.headers?.get("Agent-Assertion") ??
     ctx.request?.headers.get("Agent-Assertion");
@@ -1534,8 +1561,6 @@ async function notifyCibaRequest(
     const boundAssertion = await bindAgentAssertionToCibaRequest({
       assertionJwt: assertionHeader,
       authReqId: stored.authReqId,
-      authorizationDetails: authDetails,
-      scope,
     });
     if (boundAssertion) {
       verifiedAgent = {
@@ -1544,7 +1569,6 @@ async function notifyCibaRequest(
       };
       agentName = boundAssertion.agentName;
       registeredAgent = boundAssertion.registeredAgent;
-      requiresBiometric = boundAssertion.approvalStrength === "biometric";
     }
   }
 
@@ -1563,8 +1587,8 @@ async function notifyCibaRequest(
     (await approveFromCapabilityGrant({
       agent: verifiedAgent,
       authorizationDetails: authDetails,
+      policy,
       requestId,
-      scope,
       userId: user.id,
     }))
   ) {
@@ -1580,10 +1604,9 @@ async function notifyCibaRequest(
     authorizationDetails: authDetails,
     bindingMessage: notification.bindingMessage,
     clientName: notification.clientName,
-    requiresBiometric,
   });
   await Promise.allSettled([
-    sendWebPush(user.id, pushPayload),
+    sendWebPush(user.id, pushPayload, { expiresAt: notification.expiresAt }),
     sendCibaNotification({
       userId: user.id,
       requestId,
@@ -1980,7 +2003,21 @@ export const auth = betterAuth({
       expiresIn: 300, // 5 minutes
     }),
     passkey({
+      rpID: PASSKEY_RP_ID,
       origin: getTrustedOrigins(),
+      // Authenticators without user verification are accepted; the session
+      // states what the ceremony observed.
+      authentication: {
+        afterVerification: ({ verification }) =>
+          passkeyUserVerified.set(verification.authenticationInfo.userVerified),
+      },
+      registration: {
+        afterVerification: async ({ verification }) => {
+          await passkeyUserVerified.set(
+            verification.registrationInfo?.userVerified === true
+          );
+        },
+      },
     }),
     organization({
       creatorRole: "owner",

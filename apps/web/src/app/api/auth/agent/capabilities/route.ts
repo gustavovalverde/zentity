@@ -16,6 +16,7 @@ export async function GET() {
       inputSchema: agentCapabilities.inputSchema,
       outputSchema: agentCapabilities.outputSchema,
       approvalStrength: agentCapabilities.approvalStrength,
+      grantable: agentCapabilities.grantable,
     })
     .from(agentCapabilities);
 
@@ -26,6 +27,7 @@ export async function GET() {
       input_schema: c.inputSchema,
       output_schema: c.outputSchema,
       approval_strength: c.approvalStrength,
+      grantable: c.grantable,
     }))
   );
 }

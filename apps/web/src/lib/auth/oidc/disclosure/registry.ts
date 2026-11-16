@@ -148,8 +148,8 @@ const PROOF_ENTRIES = [
 /**
  * proof:sybil is NOT in PROOF_ENTRIES because it has fundamentally different
  * semantics: access_token-only delivery, per-RP pseudonym (not a verification
- * status boolean), and must not inherit the generic my_proofs CIBA auto-approval
- * path via deriveCapabilityName/extractProofScopes.
+ * status boolean), and must not inherit the generic my_proofs CIBA auto-approval:
+ * the approval policy maps it to no capability.
  */
 const SYBIL_ENTRY = {
   scope: "proof:sybil",
@@ -500,7 +500,7 @@ export function isIdentityScope(scope: string): scope is IdentityScope {
   return REGISTRY_INDEX.get(scope)?.family === "identity";
 }
 
-export function extractProofScopes(scopes: readonly string[]): ProofScope[] {
+function extractProofScopes(scopes: readonly string[]): ProofScope[] {
   return scopes.filter(isProofScope);
 }
 

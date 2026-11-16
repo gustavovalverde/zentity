@@ -159,12 +159,13 @@ Attestation is not the same thing as runtime proof. Vendor attestation says some
 
 ### What attestation changes
 
-Attestation does not widen the silent-approval set for identity-disclosing capabilities. Unverified hosts receive default durable policies for:
+Attestation does not widen the silent-approval set for identity-disclosing capabilities. Unverified and attested hosts receive the same default durable policies:
 
+- `whoami`
+- `my_proofs`
 - `check_compliance`
-- `request_approval`
 
-`purchase` is not auto-granted because it requires biometric approval strength and therefore always routes through explicit human approval.
+`purchase` and `my_profile` are never auto-granted, because the catalog marks them as not grantable, so they always route through explicit human approval.
 
 This keeps the trust model practical rather than ceremonial. Verification changes how the runtime is presented and audited without bypassing vault unlock or other explicit approval boundaries.
 
@@ -176,16 +177,28 @@ The capability system exists to answer one narrow question repeatedly: "Can this
 
 ### Seeded capabilities
 
-Zentity seeds four capabilities:
+Zentity seeds six capabilities. Each states the ceremony a manual approval needs and whether a capability grant may approve it without the user:
 
-| Capability | Approval strength | Default host policy |
-| --- | --- | --- |
-| `purchase` | `biometric` | No |
-| `read_profile` | `session` | No |
-| `check_compliance` | `none` | Yes |
-| `request_approval` | `session` | Yes |
+| Capability | Manual ceremony (`approval_strength`) | `grantable` | Default host policy |
+| --- | --- | --- | --- |
+| `purchase` | `user_verification` | No | No |
+| `my_profile` | `session` (user verification when the user has a passkey) | No | No |
+| `my_proofs` | `session` | Yes | Yes |
+| `check_compliance` | `session` | Yes | Yes |
+| `whoami` | `session` | Yes | Yes |
+| `payment_authorization:sign` | `user_verification` | Yes, bounded grants only | No |
 
-The authoritative metadata lives in `agent_capability`, including optional input and output schemas plus the approval strength.
+`user_verification` means a passkey assertion with the user-verified flag set, which the authenticator sets after a PIN or a biometric check that Zentity cannot tell apart. The authoritative metadata lives in `agent_capability`, including optional input and output schemas, the approval strength, and `grantable`. `GET /api/auth/agent/capabilities` publishes both `approval_strength` and `grantable`.
+
+### The approval policy
+
+`approvalPolicy` in `apps/web/src/lib/agents/capability.ts` reads the whole stored request, every scope and every RAR entry, against one table (`APPROVAL_POLICY`) with a row per scope and per RAR type. The result is:
+
+- the strictest ceremony any item needs;
+- whether only the approval page may approve the request: any item that a notification cannot describe, any RAR entry, or a `user_verification` ceremony makes it page only;
+- the grant capability, set only when every item other than `openid` maps to one and the same grantable capability.
+
+An unknown scope is page only, not grantable, and needs a session. An unknown or unreadable RAR entry is page only, not grantable, and needs user verification. The policy takes no input from the agent, so an Agent-Assertion can never lower what a request needs.
 
 ### Durable host policy vs session grant
 
@@ -223,12 +236,15 @@ Capability matching is intentionally narrow. The current evaluator supports:
 
 Within one grant, all constraints must pass. Across multiple grants for the same capability, any matching active grant is enough.
 
-For purchase-like requests, the evaluator extracts action parameters from `authorization_details`, including:
+For `payment_authorization` requests, the evaluator extracts action parameters from `authorization_details`:
 
 - `amount.value`
 - `amount.currency`
-- `merchant`
-- `item`
+- `amount.unit`
+- `recipient`
+- `chain.namespace` and `chain.reference`
+
+A payment grant approves only when it is bounded: a `max` constraint on `amount.value` or a `daily_limit_amount`.
 
 ### Usage limits
 
@@ -253,10 +269,13 @@ A `daily_limit_amount` applies to one currency and unit. The amount must be a no
 The evaluator refuses automatic approval in these cases:
 
 - any request containing identity scopes
-- any request whose derived capability is missing
-- any capability whose approval strength is `biometric`
+- any request that spans more than one capability, or includes a scope or RAR entry no grantable capability covers, such as `compliance:read` with `email`, or a payment with proof scopes
+- any request whose capability is not grantable, such as `purchase` and `my_profile`
+- any payment whose grant has no amount bound
 - any request without an active matching grant
 - any request that exceeds cooldown or daily limits
+
+One grant approves one capability. A request that needs two capabilities goes to the user, even when the agent holds a grant for each.
 
 That refusal is as important as the happy path. Containment works because the "no" cases are crisp.
 
@@ -272,11 +291,21 @@ The approval router produces three practical outcomes:
 
 | Outcome | When it happens | Human interruption |
 | --- | --- | --- |
-| Silent approval | Matching active grant and non-biometric capability | None |
-| Push approval | No matching grant, identity scope present, or manual approval required | Push notification and approval page |
-| Biometric approval | Capability strength is `biometric` | Always push and explicit approval |
+| Silent approval | Every item maps to one grantable capability and an active grant matches | None |
+| Push approval | No matching grant, or the request spans capabilities or ungrantable scopes | Push notification and approval page |
+| User-verified approval | The policy ceremony is `user_verification`, such as a payment or a purchase | Push links to the approval page, which asks for a passkey assertion |
 
-A silent approval is recorded for the user who owns the host, with `approval_method` set to `capability_grant`. No one authenticates during a silent approval. The issued tokens therefore carry the authentication that registered the agent session: its `amr`, its `auth_time`, and its authentication context. If the session has no recorded authentication, the request falls back to push approval and no usage limit is consumed.
+A silent approval is recorded in `ciba_approval` for the user who owns the host, with `approval_method` set to `capability_grant` and `approval_channel` set to `grant`. No one authenticates during a silent approval. The issued tokens therefore carry the authentication that registered the agent session: its `amr`, its `auth_time`, and its authentication context. That `auth_time` is the user's last authentication, not activity for this request. If the session has no recorded authentication, the request falls back to push approval and no usage limit is consumed.
+
+### Manual approval ceremony
+
+A manual approval goes through `POST /api/auth/ciba/decision`, which recomputes the policy from the stored request and refuses, leaving the request pending:
+
+- a notification approval (`channel` `push`, or none, which is what an old service worker sends) of a page-only request, with `review_required`;
+- an identity approval without a staged release, with `vault_unlock_required`;
+- an approval that needs user verification without a passkey assertion, with `insufficient_user_authentication`, or with `passkey_required` when the user has no passkey.
+
+User verification is needed for `payment_authorization` and purchases, and for identity scopes when the user has a passkey. The approval page fetches a challenge from `POST /api/auth/ciba/decision/options`, bound to the request and the session, and posts the assertion with the decision. A verified assertion becomes the approval's authentication context, so the ID token states `amr: ["pop", "user", "mfa"]` and the verification time as `auth_time`. See [ADR platform/0007](../adr/platform/0007-ciba-approval-ceremony-and-record.md) for the decision contract.
 
 ### Runtime proof enters here
 
@@ -320,10 +349,10 @@ sequenceDiagram
   AS->>AS: Snapshot runtime metadata
   AS->>AS: Evaluate session grants
 
-  alt Matching active grant and non-biometric capability
+  alt One grantable capability and a matching active grant
     AS->>AS: Mark CIBA request approved
     AS-->>Agent: Poll returns token
-  else Manual or biometric approval required
+  else Manual or user-verified approval required
     AS->>User: Push notification
     User->>AS: Approve in browser
     AS-->>Agent: Poll returns token
@@ -334,10 +363,10 @@ sequenceDiagram
 
 The difference between profile reads and purchases is structural rather than cosmetic:
 
-- `read_profile` always remains an explicit approval because identity scopes require vault unlock in a full browser context.
-- `purchase` cannot because its approval strength is `biometric`.
+- `my_profile` always remains an explicit approval because identity scopes require vault unlock in a full browser context.
+- `purchase` is not grantable, and its manual ceremony is `user_verification`.
 
-That means both profile disclosure and purchase execution stay on the human approval boundary, with purchase additionally requiring biometric-grade verification.
+That means both profile disclosure and purchase execution stay on the human approval boundary, with purchase additionally requiring a user-verified passkey assertion.
 
 ---
 
@@ -441,8 +470,9 @@ After approval, the agent receives a CIBA access token that identifies both the 
     }
   ],
   "oversight": {
-    "approval_reference": "grant-123",
-    "requires_human_approval_for": ["purchase"]
+    "approval_id": "grant-123",
+    "approved_at": 1759996400,
+    "method": "capability_grant"
   },
   "audit": {
     "trace_id": "auth_req_id",
@@ -473,6 +503,7 @@ Key points:
 - `sub` identifies the human for the target client.
 - `act.sub` and `agent.id` identify the acting session for the target client.
 - `agent`, `task`, `capabilities`, `oversight`, and `audit` are the AAP-profiled token sections.
+- `oversight.method` and `oversight.approved_at` come from the request's `ciba_approval` record: the method the user approved with (`session`, `user_verification`, or `capability_grant`) and the decision time. The CIBA token response carries the same `oversight` member for every approval, agent-backed or not.
 - `authorization_details` preserves what was approved.
 - `cnf.jkt` sender-constrains the token when DPoP is in play.
 
@@ -846,7 +877,7 @@ The A2A agent card (`/.well-known/agent-card.json`) publishes capabilities and s
 
 The control plane establishes agent identity and trust; the consent channel uses both to decide whether the human needs to be involved. CIBA (Client-Initiated Backchannel Authentication) answers the one question no other spec can: how does a machine ask a human for permission when the human is not at the same screen? CIBA was originally designed for IoT devices, point-of-sale terminals, and call centers. In the agent context, it becomes the consent bridge between autonomous agents and human oversight.
 
-CIBA is where the control plane and structured intent converge. The `sendNotification` callback receives the CIBA request, verifies the `Agent-Assertion` from the control plane, reads the `authorization_details` from the structured intent layer, and evaluates capability grants to produce the three routing outcomes described in [Approval Routing](#approval-routing): silent approval, push approval, or biometric approval.
+CIBA is where the control plane and structured intent converge. The `sendNotification` callback receives the CIBA request, verifies the `Agent-Assertion` from the control plane, reads the `authorization_details` from the structured intent layer, and evaluates capability grants. It decides only whether a grant approves the request silently or the user is notified. The decision endpoint, `/ciba/decision`, then enforces the ceremony that separates push approval from user-verified approval, the routing outcomes described in [Approval Routing](#approval-routing).
 
 The runtime proof is bound to a specific consent request rather than floating as a general authentication mechanism, which means the CIBA `auth_req_id` becomes the trace ID that correlates agent identity, consent, and token issuance across the entire flow. This binding makes CIBA the architectural linchpin rather than a replaceable transport; removing it means inventing a custom push-and-poll mechanism with its own request lifecycle, polling semantics, and token binding.
 

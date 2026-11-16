@@ -3,7 +3,9 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { resetDatabase } from "@/test-utils/db-test-utils";
 
 interface CapabilityRecord {
+  approval_strength: string;
   description: string;
+  grantable: boolean;
   input_schema: {
     properties?: {
       fields?: {
@@ -56,5 +58,48 @@ describe("GET /api/auth/agent/capabilities", () => {
       "string",
       "null",
     ]);
+  });
+
+  // R7: the catalog names what user verification proves, not "biometric".
+  it("publishes each capability's manual ceremony and whether a grant may approve it", async () => {
+    const { GET } = await import("./route");
+    const capabilities = (await (await GET()).json()) as CapabilityRecord[];
+
+    expect(
+      Object.fromEntries(
+        capabilities.map((capability) => [
+          capability.name,
+          {
+            approval_strength: capability.approval_strength,
+            grantable: capability.grantable,
+          },
+        ])
+      )
+    ).toEqual({
+      check_compliance: { approval_strength: "session", grantable: true },
+      my_profile: { approval_strength: "session", grantable: false },
+      my_proofs: { approval_strength: "session", grantable: true },
+      "payment_authorization:sign": {
+        approval_strength: "user_verification",
+        grantable: true,
+      },
+      purchase: { approval_strength: "user_verification", grantable: false },
+      whoami: { approval_strength: "session", grantable: true },
+    });
+  });
+
+  it("publishes one capability with the same fields", async () => {
+    const { GET } = await import("./[name]/route");
+    const response = await GET(new Request("http://localhost"), {
+      params: Promise.resolve({ name: "purchase" }),
+    });
+
+    expect(await response.json()).toEqual(
+      expect.objectContaining({
+        approval_strength: "user_verification",
+        grantable: false,
+        name: "purchase",
+      })
+    );
   });
 });

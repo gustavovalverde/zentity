@@ -2,8 +2,9 @@
 
 /**
  * One-time transition for the move to the OAuth provider's JWT revocation,
- * per-token `accessTokenClaims`, and the first-party-apps plugin. Every step
- * is idempotent, and the script applies them in one transaction.
+ * per-token `accessTokenClaims`, the first-party-apps plugin, and the CIBA
+ * approval record. Every step is idempotent, and the script applies them in
+ * one transaction.
  *
  * 1. Moves the timestamp defaults that #298 and #338 changed from
  *    `datetime('now')` to an ISO 8601 timestamp, and recreates the two partial
@@ -32,6 +33,14 @@
  *    once `pnpm db:push` has dropped the column.
  * 6. Decodes `access_token_claims` rows written while drizzle's json mode
  *    encoded the adapter's JSON a second time.
+ * 7. Adds `agent_capability.grantable` with the DDL `pnpm db:push` would emit.
+ *    drizzle-kit 0.31 reads the column's `false` default as no default and
+ *    empties `agent_capability` before it adds a not-null column, which would
+ *    cascade into every host policy and session grant. The previous release
+ *    never writes the column, so its default serves those rows.
+ * 8. Creates `ciba_approval` with the DDL `pnpm db:push` would emit. The new
+ *    release records every CIBA decision there and reads it at every CIBA
+ *    token poll, so it must exist before that release serves traffic.
  *
  * Rollout order:
  *
@@ -41,12 +50,13 @@
  *      covers revocations and exchanged tokens the previous release wrote
  *      after step a.
  *   d. Run `pnpm db:push` once. It drops `auth_challenge_session`,
- *      `oauth_access_token.exchange_claims`, and the `reason`, `actor_sub`,
- *      and `audience` columns of `revoked_token`, which the previous release
- *      reads or writes, so it must not run before step c. When they hold
- *      rows, it asks to confirm the data loss; `--force` confirms it without
- *      a terminal. drizzle-kit exits 0 even when SQLite rejects a statement
- *      and rolls the push back, so check its output for an error.
+ *      `oauth_access_token.exchange_claims`, the `reason`, `actor_sub`, and
+ *      `audience` columns of `revoked_token`, and the approval columns of
+ *      `ciba_request`, which the previous release reads or writes, so it must
+ *      not run before step c. When they hold rows, it asks to confirm the
+ *      data loss; `--force` confirms it without a terminal. drizzle-kit exits
+ *      0 even when SQLite rejects a statement and rolls the push back, so
+ *      check its output for an error.
  *
  * Because step a creates the new tables and columns and moves the defaults,
  * `pnpm db:push` asks no rename questions and needs no second run. The previous
@@ -145,6 +155,49 @@ const FIRST_PARTY_APPS_DDL = [
   "CREATE INDEX IF NOT EXISTS `first_party_failure_budget_reset_at_idx` ON `first_party_failure_budget` (`reset_at`)",
 ];
 
+// `drizzle-kit export` output for `ciba_approval` in ciba.ts, with IF NOT
+// EXISTS added. It must stay identical to that schema, or the later
+// `pnpm db:push` rebuilds the table.
+const CIBA_APPROVAL_DDL = [
+  `CREATE TABLE IF NOT EXISTS \`ciba_approval\` (
+	\`id\` text PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))) NOT NULL,
+	\`reference_id\` text NOT NULL,
+	\`request_id\` text NOT NULL,
+	\`user_id\` text NOT NULL,
+	\`client_id\` text NOT NULL,
+	\`scope\` text NOT NULL,
+	\`binding_message\` text,
+	\`authorization_details\` text,
+	\`acr_values\` text,
+	\`decision\` text NOT NULL,
+	\`approval_method\` text,
+	\`approval_channel\` text NOT NULL,
+	\`capability\` text,
+	\`grant_id\` text,
+	\`host_policy_id\` text,
+	\`constraints\` text,
+	\`agent_session_id\` text,
+	\`host_id\` text,
+	\`attestation_tier\` text,
+	\`attestation_provider\` text,
+	\`auth_context_id\` text,
+	\`requested_at\` integer NOT NULL,
+	\`decided_at\` integer NOT NULL,
+	\`expires_at\` integer NOT NULL,
+	FOREIGN KEY (\`user_id\`) REFERENCES \`user\`(\`id\`) ON UPDATE no action ON DELETE cascade,
+	FOREIGN KEY (\`agent_session_id\`) REFERENCES \`agent_session\`(\`id\`) ON UPDATE no action ON DELETE set null,
+	FOREIGN KEY (\`host_id\`) REFERENCES \`agent_host\`(\`id\`) ON UPDATE no action ON DELETE set null,
+	FOREIGN KEY (\`auth_context_id\`) REFERENCES \`authentication_context\`(\`id\`) ON UPDATE no action ON DELETE set null
+)`,
+  "CREATE UNIQUE INDEX IF NOT EXISTS `ciba_approval_reference_id_unique` ON `ciba_approval` (`reference_id`)",
+  "CREATE INDEX IF NOT EXISTS `ciba_approval_user_decided_idx` ON `ciba_approval` (`user_id`,`decided_at`)",
+  "CREATE INDEX IF NOT EXISTS `ciba_approval_client_id_idx` ON `ciba_approval` (`client_id`)",
+  "CREATE INDEX IF NOT EXISTS `ciba_approval_agent_session_id_idx` ON `ciba_approval` (`agent_session_id`)",
+];
+
+const AGENT_CAPABILITY_GRANTABLE_DDL =
+  "ALTER TABLE `agent_capability` ADD `grantable` integer DEFAULT false NOT NULL";
+
 // `drizzle-kit push` output for this column in oauth-provider.ts.
 const ACCESS_TOKEN_AUTH_CONTEXT_DDL =
   "ALTER TABLE `oauth_access_token` ADD `auth_context_id` text REFERENCES authentication_context(id) ON DELETE set null ON UPDATE no action";
@@ -152,6 +205,14 @@ const ACCESS_TOKEN_AUTH_CONTEXT_DDL =
 const url = process.env.TURSO_DATABASE_URL || "file:./.data/dev.db";
 const authToken = process.env.TURSO_AUTH_TOKEN;
 const client = createClient(authToken ? { url, authToken } : { url });
+
+async function hasTable(table: string): Promise<boolean> {
+  const result = await client.execute({
+    sql: "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?",
+    args: [table],
+  });
+  return result.rows.length > 0;
+}
 
 async function hasColumn(table: string, column: string): Promise<boolean> {
   const result = await client.execute({
@@ -195,11 +256,17 @@ async function main(): Promise<void> {
   ));
 
   const timestampDefaults = await isoTimestampDefaultStatements();
+  const addGrantable =
+    (await hasTable("agent_capability")) &&
+    !(await hasColumn("agent_capability", "grantable"));
+  const createCibaApproval = !(await hasTable("ciba_approval"));
   const schema = [
     ...timestampDefaults,
     ...HUMANITY_CREDENTIAL_UNIQUE_INDEXES,
     ...(addAccessTokenAuthContext ? [ACCESS_TOKEN_AUTH_CONTEXT_DDL] : []),
     ...FIRST_PARTY_APPS_DDL,
+    ...(addGrantable ? [AGENT_CAPABILITY_GRANTABLE_DDL] : []),
+    ...CIBA_APPROVAL_DDL,
   ];
 
   const statements: InStatement[] = [
@@ -248,6 +315,12 @@ async function main(): Promise<void> {
   console.log(`timestamp defaults moved: ${timestampDefaults.length}`);
   console.log(
     `oauth_access_token.auth_context_id: ${addAccessTokenAuthContext ? "added" : "already present"}`
+  );
+  console.log(
+    `agent_capability.grantable: ${addGrantable ? "added" : "already present"}`
+  );
+  console.log(
+    `ciba_approval: ${createCibaApproval ? "created" : "already present"}`
   );
   console.log(`revocation markers added: ${markers?.rowsAffected ?? 0}`);
   console.log(`access_token_claims decoded: ${decoded?.rowsAffected ?? 0}`);

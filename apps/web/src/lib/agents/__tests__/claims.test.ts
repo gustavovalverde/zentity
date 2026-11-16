@@ -34,7 +34,7 @@ describe("AAP claims", () => {
       oversight: {
         approvalId: "approval-1",
         approvedAt: 1_770_000_000,
-        method: "biometric",
+        method: "user_verification",
       },
       task: {
         constraints: { merchant: "example" },
@@ -75,7 +75,7 @@ describe("AAP claims", () => {
       oversight: {
         approval_id: "approval-1",
         approved_at: 1_770_000_000,
-        method: "biometric",
+        method: "user_verification",
       },
       task: {
         constraints: { merchant: "example" },

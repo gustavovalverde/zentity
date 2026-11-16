@@ -1,4 +1,4 @@
-import type { NewCibaRequest } from "@/lib/db/schema/ciba";
+import type { NewCibaApproval, NewCibaRequest } from "@/lib/db/schema/ciba";
 
 import crypto from "node:crypto";
 
@@ -17,7 +17,11 @@ import {
   users,
   verifications,
 } from "@/lib/db/schema/auth";
-import { cibaRequests, pushSubscriptions } from "@/lib/db/schema/ciba";
+import {
+  cibaApprovals,
+  cibaRequests,
+  pushSubscriptions,
+} from "@/lib/db/schema/ciba";
 import {
   attestationEvidence,
   blockchainAttestations,
@@ -101,6 +105,7 @@ export async function resetDatabase(): Promise<void> {
     await tx.delete(firstPartyAuthSessions).run();
     await tx.delete(firstPartyFailureBudgets).run();
     await tx.delete(cibaRequests).run();
+    await tx.delete(cibaApprovals).run();
     await tx.delete(haipVpSessions).run();
     // OAuth tables (delete children before parents)
     await tx.delete(agentTokenSnapshots).run();
@@ -196,7 +201,13 @@ export async function createTestSession(
 // CIBA request helpers
 // ---------------------------------------------------------------------------
 
+type CibaApprovalOverrides = Partial<
+  Omit<NewCibaApproval, "clientId" | "referenceId" | "requestId" | "userId">
+>;
+
 type CibaRequestOverrides = Partial<NewCibaRequest> & {
+  /** For an approved request: fields of the decision record it gets. */
+  approval?: CibaApprovalOverrides;
   clientId: string;
   userId: string;
 };
@@ -221,13 +232,47 @@ export function hashCibaAuthReqId(rawAuthReqId: string): string {
 }
 
 /**
+ * Records the decision a Zentity approval writes for a request, a session
+ * approval on the approval page unless `overrides` says otherwise.
+ */
+export async function createTestCibaApproval(input: {
+  authReqIdHash: string;
+  clientId: string;
+  overrides?: CibaApprovalOverrides;
+  requestId: string;
+  scope?: string;
+  userId: string;
+}): Promise<void> {
+  const now = new Date();
+  await db
+    .insert(cibaApprovals)
+    .values({
+      referenceId: input.authReqIdHash,
+      requestId: input.requestId,
+      userId: input.userId,
+      clientId: input.clientId,
+      scope: input.scope ?? "openid",
+      decision: "approved",
+      approvalMethod: "session",
+      approvalChannel: "page",
+      requestedAt: now,
+      decidedAt: now,
+      expiresAt: new Date(now.getTime() + 300_000),
+      ...input.overrides,
+    })
+    .run();
+}
+
+/**
  * Creates a CIBA request for testing. When status is "approved" and no
  * authContextId is provided, one is auto-created, and the request references
- * its own hash, mirroring what a Zentity approval records.
+ * its own hash and gets a decision record, mirroring what a Zentity approval
+ * records.
  */
 export async function createTestCibaRequest(
   input: CibaRequestOverrides
 ): Promise<TestCibaRequestResult> {
+  const { approval, ...request } = input;
   const authReqId = input.authReqId ?? crypto.randomUUID();
   const authReqIdHash = hashCibaAuthReqId(authReqId);
   const status = input.status ?? "pending";
@@ -244,7 +289,7 @@ export async function createTestCibaRequest(
       scope: "openid",
       expiresAt: new Date(Date.now() + 300_000),
       ...(status === "approved" ? { referenceId: authReqIdHash } : {}),
-      ...input,
+      ...request,
       // The CIBA plugin stores the hash of auth_req_id at rest and the token
       // endpoint hashes the raw value for lookup; callers receive the raw value.
       authReqId: authReqIdHash,
@@ -254,6 +299,21 @@ export async function createTestCibaRequest(
     .returning({ id: cibaRequests.id });
   if (!row) {
     throw new Error("Failed to create test CIBA request");
+  }
+  if (status === "approved") {
+    await createTestCibaApproval({
+      authReqIdHash,
+      clientId: input.clientId,
+      requestId: row.id,
+      scope: input.scope ?? "openid",
+      userId: input.userId,
+      overrides: {
+        authContextId,
+        agentSessionId: input.assertionVerified ? input.agentSessionId : null,
+        hostId: input.assertionVerified ? input.hostId : null,
+        ...approval,
+      },
+    });
   }
 
   return { authReqId, authReqIdHash, authContextId, requestId: row.id };

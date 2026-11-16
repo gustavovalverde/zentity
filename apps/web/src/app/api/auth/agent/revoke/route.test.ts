@@ -45,7 +45,8 @@ describe("POST /api/auth/agent/revoke", () => {
     await db
       .insert(agentCapabilities)
       .values({
-        approvalStrength: "none",
+        approvalStrength: "session",
+        grantable: true,
         description: "Compliance checks",
         name: "check_compliance",
       })

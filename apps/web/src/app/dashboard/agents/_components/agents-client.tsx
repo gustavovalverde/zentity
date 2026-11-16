@@ -2,6 +2,7 @@
 
 import type {
   AgentIdentitySummary,
+  ApprovalRequirementDetails,
   AuthorizationDetail,
   CibaRequestDetails,
   RegisteredAgentInfo,
@@ -31,6 +32,7 @@ import { RequestsTab } from "./requests-tab";
 interface CibaRequestRow {
   acrValues: string | null;
   agentSessionId: string | null;
+  approvalChannel: string | null;
   approvalMethod: string | null;
   attestationProvider: string | null;
   attestationTier: string | null;
@@ -44,6 +46,8 @@ interface CibaRequestRow {
   hostName: string | null;
   id: string;
   model: string | null;
+  /** Set for pending requests. */
+  requirement: ApprovalRequirementDetails | null;
   runtime: string | null;
   scope: string;
   status: string;
@@ -91,6 +95,7 @@ function deriveRequestDetails(row: CibaRequestRow): CibaRequestDetails {
 
   const acrValues = parseStoredStringArray(row.acrValues).join(" ");
   return {
+    ...(row.requirement ?? {}),
     expires_at: row.expiresAt.toISOString(),
     request_id: row.id,
     scope: row.scope,

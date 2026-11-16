@@ -18,7 +18,7 @@ vi.mock("@/env", async (importOriginal) => {
   };
 });
 
-import { deriveCapabilityName } from "@/lib/agents/capability";
+import { approvalPolicy } from "@/lib/agents/capability";
 import {
   PAYMENT_AUTHORIZATION_SCOPE,
   PAYMENT_TOKEN_SCOPE_EXPIRATIONS,
@@ -108,9 +108,12 @@ describe("pinPaymentRequest (bc-authorize, D-5 + D-14)", () => {
 });
 
 describe("capability + scope wiring", () => {
-  it("derives payment_authorization:sign from a payment RAR", () => {
+  it("maps a payment RAR with the payment scope to payment_authorization:sign", () => {
     expect(
-      deriveCapabilityName([RAR], "openid payment_authorization:sign")
+      approvalPolicy({
+        scope: "openid payment_authorization:sign",
+        authorizationDetails: [RAR],
+      }).grantCapability
     ).toBe("payment_authorization:sign");
   });
 

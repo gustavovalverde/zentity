@@ -18,6 +18,12 @@ async function runTransitionScript(): Promise<string> {
   return stdout;
 }
 
+function cibaApprovalSchema() {
+  return db.all<{ name: string; sql: string | null }>(
+    sql`SELECT name, sql FROM sqlite_master WHERE tbl_name = 'ciba_approval' ORDER BY name`
+  );
+}
+
 async function accessTokenAuthContext() {
   return {
     columns: await db.all(
@@ -68,6 +74,29 @@ async function dropAccessTokenAuthContext(): Promise<void> {
 }
 
 describe("deploy backfill", () => {
+  it("creates ciba_approval exactly as db:push does, before the release serves traffic", async () => {
+    const pushed = await cibaApprovalSchema();
+    expect(pushed.map((row) => row.name)).toEqual([
+      "ciba_approval",
+      "ciba_approval_agent_session_id_idx",
+      "ciba_approval_client_id_idx",
+      "ciba_approval_reference_id_unique",
+      "ciba_approval_user_decided_idx",
+      "sqlite_autoindex_ciba_approval_1",
+    ]);
+
+    await db.run(sql`DROP TABLE ciba_approval`);
+    expect(await cibaApprovalSchema()).toEqual([]);
+
+    expect(await runTransitionScript()).toContain("ciba_approval: created");
+    expect(await cibaApprovalSchema()).toEqual(pushed);
+
+    expect(await runTransitionScript()).toContain(
+      "ciba_approval: already present"
+    );
+    expect(await cibaApprovalSchema()).toEqual(pushed);
+  });
+
   it("adds oauth_access_token.auth_context_id as db:push does, before the release serves traffic", async () => {
     const pushed = await accessTokenAuthContext();
     expect(pushed.columns).toHaveLength(1);

@@ -164,8 +164,6 @@ describe("bindAgentAssertionToCibaRequest", () => {
     const result = await bindAgentAssertionToCibaRequest({
       assertionJwt,
       authReqId,
-      authorizationDetails: [],
-      scope: "openid identity.name identity.address",
     });
 
     expect(result?.sessionId).toBe(agent.sessionId);
@@ -174,7 +172,6 @@ describe("bindAgentAssertionToCibaRequest", () => {
     const updated = await db
       .select({
         agentSessionId: cibaRequests.agentSessionId,
-        approvedCapabilityName: cibaRequests.approvedCapabilityName,
         assertionVerified: cibaRequests.assertionVerified,
         hostId: cibaRequests.hostId,
         taskHash: cibaRequests.taskHash,
@@ -187,7 +184,6 @@ describe("bindAgentAssertionToCibaRequest", () => {
     expect(updated).toEqual(
       expect.objectContaining({
         agentSessionId: agent.sessionId,
-        approvedCapabilityName: "my_profile",
         assertionVerified: true,
         hostId: agent.hostId,
       })
@@ -214,8 +210,6 @@ describe("bindAgentAssertionToCibaRequest", () => {
     const result = await bindAgentAssertionToCibaRequest({
       assertionJwt,
       authReqId,
-      authorizationDetails: [],
-      scope: "openid identity.name identity.address",
     });
 
     expect(result).toBeNull();
@@ -253,8 +247,6 @@ describe("bindAgentAssertionToCibaRequest", () => {
     const result = await bindAgentAssertionToCibaRequest({
       assertionJwt,
       authReqId,
-      authorizationDetails: [],
-      scope: "openid identity.name identity.address",
     });
 
     expect(result).toBeNull();
@@ -292,8 +284,6 @@ describe("bindAgentAssertionToCibaRequest", () => {
     const result = await bindAgentAssertionToCibaRequest({
       assertionJwt,
       authReqId,
-      authorizationDetails: [],
-      scope: "openid identity.name",
     });
 
     expect(result).toBeNull();
@@ -321,8 +311,6 @@ describe("bindAgentAssertionToCibaRequest", () => {
     const result = await bindAgentAssertionToCibaRequest({
       assertionJwt,
       authReqId,
-      authorizationDetails: [],
-      scope: "openid identity.name",
     });
 
     expect(result).toBeNull();
@@ -352,16 +340,12 @@ describe("bindAgentAssertionToCibaRequest", () => {
     const firstResult = await bindAgentAssertionToCibaRequest({
       assertionJwt,
       authReqId: firstAuthReqId,
-      authorizationDetails: [],
-      scope: "openid identity.name",
     });
     expect(firstResult?.sessionId).toBe(agent.sessionId);
 
     const replayResult = await bindAgentAssertionToCibaRequest({
       assertionJwt,
       authReqId: secondAuthReqId,
-      authorizationDetails: [],
-      scope: "openid identity.name",
     });
     expect(replayResult).toBeNull();
 

@@ -93,7 +93,10 @@ export const agentCapabilities = sqliteTable("agent_capability", {
   outputSchema: text("output_schema", { mode: "json" }).$type<
     Record<string, unknown>
   >(),
-  approvalStrength: text("approval_strength").notNull(),
+  approvalStrength: text("approval_strength", {
+    enum: ["session", "user_verification"],
+  }).notNull(),
+  grantable: integer("grantable", { mode: "boolean" }).notNull().default(false),
   createdAt: integer("created_at", { mode: "timestamp_ms" })
     .notNull()
     .default(sql`(unixepoch() * 1000)`),

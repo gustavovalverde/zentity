@@ -176,6 +176,10 @@ export async function sendCibaNotification(params: {
   }
 
   const clientLabel = params.clientName ?? "An application";
+  // The approval page records that the user decided from this email.
+  const approvalLink = new URL(params.approvalUrl);
+  approvalLink.searchParams.set("via", "email");
+  const approvalUrl = approvalLink.toString();
   const scopeList = params.scope
     .split(" ")
     .filter((s) => s !== "openid")
@@ -199,7 +203,7 @@ export async function sendCibaNotification(params: {
       ? `\nAuthorization Details:\n${formatAuthorizationDetailsText(parsedDetails)}\n`
       : "";
 
-  const text = `${clientLabel} is requesting access to your account.\n\nScopes: ${scopeList}${agentLine}${bindingLine}${detailsLine}\nApprove or deny: ${params.approvalUrl}\n\nIf you did not expect this request, you can safely ignore it.`;
+  const text = `${clientLabel} is requesting access to your account.\n\nScopes: ${scopeList}${agentLine}${bindingLine}${detailsLine}\nApprove or deny: ${approvalUrl}\n\nIf you did not expect this request, you can safely ignore it.`;
 
   const agentHtml = agent ? formatAgentHtml(agent) : "";
   const bindingHtml = params.bindingMessage
@@ -218,7 +222,7 @@ ${agentHtml}
 ${bindingHtml}
 ${detailsHtml}
 <p style="margin:24px 0;">
-<a href="${escapeHtmlHref(params.approvalUrl)}" style="display:inline-block;background:#18181b;color:#fff;padding:12px 24px;border-radius:6px;text-decoration:none;font-weight:500;">Review Request</a>
+<a href="${escapeHtmlHref(approvalUrl)}" style="display:inline-block;background:#18181b;color:#fff;padding:12px 24px;border-radius:6px;text-decoration:none;font-weight:500;">Review Request</a>
 </p>
 <p style="color:#9ca3af;font-size:13px;">If you did not expect this request, you can safely ignore it.</p>
 </div>`;

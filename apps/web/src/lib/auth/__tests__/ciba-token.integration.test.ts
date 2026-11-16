@@ -1,19 +1,26 @@
 import crypto from "node:crypto";
 
 import { encodeEd25519DidKeyFromJwk } from "@zentity/sdk/protocol";
+import { makeSignature } from "better-auth/crypto";
+import { eq } from "drizzle-orm";
 import { decodeJwt } from "jose";
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { env } from "@/env";
 import { resolveAgentSubForClient } from "@/lib/agents/actor-subject";
+import { auth } from "@/lib/auth/auth-config";
 import {
   AUTHENTICATION_CONTEXT_CLAIM,
   createAuthenticationContext,
 } from "@/lib/auth/auth-context";
+import { createCibaApproval } from "@/lib/auth/oidc/ciba";
 import { db } from "@/lib/db/connection";
 import { agentHosts, agentSessions } from "@/lib/db/schema/agent";
-import { cibaRequests } from "@/lib/db/schema/ciba";
+import { cibaApprovals, cibaRequests } from "@/lib/db/schema/ciba";
 import { oauthClients } from "@/lib/db/schema/oauth-provider";
 import {
+  createTestCibaApproval,
+  createTestSession,
   createTestUser,
   findStoredOpaqueAccessToken,
   hashCibaAuthReqId,
@@ -90,11 +97,12 @@ async function createRegisteredAgent(userId: string) {
 }
 
 async function insertCibaRequest(
-  overrides: Partial<typeof cibaRequests.$inferInsert> = {}
+  overrides: Partial<typeof cibaRequests.$inferInsert> = {},
+  approval: Parameters<typeof createTestCibaApproval>[0]["overrides"] = {}
 ) {
   const authReqId = overrides.authReqId ?? crypto.randomUUID();
   const status = overrides.status ?? "pending";
-  await db
+  const [row] = await db
     .insert(cibaRequests)
     .values({
       clientId: TEST_CLIENT_ID,
@@ -114,7 +122,19 @@ async function insertCibaRequest(
       // raw value to send to the token endpoint, which hashes for lookup.
       authReqId: hashCibaAuthReqId(authReqId),
     })
-    .run();
+    .returning({ id: cibaRequests.id });
+  if (status === "approved" && row) {
+    await createTestCibaApproval({
+      authReqIdHash: hashCibaAuthReqId(authReqId),
+      clientId: overrides.clientId ?? TEST_CLIENT_ID,
+      requestId: row.id,
+      userId: overrides.userId ?? "test-user",
+      overrides: {
+        authContextId: overrides.authContextId ?? defaultAuthContextId,
+        ...approval,
+      },
+    });
+  }
   return authReqId;
 }
 
@@ -313,27 +333,32 @@ describe("CIBA token endpoint", () => {
 
   it("binds verified agent sessions into the access-token record", async () => {
     const { hostId, sessionId } = await createRegisteredAgent(userId);
-    const authReqId = await insertCibaRequest({
-      userId,
-      status: "approved",
-      resources: JSON.stringify([TEST_RESOURCE]),
-      hostId,
-      agentSessionId: sessionId,
-      displayName: "Test Agent",
-      model: "gpt-4",
-      runtime: "test-runner",
-      version: "1.0.0",
-      taskId: "task-123",
-      assertionVerified: true,
-      approvedCapabilityName: "purchase",
-      approvedConstraints: [
-        { field: "merchant", op: "eq", value: "Test Store" },
-      ],
-      approvedGrantId: "grant-123",
-      approvalStrength: "session",
-      attestationProvider: "AgentPass",
-      attestationTier: "attested",
-    });
+    const authReqId = await insertCibaRequest(
+      {
+        userId,
+        status: "approved",
+        resources: JSON.stringify([TEST_RESOURCE]),
+        hostId,
+        agentSessionId: sessionId,
+        displayName: "Test Agent",
+        model: "gpt-4",
+        runtime: "test-runner",
+        version: "1.0.0",
+        taskId: "task-123",
+        assertionVerified: true,
+        attestationProvider: "AgentPass",
+        attestationTier: "attested",
+      },
+      {
+        approvalMethod: "capability_grant",
+        approvalChannel: "grant",
+        capability: "purchase",
+        constraints: [{ field: "merchant", op: "eq", value: "Test Store" }],
+        grantId: "grant-123",
+        agentSessionId: sessionId,
+        hostId,
+      }
+    );
 
     const { json } = await postTokenWithDpop({
       grant_type: CIBA_GRANT_TYPE,
@@ -377,7 +402,7 @@ describe("CIBA token endpoint", () => {
       expect(tokenShape.payload.oversight).toEqual({
         approval_id: "grant-123",
         approved_at: expect.any(Number),
-        method: "session",
+        method: "capability_grant",
       });
       // auth_req_id is hashed at rest (it is a bearer credential); the audit
       // correlation claim carries the hash, never the raw value.
@@ -452,6 +477,247 @@ describe("CIBA token endpoint", () => {
         sub: TEST_CLIENT_ID,
         sub_profile: "service",
       });
+    }
+  });
+});
+
+describe("CIBA decision record", () => {
+  let userId: string;
+  let sessionCookie: string;
+
+  beforeEach(async () => {
+    await resetDatabase();
+    userId = await createTestUser();
+    await createTestClient();
+    const { token } = await createTestSession(userId);
+    sessionCookie = `better-auth.session_token=${token}.${await makeSignature(token, env.BETTER_AUTH_SECRET)}`;
+  });
+
+  async function pendingRequest(
+    overrides: Partial<typeof cibaRequests.$inferInsert> = {}
+  ) {
+    const authReqId = await insertCibaRequest({
+      userId,
+      scope: "openid compliance:read",
+      bindingMessage: "Check compliance for checkout",
+      authorizationDetails: null,
+      ...overrides,
+    });
+    const row = await db
+      .select({ id: cibaRequests.id })
+      .from(cibaRequests)
+      .where(eq(cibaRequests.authReqId, hashCibaAuthReqId(authReqId)))
+      .get();
+    if (!row) {
+      throw new Error("Expected pending request");
+    }
+    return { authReqId, requestId: row.id };
+  }
+
+  function decide(requestId: string, decision: "approved" | "denied") {
+    return auth.handler(
+      new Request("http://localhost:3000/api/auth/ciba/decision", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", cookie: sessionCookie },
+        body: JSON.stringify({
+          request_id: requestId,
+          decision,
+          channel: "page",
+        }),
+      })
+    );
+  }
+
+  function records(authReqId: string) {
+    return db
+      .select()
+      .from(cibaApprovals)
+      .where(eq(cibaApprovals.referenceId, hashCibaAuthReqId(authReqId)))
+      .all();
+  }
+
+  // R16: approval facts outlive the request row the plugin deletes.
+  it("keeps the approval after the token poll consumes the request", async () => {
+    const { authReqId, requestId } = await pendingRequest();
+
+    expect((await decide(requestId, "approved")).status).toBe(200);
+    const poll = await postTokenWithDpop({
+      grant_type: CIBA_GRANT_TYPE,
+      auth_req_id: authReqId,
+      client_id: TEST_CLIENT_ID,
+    });
+    expect(poll.status).toBe(200);
+
+    expect(
+      await db
+        .select()
+        .from(cibaRequests)
+        .where(eq(cibaRequests.id, requestId))
+        .all()
+    ).toHaveLength(0);
+    expect(await records(authReqId)).toEqual([
+      expect.objectContaining({
+        requestId,
+        userId,
+        clientId: TEST_CLIENT_ID,
+        decision: "approved",
+        approvalMethod: "session",
+        approvalChannel: "page",
+        scope: "openid compliance:read",
+        bindingMessage: "Check compliance for checkout",
+        authorizationDetails: null,
+        decidedAt: expect.any(Date),
+        authContextId: expect.any(String),
+      }),
+    ]);
+  });
+
+  it("lets only one of two concurrent approvals win", async () => {
+    const { authReqId, requestId } = await pendingRequest();
+
+    const responses = await Promise.all([
+      decide(requestId, "approved"),
+      decide(requestId, "approved"),
+    ]);
+
+    expect(responses.map((response) => response.status).toSorted()).toEqual([
+      200, 400,
+    ]);
+    const loser = responses.find((response) => response.status === 400);
+    expect(((await loser?.json()) as { error?: string }).error).toBe(
+      "invalid_request"
+    );
+    expect(await records(authReqId)).toHaveLength(1);
+  });
+
+  it("writes a record for a denial", async () => {
+    const { authReqId, requestId } = await pendingRequest();
+
+    expect((await decide(requestId, "denied")).status).toBe(200);
+
+    expect(await records(authReqId)).toEqual([
+      expect.objectContaining({
+        decision: "denied",
+        approvalMethod: null,
+        approvalChannel: "page",
+      }),
+    ]);
+  });
+
+  // R24: a failed completion leaves no record and a decidable request.
+  it("removes the record when the plugin cannot complete the approval", async () => {
+    const { authReqId, requestId } = await pendingRequest();
+    const authentication = await createAuthenticationContext({
+      userId,
+      loginMethod: "passkey",
+      authenticatedAt: new Date(),
+      sourceKind: "better_auth",
+    });
+    const failing = createCibaApproval(() =>
+      Promise.reject(new Error("completion failed"))
+    );
+
+    await expect(
+      failing.approve({
+        requestId,
+        userId,
+        authentication,
+        channel: "page",
+        grant: { method: "session" },
+      })
+    ).rejects.toThrow("completion failed");
+
+    expect(await records(authReqId)).toEqual([]);
+    const row = await db
+      .select({ status: cibaRequests.status })
+      .from(cibaRequests)
+      .where(eq(cibaRequests.id, requestId))
+      .get();
+    expect(row?.status).toBe("pending");
+
+    expect((await decide(requestId, "approved")).status).toBe(200);
+    expect(await records(authReqId)).toHaveLength(1);
+  });
+
+  // R6: the record says how and where the user decided.
+  it.each(["page", "push", "email"] as const)(
+    "records a session approval through the %s channel",
+    async (channel) => {
+      const { authReqId, requestId } = await pendingRequest();
+
+      const response = await auth.handler(
+        new Request("http://localhost:3000/api/auth/ciba/decision", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            cookie: sessionCookie,
+          },
+          body: JSON.stringify({
+            request_id: requestId,
+            decision: "approved",
+            channel,
+          }),
+        })
+      );
+
+      expect(response.status).toBe(200);
+      expect(await records(authReqId)).toEqual([
+        expect.objectContaining({
+          approvalMethod: "session",
+          approvalChannel: channel,
+        }),
+      ]);
+    }
+  );
+
+  // R8: approved_at is the decision time, not the request's creation time.
+  it("states the decision time as approved_at in the token response and the agent token", async () => {
+    const createdAt = new Date("2026-11-15T10:00:00.000Z");
+    const decidedAt = new Date(createdAt.getTime() + 60_000);
+    vi.useFakeTimers({ toFake: ["Date"] });
+    try {
+      vi.setSystemTime(createdAt);
+      const { hostId, sessionId } = await createRegisteredAgent(userId);
+      const { token } = await createTestSession(userId);
+      sessionCookie = `better-auth.session_token=${token}.${await makeSignature(token, env.BETTER_AUTH_SECRET)}`;
+      const { authReqId, requestId } = await pendingRequest({
+        createdAt,
+        expiresAt: new Date(createdAt.getTime() + 300_000),
+        resources: JSON.stringify([TEST_RESOURCE]),
+        hostId,
+        agentSessionId: sessionId,
+        displayName: "Test Agent",
+        assertionVerified: true,
+        attestationTier: "attested",
+      });
+
+      vi.setSystemTime(decidedAt);
+      expect((await decide(requestId, "approved")).status).toBe(200);
+      const { status, json } = await postTokenWithDpop({
+        grant_type: CIBA_GRANT_TYPE,
+        auth_req_id: authReqId,
+        client_id: TEST_CLIENT_ID,
+      });
+
+      expect(status).toBe(200);
+      const approvedAt = Math.floor(decidedAt.getTime() / 1000);
+      expect(json.oversight).toEqual({
+        method: "session",
+        approved_at: approvedAt,
+      });
+      const accessToken = json.access_token as string;
+      const tokenClaims =
+        accessToken.split(".").length === 3
+          ? decodeJwt(accessToken)
+          : (await findStoredOpaqueAccessToken(accessToken))?.accessTokenClaims;
+      expect(tokenClaims?.oversight).toEqual(
+        expect.objectContaining({
+          approved_at: approvedAt,
+          method: "session",
+        })
+      );
+    } finally {
+      vi.useRealTimers();
     }
   });
 });

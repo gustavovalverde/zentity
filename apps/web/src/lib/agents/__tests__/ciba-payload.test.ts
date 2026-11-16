@@ -130,4 +130,57 @@ describe("buildCibaPushPayload", () => {
     });
     expect(payload.body).toContain("Aether AI: 0.00000001 ZEC on zcash:test");
   });
+
+  const PAYMENT_ENTRY = {
+    type: "payment_authorization",
+    chain: { namespace: "zcash", reference: "test" },
+    recipient: "zcash:test:utest1qq0",
+    amount: { currency: "ZEC", value: "1", unit: "base" },
+    payment_id: "pay_1",
+    intent_hash: `v1:sha256:${"A".repeat(43)}`,
+    expires_at: { kind: "block_height", value: 4_047_100 },
+  };
+
+  // R1: inline Approve only for requests a notification may approve.
+  it.each([
+    ["a payment", "openid payment_authorization:sign", [PAYMENT_ENTRY]],
+    ["compliance with email", "openid compliance:read email", undefined],
+    ["an identity release", "openid identity.name", undefined],
+  ])("does not offer inline approval for %s", (_case, scope, details) => {
+    const payload = buildCibaPushPayload({
+      requestId: "req-1",
+      approvalUrl: APPROVAL_URL,
+      scope,
+      authorizationDetails: details,
+    });
+
+    expect(payload.data.inlineApprove).toBe(false);
+    expect(payload.body).not.toContain("Shares:");
+  });
+
+  // R15: an inline notification names everything it shares in server text.
+  it("lists a server label for every scope an inline request shares", () => {
+    const payload = buildCibaPushPayload({
+      requestId: "req-1",
+      approvalUrl: APPROVAL_URL,
+      scope: "openid compliance:read proof:age",
+      clientName: "Aether AI",
+      bindingMessage: "Check compliance for checkout",
+    });
+
+    expect(payload.data.inlineApprove).toBe(true);
+    expect(payload.body).toBe(
+      "Aether AI: Check compliance for checkout\nShares: compliance status, age proof"
+    );
+  });
+
+  it("drops the legacy biometric flag", () => {
+    const payload = buildCibaPushPayload({
+      requestId: "req-1",
+      approvalUrl: APPROVAL_URL,
+      scope: "openid",
+    });
+
+    expect(payload.data).not.toHaveProperty("requiresBiometric");
+  });
 });

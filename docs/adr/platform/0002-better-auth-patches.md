@@ -30,6 +30,16 @@ Zentity does not patch any Better Auth package, and `pnpm-workspace.yaml` has no
 * **@better-auth/passkey** and **better-auth** run unpatched. Passwordless two-factor enrollment uses the upstream `twoFactor({ allowPasswordless: true })` option.
 * **@daveyplate/better-auth-ui** runs unpatched. Zentity renders its own two-factor settings card and backup-code page (`/two-factor/backup-codes`). That page shows the codes once, offers them as a `.txt` download, and keeps Continue disabled until the user downloads them. Zentity does not render the library's two-factor or security settings cards, so the library's backup-code dialog never appears.
 
+### Interim code awaiting upstream changes
+
+When a Better Auth package lacks a behavior Zentity needs, Zentity adds the behavior in its own code. Each row below names one such mechanism and the upstream change that would retire it. Comments beside the interim code cite the row's identifier, for example `U1 in docs/adr/platform/0002-better-auth-patches.md`. Identifiers stay fixed when rows are added or removed.
+
+None of these changes has an upstream issue yet. When one is filed, link it from the row.
+
+| Id | Package | Upstream change | Interim code in Zentity | When the change ships |
+|---|---|---|---|---|
+| U1 | `@better-auth/passkey` | A server API that verifies a passkey assertion without creating a session, binds caller context into the stored challenge, requires a passkey of the session user, and returns whether the user was verified. The plugin also exports its RP ID and expected-origin resolvers. | `apps/web/src/lib/auth/passkey/step-up.ts` verifies the CIBA approval step-up with `@simplewebauthn/server`, because the plugin's own verification always signs the user in. | Verify the step-up through the plugin, then delete `step-up.ts` and the direct `@simplewebauthn/server` dependency. |
+
 ### Expected Consequences
 
 * Passkey-only accounts can enable TOTP and backup codes without a password.
@@ -52,3 +62,4 @@ Zentity does not patch any Better Auth package, and `pnpm-workspace.yaml` has no
 
 * 2026-09-25: Guardian recovery removed; two-factor devices no longer act as recovery guardians.
 * 2026-11-10: Removed the last patch (`@daveyplate/better-auth-ui`) and upgraded the package to 3.4.0. The decision is now to use unpatched packages, and the backup-code constraint now requires a download before continuing instead of hiding the codes.
+* 2026-11-16: Recorded the interim code that waits for upstream changes, with the change that retires each mechanism.

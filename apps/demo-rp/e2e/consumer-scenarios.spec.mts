@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 
 import {
-  approveCibaRequest,
+  approveCibaRequestWithPasskey,
   completeStepUp,
   registerScenario,
   signInToScenario,
@@ -77,6 +77,7 @@ test.describe("demo-rp consumer scenarios", () => {
   });
 
   test("aether completes CIBA approval and renders zpay bridge", async ({
+    browser,
     page,
     request,
   }) => {
@@ -101,7 +102,8 @@ test.describe("demo-rp consumer scenarios", () => {
       { timeout: 60_000 }
     );
 
-    await approveCibaRequest(authReqId);
+    // A manual payment approval needs a user-verified passkey assertion.
+    await approveCibaRequestWithPasskey(browser, authReqId);
 
     // After CIBA approval, the bridge replaces the legacy "Purchase
     // Complete" stub because the headphones task is now `zpay`-enabled.

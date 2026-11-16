@@ -15,11 +15,14 @@ export const HOST_ATTESTATION_TIERS = [
 ] as const;
 export type HostAttestationTier = (typeof HOST_ATTESTATION_TIERS)[number];
 
+/**
+ * How a user approved a CIBA request: an agent capability grant, a click in
+ * an active session, or a passkey assertion with user verification.
+ */
 export type OversightMethod =
-	| "biometric"
 	| "capability_grant"
-	| "email"
-	| "session";
+	| "session"
+	| "user_verification";
 
 export interface CapabilityClaim {
 	action: string;

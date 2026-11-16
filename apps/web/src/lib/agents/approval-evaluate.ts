@@ -1,3 +1,5 @@
+import type { ApprovalPolicy, AuthorizationDetail } from "./capability";
+
 import {
   PAYMENT_AUTHORIZATION_CAPABILITY,
   PAYMENT_AUTHORIZATION_TYPE,
@@ -5,7 +7,6 @@ import {
 import { and, desc, eq, gte, inArray, sql } from "drizzle-orm";
 
 import { computeSessionState } from "@/lib/agents/session";
-import { isIdentityScope } from "@/lib/auth/oidc/disclosure/registry";
 import { db } from "@/lib/db/connection";
 import {
   agentCapabilities,
@@ -14,12 +15,6 @@ import {
   agentSessions,
   capabilityUsageLedger,
 } from "@/lib/db/schema/agent";
-
-import {
-  type AuthorizationDetail,
-  deriveCapabilityName,
-  resolveCapabilityApprovalStrength,
-} from "./capability";
 
 export interface GrantConstraint {
   field: string;
@@ -41,7 +36,6 @@ interface NormalizedGrant {
 }
 
 interface GrantEvalResult {
-  approvalStrength?: string | undefined;
   approved: boolean;
   capabilityName?: string | undefined;
   constraints?: GrantConstraint[] | undefined;
@@ -82,17 +76,7 @@ function extractActionParams(
     };
   }
 
-  const purchase = details.find((detail) => detail.type === "purchase");
-  if (!purchase) {
-    return {};
-  }
-
-  return {
-    "amount.value": parseSpendAmount(purchase.amount?.value),
-    "amount.currency": purchase.amount?.currency,
-    merchant: purchase.merchant,
-    item: purchase.item,
-  };
+  return {};
 }
 
 /**
@@ -286,9 +270,14 @@ export async function createPendingSessionGrants(
   }));
 }
 
+/**
+ * Tries to approve a request from the agent session's grants. Only a request
+ * whose every item maps to one grantable capability can be approved this way
+ * (see `approvalPolicy`); anything else goes to the user.
+ */
 export async function evaluateSessionGrants(
   sessionId: string,
-  scope: string,
+  policy: ApprovalPolicy,
   authorizationDetails: AuthorizationDetail[]
 ): Promise<GrantEvalResult> {
   const session = await db
@@ -306,40 +295,19 @@ export async function evaluateSessionGrants(
     return { approved: false, reason: "session is not active" };
   }
 
-  const capabilityName = deriveCapabilityName(authorizationDetails, scope);
-  if (!capabilityName) {
-    return { approved: false, reason: "no matching capability for request" };
-  }
-
-  const approvalStrength =
-    (await resolveCapabilityApprovalStrength(capabilityName)) ?? "session";
-  const scopes = scope.split(" ").filter((item) => item !== "openid");
-  const containsIdentityScope = scopes.some(isIdentityScope);
-
-  if (approvalStrength === "biometric") {
+  if (policy.hasIdentityScopes) {
     return {
       approved: false,
-      capabilityName,
-      approvalStrength: "biometric",
-      reason: "biometric approval required",
-    };
-  }
-
-  if (containsIdentityScope) {
-    return {
-      approved: false,
-      approvalStrength,
-      capabilityName,
       reason: "identity scopes require explicit approval",
     };
   }
 
-  if (approvalStrength === "session") {
+  const capabilityName = policy.grantCapability;
+  if (!capabilityName) {
     return {
       approved: false,
-      approvalStrength,
-      capabilityName,
-      reason: "session approval required",
+      reason:
+        "request spans more than one capability or includes scopes no grant covers",
     };
   }
 
@@ -376,11 +344,9 @@ export async function evaluateSessionGrants(
   }
 
   const actionParams = extractActionParams(authorizationDetails);
-  // The spend whose amount the daily-amount ledger limit tracks: a
-  // payment_authorization grant or a legacy purchase, whichever is present.
+  // The spend whose amount the daily-amount ledger limit tracks.
   const spend = authorizationDetails.find(
-    (detail) =>
-      detail.type === PAYMENT_AUTHORIZATION_TYPE || detail.type === "purchase"
+    (detail) => detail.type === PAYMENT_AUTHORIZATION_TYPE
   );
   const spendAmount = parseSpendAmount(spend?.amount?.value);
 
@@ -427,7 +393,6 @@ export async function evaluateSessionGrants(
     if (recorded) {
       return {
         approved: true,
-        approvalStrength,
         capabilityName,
         constraints: grant.constraints.length ? grant.constraints : undefined,
         grantId: grant.id,

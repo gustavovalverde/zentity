@@ -1,3 +1,5 @@
+import type { CibaApproval } from "@/lib/db/schema/ciba";
+
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@/lib/db/connection", () => ({ db: {} }));
@@ -81,7 +83,16 @@ describe("with only GIT_SHA set", () => {
         createdAt: new Date(),
         expiresAt: new Date(Date.now() + 60_000),
       },
-      "client-1"
+      "client-1",
+      // The token's agent claims come from the request's recorded approval.
+      {
+        approvalMethod: "session",
+        capability: null,
+        constraints: null,
+        decidedAt: new Date(),
+        grantId: null,
+        hostPolicyId: null,
+      } as CibaApproval
     );
     expect(contribution?.claims.audit.release_id).toBe(sha);
   });

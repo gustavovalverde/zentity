@@ -132,7 +132,80 @@ export async function checkPrfSupport(): Promise<PrfSupportStatus> {
   return { supported: true };
 }
 
+/**
+ * The assertion the approval page posts with a CIBA decision. Extension
+ * results are dropped, because the PRF output must never leave the browser.
+ */
+export interface ApprovalAssertion {
+  authenticatorAttachment?: "cross-platform" | "platform";
+  clientExtensionResults: Record<string, never>;
+  id: string;
+  rawId: string;
+  response: {
+    authenticatorData: string;
+    clientDataJSON: string;
+    signature: string;
+    userHandle?: string;
+  };
+  type: "public-key";
+}
+
+function toAttachment(
+  value: string | null | undefined
+): ApprovalAssertion["authenticatorAttachment"] {
+  return value === "platform" || value === "cross-platform" ? value : undefined;
+}
+
+/** Strips an assertion in WebAuthn JSON form down to what the server reads. */
+export function toApprovalAssertion(json: {
+  authenticatorAttachment?: string | null;
+  id: string;
+  rawId: string;
+  response: ApprovalAssertion["response"];
+}): ApprovalAssertion {
+  const attachment = toAttachment(json.authenticatorAttachment);
+  return {
+    id: json.id,
+    rawId: json.rawId,
+    type: "public-key",
+    ...(attachment ? { authenticatorAttachment: attachment } : {}),
+    response: {
+      authenticatorData: json.response.authenticatorData,
+      clientDataJSON: json.response.clientDataJSON,
+      signature: json.response.signature,
+      ...(json.response.userHandle
+        ? { userHandle: json.response.userHandle }
+        : {}),
+    },
+    clientExtensionResults: {},
+  };
+}
+
+/** Serializes a WebAuthn assertion credential for a CIBA decision. */
+export function serializeApprovalAssertion(
+  credential: PublicKeyCredential
+): ApprovalAssertion {
+  const response = credential.response as AuthenticatorAssertionResponse;
+  const encode = (buffer: ArrayBuffer) =>
+    bytesToBase64Url(new Uint8Array(buffer));
+  return toApprovalAssertion({
+    id: credential.id,
+    rawId: encode(credential.rawId),
+    authenticatorAttachment: credential.authenticatorAttachment,
+    response: {
+      authenticatorData: encode(response.authenticatorData),
+      clientDataJSON: encode(response.clientDataJSON),
+      signature: encode(response.signature),
+      ...(response.userHandle
+        ? { userHandle: encode(response.userHandle) }
+        : {}),
+    },
+  });
+}
+
 export async function evaluatePrf(params: {
+  /** A server challenge, when the assertion also confirms a decision. */
+  challenge?: Uint8Array | undefined;
   credentialIdToSalt: Record<string, Uint8Array>;
   userVerification?: UserVerificationRequirement | undefined;
   timeoutMs?: number | undefined;
@@ -153,7 +226,8 @@ export async function evaluatePrf(params: {
   }
   const credentialBucket = getCredentialBucket(credentialIds.length);
 
-  const challenge = crypto.getRandomValues(new Uint8Array(32));
+  const challenge =
+    params.challenge ?? crypto.getRandomValues(new Uint8Array(32));
   const allowCredentials: PublicKeyCredentialDescriptor[] = credentialIds.map(
     (credentialId) => ({
       type: "public-key",
@@ -178,7 +252,7 @@ export async function evaluatePrf(params: {
       : undefined;
 
   const options: PublicKeyCredentialRequestOptions = {
-    challenge,
+    challenge: toArrayBuffer(challenge),
     allowCredentials,
     userVerification: params.userVerification ?? "required",
     ...(params.timeoutMs === undefined ? {} : { timeout: params.timeoutMs }),

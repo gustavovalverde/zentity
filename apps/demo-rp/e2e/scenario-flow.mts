@@ -4,11 +4,15 @@ import { fileURLToPath } from "node:url";
 
 import {
   type APIRequestContext,
+  type Browser,
   expect,
   type Page,
-  request as playwrightRequest,
 } from "@playwright/test";
 
+import {
+  addPrfAuthenticator,
+  registerPasskeyForUser,
+} from "../../web/e2e/helpers/virtual-authenticator";
 import {
   createCredentialOffer,
   createIssuerSession,
@@ -143,26 +147,31 @@ export async function waitForAetherAuthorization(page: Page) {
   return body.auth_req_id;
 }
 
-export async function approveCibaRequest(authReqId: string) {
-  const approvalRequest = await playwrightRequest.newContext({
+/**
+ * Approves a request that needs user verification the way a user does: on
+ * Zentity's approval page, with a passkey the seeded user registers first.
+ */
+export async function approveCibaRequestWithPasskey(
+  browser: Browser,
+  authReqId: string
+) {
+  const context = await browser.newContext({
     baseURL: issuerBaseURL,
     storageState: webAuthStatePath,
-    extraHTTPHeaders: {
-      Origin: issuerBaseURL,
-      "Content-Type": "application/json",
-    },
   });
-
   try {
-    const response = await approvalRequest.post("/api/auth/ciba/decision", {
-      data: {
-        request_id: await findCibaRequestId(authReqId),
-        decision: "approved",
-      },
+    const page = await context.newPage();
+    await page.goto("/");
+    await addPrfAuthenticator(page);
+    await registerPasskeyForUser(page, readAuthSeed().password);
+
+    await page.goto(`/approve/${await findCibaRequestId(authReqId)}`);
+    await page.getByRole("button", { name: "Approve with passkey" }).click();
+    await expect(page.getByText("Request Approved")).toBeVisible({
+      timeout: 30_000,
     });
-    expect(response.ok()).toBeTruthy();
   } finally {
-    await approvalRequest.dispose();
+    await context.close();
   }
 }
 

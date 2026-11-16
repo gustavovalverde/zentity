@@ -96,6 +96,8 @@
     "@reown/appkit-adapter-wagmi": "1.8.24",
     "@scure/bip39": "2.4.0",
     "@serenity-kit/opaque": "^1.1.0",
+    "@simplewebauthn/browser": "13.3.0",
+    "@simplewebauthn/server": "13.3.3",
     "@t3-oss/env-nextjs": "^0.13.11",
     "@tanstack/react-form": "1.33.5",
     "@tanstack/react-query": "5.107.1",

@@ -852,10 +852,7 @@ describe("Authorization Challenge Endpoint", () => {
       const token = await redeem(key, round2.json.authorization_code as string);
       expect(token.status).toBe(200);
       expect(token.json.auth_session).toEqual(expect.any(String));
-      expect(decodeJwt(token.json.id_token as string).amr).toEqual([
-        "pop",
-        "hwk",
-      ]);
+      expect(decodeJwt(token.json.id_token as string).amr).toEqual(["pop"]);
       const contexts = await db
         .select({ sourceKind: authenticationContexts.sourceKind })
         .from(authenticationContexts)
