@@ -56,6 +56,7 @@ import { parseStoredStringArray } from "@/lib/db/adapter-compat";
 import { db } from "@/lib/db/connection";
 import { oauthClients } from "@/lib/db/schema/oauth-provider";
 import { logger } from "@/lib/logging/logger";
+import { getReleaseId } from "@/lib/observability/release";
 
 export const TOKEN_EXCHANGE_GRANT_TYPE =
   "urn:ietf:params:oauth:grant-type:token-exchange";
@@ -628,7 +629,8 @@ function createTokenExchangeHandler(): OAuthExtensionGrantHandler {
             method: parentAccessTokenClaims.oversight?.method ?? "session",
           },
           audit: {
-            releaseId: parentAccessTokenClaims.audit?.release_id ?? "dev",
+            releaseId:
+              parentAccessTokenClaims.audit?.release_id ?? getReleaseId(),
             contextId: parentAccessTokenClaims.audit?.context_id ?? jti,
             ...(parentAccessTokenClaims.audit?.request_id
               ? { requestId: parentAccessTokenClaims.audit.request_id }

@@ -10,6 +10,8 @@ fn main() {
     // Tell Cargo to rerun if git HEAD changes (path relative to repo root)
     println!("cargo:rerun-if-changed=../../.git/HEAD");
     println!("cargo:rerun-if-changed=../../.git/refs/heads/");
+    println!("cargo:rerun-if-env-changed=GIT_SHA");
+    println!("cargo:rerun-if-env-changed=BUILD_TIME");
 
     // Priority: CI env var → git command → "unknown"
     let git_sha = std::env::var("GIT_SHA")

@@ -14,15 +14,10 @@ import { eq } from "drizzle-orm";
 
 import { db } from "@/lib/db/connection";
 import { agentHosts, agentTokenSnapshots } from "@/lib/db/schema/agent";
+import { getReleaseId } from "@/lib/observability/release";
 
 import { resolveAgentSubForClient } from "./actor-subject";
 import { buildAapClaims, resolveOversightMethod } from "./claims";
-
-const DEFAULT_RELEASE_ID =
-  process.env.RELEASE_ID ??
-  process.env.GIT_SHA ??
-  process.env.RAILWAY_GIT_COMMIT_SHA ??
-  "dev";
 
 interface LoadedTokenSnapshot {
   assertionVerified: boolean;
@@ -189,7 +184,7 @@ async function resolveTokenSnapshot(
         ),
       },
       audit: {
-        releaseId: DEFAULT_RELEASE_ID,
+        releaseId: getReleaseId(),
         contextId: row.authContextId ?? row.authReqId ?? row.agentSessionId,
         ...(row.authReqId ? { requestId: row.authReqId } : {}),
         ...(row.authReqId ? { cibaRequestId: row.authReqId } : {}),

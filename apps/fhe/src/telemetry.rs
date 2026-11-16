@@ -50,8 +50,9 @@ fn service_name() -> String {
     env::var("OTEL_SERVICE_NAME").unwrap_or_else(|_| "zentity-fhe".to_string())
 }
 
+/// The build's git commit, embedded by `build.rs` from `GIT_SHA` (or `git rev-parse`).
 fn service_version() -> String {
-    env::var("APP_VERSION").unwrap_or_else(|_| env!("CARGO_PKG_VERSION").to_string())
+    env!("GIT_SHA").to_string()
 }
 
 fn deployment_environment() -> String {
@@ -134,6 +135,14 @@ mod tests {
             env::remove_var(name);
         }
         guard
+    }
+
+    #[test]
+    fn service_version_is_the_build_commit() {
+        let _env = clean_env();
+        env::set_var("APP_VERSION", "9.9.9");
+        assert_eq!(service_version(), env!("GIT_SHA"));
+        env::remove_var("APP_VERSION");
     }
 
     #[test]

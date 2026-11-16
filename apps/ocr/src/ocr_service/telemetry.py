@@ -25,7 +25,7 @@ def _is_enabled() -> bool:
 
 
 def _service_version() -> str:
-    return os.getenv("APP_VERSION") or os.getenv("GIT_SHA", "unknown")
+    return os.getenv("GIT_SHA") or "unknown"
 
 
 def _environment_name() -> str:
