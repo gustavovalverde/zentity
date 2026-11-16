@@ -681,20 +681,19 @@ This lets an external runtime discover what kinds of actions Zentity knows how t
 The route:
 
 1. authenticates the caller as a machine client
-2. verifies the presented Zentity access token
+2. verifies the presented Zentity access token for that caller: only the client the token was issued to, or a resource server linked to one of the token's audiences, sees it as active (RFC 7662 §4). An opaque token has no audience outside Zentity, so only its issuing client passes
 3. resolves the acting session from the token's approval record
 4. computes current lifecycle state
-5. returns the token's actor and the approval's authorization plus Zentity lifecycle metadata
+5. returns the token's own view and the approval's authorization
 
-The response includes:
+Every inactive case, including an unauthorized caller, an unknown or revoked token, a token without a verified agent, and a session that expired or was revoked, is the bare `{ "active": false }`. An active response includes:
 
-- `active`
-- caller-projected `sub` when the server can safely project the user identifier for the introspecting client
-- the token's own `act`, and the approval record's `capabilities`, `oversight`, `delegation`, and `aap_claims_version`
-- `zentity.attestation`
-- `zentity.lifecycle`
+- `active`, `client_id`, `scope`, `iat`, `exp`, and for a JWT its `aud`
+- the token's own `sub` and `act`: the audience's pairwise values for a JWT, and for an opaque token the issuing client's subject and the stored `act`
+- the approval record's `capabilities`, `oversight`, `delegation`, and `aap_claims_version`
+- `zentity.attestation` (`tier`, `verified`, `provider`) and `zentity.lifecycle`, which is `active`
 
-A relying party can ask whether an agent session is still active without learning raw internal host identifiers or another client's pairwise subject identifier.
+A caller learns nothing the token itself does not show it, plus what the approval authorizes: no session, host, or approval identifier, no lifecycle timestamps, and no other client's subject.
 
 ### Agent JWKS
 
@@ -842,7 +841,7 @@ Once consent is obtained, the question shifts from "does the human approve?" to 
 
 **Token exchange** (RFC 8693) issues opaque tokens for Zentity's own APIs only: the agent bootstrap token, which is DPoP-bound and carries only the narrow agent scopes needed for bootstrap and revocation, and the MCP HTTP server's token. It refuses agent-backed, CIBA, and `authorization_details`-bearing subjects, so it never rebinds an approval for another audience. Discovery publishes `delegation_chains: false`.
 
-**Token introspection** (RFC 7662) provides the verification channel. A downstream RP that receives an agent-presented token can query whether it is still active, who the actor is, and what trust level it carries. Introspection re-evaluates session lifecycle at query time, so an agent session that expired between token issuance and introspection reports `active: false` even if the JWT itself has not expired. This makes the lifecycle model operational rather than theoretical.
+**Token introspection** (RFC 7662) provides the verification channel. A resource server Zentity has linked to the token's audience, or the client the token was issued to, can query whether it is still active, who the actor is, and what trust level it carries; any other caller gets `active: false`. Introspection re-evaluates session lifecycle at query time, so an agent session that expired between token issuance and introspection reports `active: false` even if the JWT itself has not expired. This makes the lifecycle model operational rather than theoretical.
 
 **Pairwise subject identifiers** (OIDC Core) extend to `act.sub`, applying the same derivation that prevents RP-to-RP user correlation to agent correlation, and per audience as well as per client.
 

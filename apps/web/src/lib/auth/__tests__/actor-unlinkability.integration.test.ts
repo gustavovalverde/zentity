@@ -1,5 +1,5 @@
 import { decodeJwt } from "jose";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, expectTypeOf, it, vi } from "vitest";
 
 const mockEnv = vi.hoisted(() => {
   process.env.WALLET_AUDIENCE = "urn:zentity:wallet:unlinkability-test";
@@ -22,6 +22,7 @@ vi.mock("@/env", async (importOriginal) => {
 import crypto from "node:crypto";
 
 import { env } from "@/env";
+import { getAuthIssuer } from "@/lib/auth/oidc/well-known";
 import { db } from "@/lib/db/connection";
 import { agentHosts, agentSessions } from "@/lib/db/schema/agent";
 import { cibaApprovals } from "@/lib/db/schema/ciba";
@@ -32,6 +33,7 @@ import {
   resetDatabase,
 } from "@/test-utils/db-test-utils";
 import {
+  buildDpopProof,
   createTestDpopKeyPair,
   type DpopKeyPair,
   postTokenWithDpop,
@@ -39,6 +41,7 @@ import {
 
 const CIBA_GRANT_TYPE = "urn:openid:params:grant-type:ciba";
 const CLIENT_ID = "unlinkability-agent";
+const CLIENT_SECRET = "unlinkability-agent-secret";
 const WALLET_AUDIENCE = mockEnv.walletAudience;
 const PAYMENT_RAR = {
   type: "payment_authorization",
@@ -75,9 +78,15 @@ async function insertClient() {
     .values({
       clientId: CLIENT_ID,
       name: "Unlinkability Agent",
+      clientSecret: crypto
+        .createHash("sha256")
+        .update(CLIENT_SECRET)
+        .digest("base64url"),
       redirectUris: JSON.stringify(["http://localhost/callback"]),
-      grantTypes: JSON.stringify([CIBA_GRANT_TYPE]),
-      tokenEndpointAuthMethod: "none",
+      grantTypes: JSON.stringify([CIBA_GRANT_TYPE, "client_credentials"]),
+      clientCredentialsScopes: JSON.stringify(["agent:introspect"]),
+      scopes: JSON.stringify(["openid", "compliance:read", "agent:introspect"]),
+      tokenEndpointAuthMethod: "client_secret_post",
       subjectType: "pairwise",
       sectorIdentifier: `client/${CLIENT_ID}`,
       metadata: JSON.stringify({
@@ -185,6 +194,7 @@ describe("actor unlinkability", () => {
         grant_type: CIBA_GRANT_TYPE,
         auth_req_id: request.authReqId,
         client_id: CLIENT_ID,
+        client_secret: CLIENT_SECRET,
       },
       dpopKeyPair
     );
@@ -270,6 +280,9 @@ describe("actor unlinkability", () => {
         (row) => (row.subjectType as string) !== "user"
       )
     ).toEqual([]);
+    expectTypeOf<
+      (typeof pairwiseSubjects.$inferInsert)["subjectType"]
+    >().toEqualTypeOf<"user">();
     const records = await db.select().from(cibaApprovals).all();
     const byReference = new Map(records.map((row) => [row.referenceId, row]));
     for (const [token, audience] of [
@@ -289,5 +302,140 @@ describe("actor unlinkability", () => {
       tokenJti: null,
       tokenIssuedAt: expect.any(Date),
     });
+  });
+
+  async function introspectAsClient(token: string) {
+    const caller = await postTokenWithDpop({
+      grant_type: "client_credentials",
+      client_id: CLIENT_ID,
+      client_secret: CLIENT_SECRET,
+      scope: "agent:introspect",
+      resource: `${getAuthIssuer()}/resource/rp-api`,
+    });
+    const { POST } = await import("@/app/api/auth/agent/introspect/route");
+    const url = "http://localhost:3000/api/auth/agent/introspect";
+    const callerToken = caller.json.access_token as string;
+    const response = await POST(
+      new Request(url, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/x-www-form-urlencoded",
+          Authorization: `DPoP ${callerToken}`,
+          DPoP: await buildDpopProof(
+            caller.dpopKeyPair,
+            "POST",
+            url,
+            callerToken
+          ),
+        },
+        body: new URLSearchParams({ token }),
+      })
+    );
+    return (await response.json()) as Record<string, unknown>;
+  }
+
+  // R12: only the residual correlators D33 lists may repeat across the
+  // artifacts one session's approvals produce for different audiences.
+  it("shares no identifier across audiences beyond the listed residuals", async () => {
+    const { hostId, sessionIds } = await createHostWithSessions(userId, 1);
+    const sessionId = sessionIds[0] as string;
+    const approvals = {
+      mcp: await approveAndPoll({
+        sessionId,
+        hostId,
+        resources: [env.MCP_PUBLIC_URL],
+      }),
+      wallet: await approveAndPoll({
+        sessionId,
+        hostId,
+        resources: [WALLET_AUDIENCE],
+        authorizationDetails: [PAYMENT_RAR],
+      }),
+      zentity: await approveAndPoll({ sessionId, hostId }),
+    };
+
+    // Each artifact belongs to the audience that reads it. The client reads
+    // its ID tokens, token responses, and the introspection of an opaque
+    // token, whose subject is the client's own.
+    const artifacts: Array<{ audience: string; value: unknown }> = [];
+    for (const [name, approval] of Object.entries(approvals)) {
+      const accessToken = approval.json.access_token as string;
+      const {
+        access_token: _token,
+        id_token: idToken,
+        ...response
+      } = approval.json;
+      const introspection = await introspectAsClient(accessToken);
+      expect(introspection.active).toBe(true);
+      artifacts.push(
+        { audience: "client", value: decodeJwt(idToken as string) },
+        { audience: "client", value: response },
+        { audience: name === "zentity" ? "client" : name, value: introspection }
+      );
+      if (name !== "zentity") {
+        artifacts.push({ audience: name, value: decodeJwt(accessToken) });
+      }
+    }
+
+    const residuals = new Set([
+      "iss",
+      "azp",
+      "client_id",
+      "cnf.jkt",
+      "grant_id",
+      "sid",
+      "reference_id",
+      // Public constants and coarse descriptors rather than identifiers.
+      "aud",
+      "scope",
+      "act.sub_profile",
+      "token_type",
+      "oversight.method",
+      "capabilities.action",
+      "zentity.attestation.provider",
+      "zentity.attestation.tier",
+      "zentity.lifecycle",
+    ]);
+    // The payment terms the client sent reach the wallet by design.
+    const isApprovedTerms = (path: string) =>
+      path.startsWith("authorization_details");
+    const leaves = artifacts.flatMap(({ audience, value }) =>
+      stringLeaves(value).map((leaf) => ({ ...leaf, audience }))
+    );
+    const crossAudience = leaves.filter((leaf) =>
+      leaves.some(
+        (other) =>
+          other.audience !== leaf.audience && other.value === leaf.value
+      )
+    );
+    expect(
+      [...new Set(crossAudience.map((leaf) => leaf.path))].filter(
+        (path) => !(residuals.has(path) || isApprovedTerms(path))
+      )
+    ).toEqual([]);
+
+    // The user and the agent each get one value per audience.
+    const subjects = (path: string) =>
+      new Set(
+        leaves.filter((leaf) => leaf.path === path).map((leaf) => leaf.audience)
+      ).size;
+    expect(subjects("sub")).toBe(3);
+    expect(subjects("act.sub")).toBe(3);
+
+    // No server-side identifier reaches any artifact.
+    const records = await db.select().from(cibaApprovals).all();
+    const serialized = JSON.stringify(artifacts.map(({ value }) => value));
+    for (const secret of [
+      userId,
+      sessionId,
+      hostId,
+      ...records.flatMap((row) => [
+        row.id,
+        row.requestId,
+        row.authContextId ?? "absent",
+      ]),
+    ]) {
+      expect(serialized).not.toContain(secret);
+    }
   });
 });

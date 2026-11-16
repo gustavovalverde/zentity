@@ -158,11 +158,21 @@ export function resourceAccessTokenPlugin() {
         }
       ),
       introspectZentityAccessToken: createAuthEndpoint.serverOnly(
-        { method: "POST", body: z.object({ token: z.string().min(1) }) },
+        {
+          method: "POST",
+          body: z.object({
+            token: z.string().min(1),
+            clientId: z.string().min(1).optional(),
+          }),
+        },
         async (ctx) => {
-          const { token } = ctx.body;
-          const payload =
-            await oauthProviderApi(ctx).validateAccessToken(token);
+          const { token, clientId } = ctx.body;
+          // RFC 7662 §4: with a caller, only the token's client or a resource
+          // server linked to its audience sees it as active.
+          const payload = await oauthProviderApi(ctx).validateAccessToken(
+            token,
+            clientId
+          );
           const active =
             payload.active === true && isZentityAccessToken(token, payload);
           return ctx.json({

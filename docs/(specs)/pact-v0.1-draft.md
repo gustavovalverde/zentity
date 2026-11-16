@@ -822,47 +822,45 @@ No authentication required for either endpoint.
 
 **Authentication.** Requires a `client_credentials` access token with `agent:introspect` scope.
 
+**Authorization.** The AS answers as active only for the client the token was issued to, or for a resource server it has linked to one of the token's audiences (RFC 7662 §4). A token without an audience outside the AS, such as an opaque token, passes only for its issuing client.
+
 **Request:** `application/x-www-form-urlencoded` or `application/json` with a `token` field.
+
+**Inactive response:** every inactive case, including an unauthorized caller, an unknown, expired, or revoked token, a token without a verified agent, and a session that is no longer active, is exactly:
+
+```json
+{ "active": false }
+```
 
 **Active response:**
 
 ```json
 {
   "active": true,
-  "client_id": "<RP client_id>",
-  "scope": "openid purchase",
-  "sub": "<pairwise user id projected for the introspecting client>",
-  "aud": "<RP client_id>",
-
-  "agent": { "id": "<pairwise agent id for introspecting client>", "..." },
-  "task": { "..." },
-  "capabilities": [ "..." ],
-  "oversight": { "..." },
-  "audit": { "..." },
-  "delegation": { "..." },
-
+  "client_id": "<the token's client_id>",
+  "scope": "openid",
+  "sub": "<the token's own sub>",
+  "aud": "<the token's aud, for a JWT>",
+  "iat": 1711000000,
+  "exp": 1711003600,
+  "act": { "sub": "<the token's own act.sub>", "sub_profile": "service" },
+  "capabilities": [ { "action": "check_compliance" } ],
+  "oversight": { "method": "capability_grant", "approved_at": 1711000000 },
+  "delegation": { "depth": 0, "max_depth": 1 },
+  "aap_claims_version": 2,
   "zentity": {
-    "attestation": {
-      "tier": "attested",
-      "provider": "Anthropic"
-    },
-    "lifecycle": {
-      "status": "active",
-      "created_at": 1711000000,
-      "last_active_at": 1711002000,
-      "idle_expires_at": 1711003800,
-      "max_expires_at": 1711086400
-    }
+    "attestation": { "tier": "attested", "verified": true, "provider": "Anthropic" },
+    "lifecycle": "active"
   }
 }
 ```
 
 **Key behaviors:**
 
-- Session lifecycle is re-evaluated at query time. A session that expired between token issuance and introspection returns `active: false`.
-- `sub` and `agent.id` MUST come from a consistent caller-relative pairwise view. If the server cannot safely re-project `sub` for the introspecting client, it MUST omit `sub` rather than leak another client's pairwise identifier.
-- `client_id` and `aud` continue to identify the token that was issued, not the introspector's own client registration.
-- If `assertion_verified` was `false` on the CIBA request, the approval record names no agent, and the response is `{ "active": false }`.
+- Session lifecycle is re-evaluated at query time. A session that expired or was revoked between token issuance and introspection returns `{ "active": false }`.
+- `sub` and `act` are the token's own values, never re-projected for the caller. An authorized caller already holds or serves the token, so it learns no identifier the token does not show it. For an opaque token, `sub` is the issuing client's subject.
+- `client_id` and `aud` identify the token that was issued, not the introspector's own client registration.
+- `capabilities`, `oversight`, `delegation`, and `aap_claims_version` come from the AS's approval record (§7.1). No session, host, or approval identifier and no lifecycle timestamp appear.
 
 ### 10.4 A2A Agent Card (Informational)
 
