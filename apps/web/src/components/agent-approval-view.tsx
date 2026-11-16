@@ -106,9 +106,13 @@ function RequestedClaimsSection({
             </span>
           </li>
         ))}
-        {otherLabels.map(({ scope, label }) => (
+        {otherLabels.map(({ scope, label, inline }) => (
           <li className="flex items-start gap-2" key={scope}>
-            <AlertTriangle className="mt-0.5 size-3.5 shrink-0 text-warning" />
+            {inline ? (
+              <BadgeCheck className="mt-0.5 size-3.5 shrink-0 text-success" />
+            ) : (
+              <AlertTriangle className="mt-0.5 size-3.5 shrink-0 text-warning" />
+            )}
             <span className="first-letter:uppercase">{label}</span>
           </li>
         ))}

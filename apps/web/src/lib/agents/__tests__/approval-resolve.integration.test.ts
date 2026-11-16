@@ -234,8 +234,8 @@ describe("resolveCibaApprovalData", () => {
       page_only: true,
       passkey_available: false,
       scope_labels: [
-        { scope: "compliance:read", label: "compliance status" },
-        { scope: "email", label: "email address" },
+        { scope: "compliance:read", label: "compliance status", inline: true },
+        { scope: "email", label: "email address", inline: false },
       ],
     });
 

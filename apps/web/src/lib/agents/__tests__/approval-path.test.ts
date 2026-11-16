@@ -34,7 +34,9 @@ describe("approvalPolicy", () => {
       grantCapability: "check_compliance",
       hasIdentityScopes: false,
       inlineApprove: true,
-      labels: [{ scope: "compliance:read", label: "compliance status" }],
+      labels: [
+        { scope: "compliance:read", label: "compliance status", inline: true },
+      ],
       pageOnly: false,
     });
     expect(
@@ -104,7 +106,9 @@ describe("approvalPolicy", () => {
         ceremony: "session",
         grantCapability: null,
         pageOnly: true,
-        labels: [{ scope: "custom:thing", label: "custom:thing" }],
+        labels: [
+          { scope: "custom:thing", label: "custom:thing", inline: false },
+        ],
       })
     );
   });

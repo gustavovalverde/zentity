@@ -334,14 +334,24 @@ describe("AgentApprovalView", () => {
       requirement: {
         approval_requirement: "session",
         scope_labels: [
-          { scope: "compliance:read", label: "compliance status" },
-          { scope: "email", label: "email address" },
+          {
+            scope: "compliance:read",
+            label: "compliance status",
+            inline: true,
+          },
+          { scope: "email", label: "email address", inline: false },
         ],
       },
     });
 
-    expect(screen.getByText("compliance status")).toBeTruthy();
-    expect(screen.getByText("email address")).toBeTruthy();
+    const iconClass = (label: string) =>
+      screen
+        .getByText(label)
+        .closest("li")
+        ?.querySelector("svg")
+        ?.getAttribute("class");
+    expect(iconClass("compliance status")).toContain("text-success");
+    expect(iconClass("email address")).toContain("text-warning");
   });
 
   it("records an approval opened from the email link", async () => {

@@ -466,6 +466,8 @@ const UNKNOWN_DETAIL_ROW: ApprovalPolicyRow = {
 };
 
 export interface ScopeLabel {
+  /** Whether a notification may approve this item inline. */
+  inline: boolean;
   label: string;
   scope: string;
 }
@@ -564,6 +566,7 @@ export function approvalPolicy(request: ApprovalRequest): ApprovalPolicy {
     labels: scopes.map((scope, index) => ({
       scope,
       label: scopeRows[index]?.label ?? scope,
+      inline: scopeRows[index]?.inline ?? false,
     })),
     pageOnly,
   };
