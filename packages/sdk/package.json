@@ -1,6 +1,17 @@
 {
   "name": "@zentity/sdk",
   "version": "0.1.0",
+  "description": "Zentity SDK for agents, relying parties, and installed apps: first-party OAuth, DPoP, CIBA approvals, proof-of-human, and x402 payments.",
+  "license": "SEE LICENSE IN LICENSE",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/gustavovalverde/zentity.git",
+    "directory": "packages/sdk"
+  },
+  "homepage": "https://github.com/gustavovalverde/zentity/tree/main/packages/sdk#readme",
+  "bugs": {
+    "url": "https://github.com/gustavovalverde/zentity/issues"
+  },
   "type": "module",
   "sideEffects": false,
   "engines": {

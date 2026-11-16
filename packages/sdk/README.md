@@ -47,7 +47,7 @@ const agent = createAgent({
 ## Sub-paths
 
 - `@zentity/sdk`: agent runtime helpers
-- `@zentity/sdk/rp`: relying-party token verification, DPoP, x402 helpers
+- `@zentity/sdk/rp`: relying-party token verification, DPoP, proof-of-human, x402 helpers
 - `@zentity/sdk/protocol`: shared protocol types such as `AccessTokenClaims`
 - `@zentity/sdk/agent-contract`: agent bootstrap scopes and the `agent-configuration` document schema shared by Zentity and agent runtimes
 - `@zentity/sdk/fpa`: first-party app auth
@@ -82,13 +82,73 @@ With `accessToken` set, the proof carries the token hash (`ath`) and the request
 
 The retry sends the request body again. Pass a body that can be read twice, such as a string or `URLSearchParams`, not a stream.
 
-Proofs use the request URL without its query as `htu`. A URL with a fragment is rejected.
+Proofs use the request URL without its query and fragment as `htu` (RFC 9449 §4.2). The client drops a fragment instead of failing, because a fragment is never sent on the wire, so the proof still names the same origin and path as the request.
 
 Each client keeps its own nonces. When a server requires nonces, a new client needs one extra round trip to learn the nonce. Reuse one client per key instead of creating one per request.
 
-## Verifying DPoP Proofs
+## Verifying Tokens and DPoP Proofs
 
-The SDK signs DPoP proofs but does not verify them. A relying party that accepts DPoP-bound requests verifies them with Better Auth's `verifyAccessTokenRequest`, or `verifyDpopProof` for a proof alone, from `@better-auth/core/oauth2`. These check the proof's signature, method, URL, age, access-token hash, and key binding, reject a replayed `jti`, and can require server-provided nonces.
+`createOpenIdTokenVerifier` verifies a signed token against the issuer's discovery document and JWKS. It checks the signature and issuer. Pass the audience you expect.
+
+```ts
+import { createOpenIdTokenVerifier } from "@zentity/sdk/rp";
+
+const verifier = createOpenIdTokenVerifier({ issuerUrl });
+const { payload } = await verifier.verify(accessToken, {
+  audience: "https://rp.example",
+});
+```
+
+This checks the token, not the request. A DPoP-bound access token (`cnf.jkt` set) must also arrive with a valid DPoP proof, so a relying party that accepts DPoP-bound tokens verifies the proof as RFC 9449 §4.3 requires:
+
+- The proof is an ES256 `dpop+jwt` signed with the key in its own `jwk` header.
+- `htm` and `htu` match the request method and URL without query and fragment, and `iat` is recent.
+- `ath` is the SHA-256 hash of the access token, and the key's thumbprint equals the token's `cnf.jkt`.
+- The `jti` has not been seen before, so a captured proof cannot be replayed.
+- When the server requires nonces (RFC 9449 §8 and §9), the proof carries a current server-provided nonce.
+
+The SDK signs DPoP proofs but does not verify them. Any RFC 9449 verifier works. With Better Auth, `verifyAccessTokenRequest` and `verifyDpopProof` from `@better-auth/core/oauth2` cover the first four checks, including replay protection, from the stable 1.7 line onward. Server-provided nonces need `@better-auth/core` 1.8.0-beta.8 or later, because stable 1.7 has no nonce support. A verifier must stay strict about `htu`: it rejects a proof whose `htu` carries a fragment, even though this client never produces one.
+
+## Proof of Human
+
+`requestProofOfHumanToken` asks the issuer for a proof-of-human token with a DPoP-bound access token. `createProofOfHumanTokenVerifier` checks the issuer signature and returns the claims. `identityStrengthTier` maps the identity strength to a number for threshold checks.
+
+```ts
+import {
+  createDpopClient,
+  createProofOfHumanTokenVerifier,
+  identityStrengthTier,
+  requestProofOfHumanToken,
+} from "@zentity/sdk/rp";
+
+const result = await requestProofOfHumanToken({
+  accessToken,
+  dpopClient: await createDpopClient(),
+  proofOfHumanUrl: `${issuerUrl}/oauth2/proof-of-human`,
+});
+
+if (result.ok) {
+  const verifier = createProofOfHumanTokenVerifier({ jwksUrl });
+  const { poh } = await verifier.verify(result.token);
+  const humanWithDocument = poh.humanity.proven && identityStrengthTier(poh) >= 1;
+}
+```
+
+Read `result.unverifiedClaims` only to decide what to show. Rely on the verified `poh` claims for access decisions.
+
+## x402 Payment Required
+
+`createPaymentRequired` builds the x402 v2 `402` response with the `PAYMENT-REQUIRED` header. Declare Zentity's compliance requirement in `extensions.zentity`.
+
+```ts
+import { createPaymentRequired } from "@zentity/sdk/rp";
+
+return createPaymentRequired({
+  accepts: { scheme: "exact", network: "eip155:84532", payTo, amount: "1", asset, maxTimeoutSeconds: 300 },
+  resource: { url: "/api/premium" },
+  extensions: { zentity: { minComplianceLevel: 2, pohIssuer: issuerUrl } },
+});
+```
 
 ## x402 Selection
 
@@ -107,11 +167,9 @@ errors that carry one of these codes expose it on their `code` property.
 - `token_refresh_failed`
 - `use_dpop_nonce`
 
-## Release Status
+## Requirements
 
-The package is ready for internal workspace consumers. Public npm release is
-deferred until the PRD-27 publish gate is green across PRD-37, PRD-38, and
-PRD-39.
+Node.js 24 or later. The package ships ESM and CommonJS builds with types for both, and the exports map resolves every sub-path. Resolve types with `moduleResolution` set to `bundler`, `node16`, or `nodenext`; the classic `node10` mode cannot read sub-path exports. The CommonJS build loads `jose`, which is ESM-only, so type-check CommonJS consumers with `module: "nodenext"`.
 
 ## Build Contract
 
