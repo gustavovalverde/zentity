@@ -149,12 +149,12 @@ vi.mock("@/lib/identity/validity/transition", () => ({
 }));
 
 const authedUserSession = {
-  user: { id: "user-123", twoFactorEnabled: true },
+  user: { id: "user-123" },
   session: { id: "session-123" },
 } as unknown as Session;
 
 const alternateUserSession = {
-  user: { id: "user-456", twoFactorEnabled: true },
+  user: { id: "user-456" },
   session: { id: "session-456" },
 } as unknown as Session;
 

@@ -156,7 +156,7 @@ function createTier1Posture(): SecurityPosture {
 }
 
 const authedSession = {
-  user: { id: "test-user", twoFactorEnabled: true },
+  user: { id: "test-user" },
   session: { id: "test-session" },
 } as unknown as Session;
 

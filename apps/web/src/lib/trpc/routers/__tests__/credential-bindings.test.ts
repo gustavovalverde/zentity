@@ -64,7 +64,7 @@ vi.mock("@/lib/db/queries/privacy", async (importOriginal) => {
 });
 
 const session = {
-  user: { id: "user-123", twoFactorEnabled: true },
+  user: { id: "user-123" },
   session: { id: "session-123" },
 } as unknown as Session;
 

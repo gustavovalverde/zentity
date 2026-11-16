@@ -45,13 +45,7 @@ import {
   isAPIError,
 } from "better-auth/api";
 import { nextCookies } from "better-auth/next-js";
-import {
-  admin,
-  anonymous,
-  jwt,
-  magicLink,
-  twoFactor,
-} from "better-auth/plugins";
+import { admin, anonymous, jwt, magicLink } from "better-auth/plugins";
 import { organization } from "better-auth/plugins/organization";
 import { and, eq, inArray, isNull } from "drizzle-orm";
 import { decodeJwt, jwtVerify } from "jose";
@@ -214,7 +208,6 @@ import {
   accounts,
   passkeys,
   sessions,
-  twoFactor as twoFactorTable,
   users,
   verifications,
   walletAddresses,
@@ -259,7 +252,6 @@ const betterAuthSchema = {
   session: sessions,
   account: accounts,
   verification: verifications,
-  twoFactor: twoFactorTable,
   passkey: passkeys,
   walletAddress: walletAddresses,
   oauthClient: oauthClients,
@@ -2494,12 +2486,6 @@ export const auth = betterAuth({
       // The status list token is minted after the verifier snapshots the clock.
       clockSkewSeconds: 30,
       requiredClaimKeys: ["verification_level", "verified"],
-    }),
-    // Two-factor authentication (TOTP) as optional backup for password users
-    // Note: TOTP cannot replace passkey for FHE key access
-    twoFactor({
-      issuer: "Zentity",
-      allowPasswordless: true,
     }),
     haip({
       vpRequestExpiresInSeconds: 300,

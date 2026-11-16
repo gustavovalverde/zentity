@@ -14,7 +14,6 @@ import {
   accounts,
   authenticationContexts,
   sessions,
-  users,
   verifications,
   walletAddresses,
 } from "@/lib/db/schema/auth";
@@ -734,28 +733,6 @@ describe("Authorization Challenge Endpoint", () => {
 
       expect(replay.status).toBe(400);
       expect(replay.json.authorization_code).toBeUndefined();
-    });
-
-    it("sends a user with two-factor enabled to the browser after the password", async () => {
-      const userId = await createUserWithOpaque(TEST_EMAIL);
-      await db
-        .update(users)
-        .set({ twoFactorEnabled: true })
-        .where(eq(users.id, userId))
-        .run();
-
-      const { round3 } = await signInWithOpaque(key);
-
-      expect(round3.status).toBe(403);
-      expect(round3.json.error).toBe("redirect_to_web");
-      expect(round3.json.authorization_code).toBeUndefined();
-      expect(
-        await db
-          .select()
-          .from(sessions)
-          .where(eq(sessions.userId, userId))
-          .all()
-      ).toHaveLength(0);
     });
 
     it("keeps the user's pending CIBA requests when the code cannot be issued after sign-in", async () => {

@@ -36,12 +36,12 @@ vi.mock("@/env", async (importOriginal) => {
 });
 
 const authedSession = {
-  user: { id: "test-user-123", twoFactorEnabled: true },
+  user: { id: "test-user-123" },
   session: { id: "test-session" },
 } as unknown as Session;
 
 const anotherUserSession = {
-  user: { id: "another-user-456", twoFactorEnabled: true },
+  user: { id: "another-user-456" },
   session: { id: "another-session" },
 } as unknown as Session;
 

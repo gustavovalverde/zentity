@@ -196,9 +196,9 @@ export function BetterAuthUIProvider({
       ? env.NEXT_PUBLIC_APP_URL
       : globalThis.window.location.origin;
 
-  // Zentity's session carries plugin-augmented fields (isAnonymous,
-  // twoFactorEnabled) the UI lib's base AnyAuthClient doesn't model; the extra
-  // fields make the client structurally incompatible without a cast.
+  // Zentity's session carries plugin-augmented fields (isAnonymous) the UI
+  // lib's base AnyAuthClient doesn't model; the extra fields make the client
+  // structurally incompatible without a cast.
   const uiAuthClient = authUiClient as unknown as ComponentProps<
     typeof AuthUIProvider
   >["authClient"];
@@ -221,18 +221,15 @@ export function BetterAuthUIProvider({
       redirectTo="/dashboard"
       replace={router.replace}
       social={{ providers: socialProviders }}
-      twoFactor={["totp"]}
       viewPaths={{
         SIGN_IN: "sign-in",
         SIGN_UP: "sign-up",
         MAGIC_LINK: "magic-link",
         FORGOT_PASSWORD: "recovery/password",
         RESET_PASSWORD: "recovery/password/reset",
-        TWO_FACTOR: "verify-2fa",
         SIGN_OUT: "sign-out",
         CALLBACK: "callback",
         EMAIL_VERIFICATION: "email-verification",
-        RECOVER_ACCOUNT: "recovery",
       }}
     >
       {children}

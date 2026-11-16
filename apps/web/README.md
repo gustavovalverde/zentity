@@ -229,7 +229,6 @@ src/
 | `/recovery/passkey` | Register a new passkey after magic-link sign-in and move the vault to it |
 | `/recovery/password` | Request a password reset link |
 | `/recovery/vault` | Connect sign-in methods that can't open the vault yet, or start over with new keys |
-| `/verify-2fa` | Two-factor verification UI |
 
 ## ZK Proof Development
 
