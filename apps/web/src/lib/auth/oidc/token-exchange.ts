@@ -96,7 +96,8 @@ function invalidScope(description: string): APIError {
 /**
  * The scopes the exchanged token carries, always a subset of the subject
  * token's. Without a requested scope it keeps the subject's scopes the client
- * registered, except agent bootstrap scopes, which are issued only on request.
+ * registered, except `offline_access`, which it never issues, and the agent
+ * bootstrap scopes, which it issues only on request.
  */
 function resolveExchangedScopes(input: {
   clientScopes: readonly string[] | undefined;
