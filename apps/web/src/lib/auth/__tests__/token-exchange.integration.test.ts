@@ -29,6 +29,7 @@ import {
   oauthAccessTokens,
   oauthClients,
 } from "@/lib/db/schema/oauth-provider";
+import { getReleaseId } from "@/lib/observability/release";
 import {
   createTestUser,
   findStoredOpaqueAccessToken,
@@ -674,6 +675,34 @@ describe("Token Exchange (RFC 8693)", () => {
         max_depth: 1,
         parent_jti: parentPayload.jti,
       });
+    });
+
+    it("falls back to the build release id when the parent token has no audit claim", async () => {
+      const subjectToken = await mintAccessToken(userId, {
+        scope: "openid",
+        aap: {
+          aap_claims_version: 1,
+          act: {
+            host_attestation: "unverified",
+            session_id: "session-123",
+            sub: "pairwise-agent-subject",
+            type: "mcp-agent",
+          },
+        },
+      });
+
+      const { status, json } = await postTokenWithDpop({
+        grant_type: TOKEN_EXCHANGE_GRANT_TYPE,
+        client_id: TEST_CLIENT_ID,
+        subject_token: subjectToken,
+        subject_token_type: ACCESS_TOKEN_TYPE,
+      });
+
+      expect(status).toBe(200);
+      const payload = await exchangedClaims(json.access_token as string);
+      expect(
+        (payload.audit as { release_id?: string } | undefined)?.release_id
+      ).toBe(getReleaseId());
     });
 
     it("rejects second-hop delegation once max_depth is reached", async () => {

@@ -24,6 +24,8 @@ function setReleaseEnv(
 
 afterEach(() => {
   vi.unstubAllEnvs();
+  vi.doUnmock("@/env");
+  vi.doUnmock("node:child_process");
 });
 
 describe("getReleaseId", () => {
@@ -82,5 +84,33 @@ describe("with only GIT_SHA set", () => {
       "client-1"
     );
     expect(contribution?.claims.audit.release_id).toBe(sha);
+  });
+});
+
+describe("build-info without a known commit", () => {
+  it("does not shell out to git in production", async () => {
+    setReleaseEnv({});
+    vi.doMock("@/env", () => ({ env: { NODE_ENV: "production" } }));
+    const execSync = vi.fn(() => Buffer.from("from-git\n"));
+    vi.doMock("node:child_process", () => ({ execSync }));
+
+    const { GET } = await import("@/app/api/status/build-info/route");
+    const body = await (GET() as Response).json();
+
+    expect(body.gitSha).toBe("dev");
+    expect(execSync).not.toHaveBeenCalled();
+  });
+
+  it("reads the local git commit outside production", async () => {
+    setReleaseEnv({});
+    vi.doMock("@/env", () => ({ env: { NODE_ENV: "development" } }));
+    vi.doMock("node:child_process", () => ({
+      execSync: () => Buffer.from("from-git\n"),
+    }));
+
+    const { GET } = await import("@/app/api/status/build-info/route");
+    const body = await (GET() as Response).json();
+
+    expect(body.gitSha).toBe("from-git");
   });
 });

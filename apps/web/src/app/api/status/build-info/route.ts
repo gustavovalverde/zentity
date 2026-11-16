@@ -2,6 +2,7 @@ import { execSync } from "node:child_process";
 
 import { NextResponse } from "next/server";
 
+import { env } from "@/env";
 import { DEV_RELEASE_ID, getReleaseId } from "@/lib/observability/release";
 
 /**
@@ -22,11 +23,11 @@ import { DEV_RELEASE_ID, getReleaseId } from "@/lib/observability/release";
 
 function getGitSha(): string {
   const releaseId = getReleaseId();
-  if (releaseId !== DEV_RELEASE_ID) {
+  if (releaseId !== DEV_RELEASE_ID || env.NODE_ENV === "production") {
     return releaseId;
   }
 
-  // Local development fallback
+  // Local development fallback; production images do not ship git
   try {
     return execSync("git rev-parse HEAD").toString().trim();
   } catch {
