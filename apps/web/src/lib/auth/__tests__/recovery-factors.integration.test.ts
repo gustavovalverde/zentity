@@ -579,6 +579,42 @@ describe("recovery factor changes on a passkey account", () => {
     });
   });
 
+  it("never rewrites the vault root under its own id", async () => {
+    const rootId = await createVault(userId);
+    const rewrite = {
+      ...newRoot(),
+      secretId: rootId,
+      blobRef: computeSecretBlobRef(rootId),
+      blobHash: "c".repeat(64),
+    };
+
+    for (const session of [
+      await sessionSignedInWith(userId, "opaque"),
+      await passkeySignIn(authenticator, true),
+    ]) {
+      await expect(
+        secrets(userId, session).storeSecret(rewrite)
+      ).rejects.toMatchObject({ code: "CONFLICT" });
+    }
+
+    const root = await db
+      .select({ blobHash: encryptedSecrets.blobHash })
+      .from(encryptedSecrets)
+      .where(eq(encryptedSecrets.id, rootId))
+      .get();
+    expect(root?.blobHash).toBe(BLOB_HASH);
+    const wrappers = await db
+      .select({ credentialId: secretWrappers.credentialId })
+      .from(secretWrappers)
+      .where(eq(secretWrappers.secretId, rootId))
+      .all();
+    expect(wrappers.map((wrapper) => wrapper.credentialId).sort()).toEqual([
+      "passkey-credential",
+      "recovery_key",
+    ]);
+    expect(mockSendEmail).not.toHaveBeenCalled();
+  });
+
   it("refuses a passkey sign-in that did not verify the user", async () => {
     const session = await passkeySignIn(authenticator, false);
 

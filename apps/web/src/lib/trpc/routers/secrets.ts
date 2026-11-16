@@ -204,7 +204,15 @@ export const secretsRouter = router({
           ctx.userId,
           VAULT_ROOT_SECRET_TYPE
         );
-        if (root && root.id !== input.secretId) {
+        if (root?.id === input.secretId) {
+          // A new vault key takes a new id, and a new credential takes
+          // `addWrapper`; rewriting the root in place would do either unchecked.
+          throw new TRPCError({
+            code: "CONFLICT",
+            message: "Encryption keys changed. Please try again.",
+          });
+        }
+        if (root) {
           await requireRecoveryFactorChange(ctx, "vault_root");
           mayReplaceRoot = true;
         }
@@ -228,14 +236,18 @@ export const secretsRouter = router({
           .get();
 
         let replaced: string[] = [];
+        if (
+          isRoot &&
+          existing &&
+          !(mayReplaceRoot && existing.id !== input.secretId)
+        ) {
+          throw new TRPCError({
+            code: "CONFLICT",
+            message: "Encryption keys changed. Please try again.",
+          });
+        }
         if (existing && existing.id !== input.secretId) {
           if (isRoot) {
-            if (!mayReplaceRoot) {
-              throw new TRPCError({
-                code: "CONFLICT",
-                message: "Encryption keys changed. Please try again.",
-              });
-            }
             // A new vault key orphans every secret wrapped under the old one.
             replaced = await deleteVaultSecrets(ctx.userId, tx);
           } else {

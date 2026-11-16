@@ -187,6 +187,8 @@ The tag is verified with timing-safe comparison on every read. A tampered or sub
 
 **Control:** The blob SHA-256 hash is computed client-side before upload and stored via a separate endpoint. On download, the client verifies the blob against this client-asserted hash. The enrollment/complete endpoint cross-validates the client hash against the server's upload record to catch buggy clients. AES-GCM authenticated encryption remains the primary integrity boundary; the client hash is defense-in-depth.
 
+A stored secret is never rewritten in place. The upload endpoint refuses a secret id that any account already stores, and `secrets.storeSecret` refuses to write the vault root under its existing id: a new vault key is stored under a new id, through the vault root replacement rule, and a new credential is added with `secrets.addWrapper`.
+
 ### JWKS Private Key Encryption at Rest
 
 **Threat:** An attacker with DB read access extracts JWKS private keys and forges tokens (id_tokens, access tokens, logout tokens).

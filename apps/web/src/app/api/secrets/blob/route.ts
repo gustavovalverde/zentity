@@ -4,6 +4,7 @@ import { requireBrowserSession } from "@/lib/auth/resource-auth";
 import {
   getEncryptedSecretById,
   getEncryptedSecretByUserAndType,
+  isSecretIdStored,
 } from "@/lib/db/queries/privacy";
 import { rateLimitResponse, secretsBlobLimiter } from "@/lib/http/rate-limit";
 import { sanitizeAndLogApiError } from "@/lib/http/route-responses";
@@ -44,6 +45,15 @@ export async function POST(request: Request): Promise<NextResponse> {
       return NextResponse.json(
         { error: "Missing secret headers" },
         { status: 400 }
+      );
+    }
+
+    // A stored secret's blob never changes: a new value is stored under a new
+    // id. Overwriting it would break its hash check, for any account.
+    if (await isSecretIdStored(secretId)) {
+      return NextResponse.json(
+        { error: "This secret is already stored." },
+        { status: 409 }
       );
     }
 
