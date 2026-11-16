@@ -77,6 +77,7 @@ const OTHER_AGENT_CLIENT = "poh-other-agent";
 const PUBLIC_AGENT_CLIENT = "poh-public-agent";
 const MERCHANT = "https://merchant.example";
 const OTHER_MERCHANT = "https://shop.example";
+const BASE64URL_JTI = /^[A-Za-z0-9_-]{22}$/;
 
 function x402Purchase(
   merchant: string,
@@ -320,7 +321,7 @@ describe("Proof-of-Human mint", () => {
     const claims = decodeJwt(token);
     expect(claims.aud).toBe(MERCHANT);
     expect(claims.iss).toBe("http://localhost:3000");
-    expect(claims.jti).toEqual(expect.stringMatching(/^[A-Za-z0-9_-]{22}$/));
+    expect(claims.jti).toEqual(expect.stringMatching(BASE64URL_JTI));
     expect((claims.exp as number) - (claims.iat as number)).toBeLessThanOrEqual(
       300
     );

@@ -34,6 +34,7 @@ vi.mock("@/lib/auth/auth-config", () => ({
 import { POST } from "./route";
 
 const TEST_DPOP_JKT = "sha256-dpop-key-thumbprint";
+const BASE64URL_JTI = /^[A-Za-z0-9_-]{22}$/;
 
 function makeRequest(headers: Record<string, string> = {}): Request {
   return new Request("http://localhost/api/auth/oauth2/proof-of-human", {
@@ -187,7 +188,7 @@ describe("POST /api/auth/oauth2/proof-of-human", () => {
     expect(payload.sub).toBe("pairwise-sub-for-client-a");
     // Client mode: the token is for the client that presented the token.
     expect(payload.aud).toBe("client-a");
-    expect(payload.jti).toEqual(expect.stringMatching(/^[A-Za-z0-9_-]{22}$/));
+    expect(payload.jti).toEqual(expect.stringMatching(BASE64URL_JTI));
     expect((payload.exp as number) - (payload.iat as number)).toBe(300);
     expect(payload).not.toHaveProperty("authorization_details");
     expect(payload).not.toHaveProperty("act");
