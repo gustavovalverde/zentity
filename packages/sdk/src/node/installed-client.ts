@@ -248,15 +248,12 @@ export function createInstalledClientAuth(
     },
     async exchangeLoginToken(exchangeOptions) {
       const { clientId } = await ensureClientCredentials();
-      const [subjectToken, discovery, dpopClient] = await Promise.all([
-        getLoginAccessToken(clientId),
-        auth.discover(),
-        auth.getOrCreateDpopClient(),
-      ]);
+      const subjectToken = await getLoginAccessToken(clientId);
+      const discovery = await auth.discover();
       return exchangeToken({
         audience: exchangeOptions.audience,
         clientId,
-        dpopClient,
+        dpopClient: await auth.getOrCreateDpopClient(),
         scope: exchangeOptions.scope,
         subjectToken,
         tokenEndpoint: discovery.token_endpoint,
