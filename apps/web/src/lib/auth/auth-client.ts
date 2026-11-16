@@ -9,13 +9,11 @@ import {
   anonymousClient,
   magicLinkClient,
   organizationClient,
-  twoFactorClient,
 } from "better-auth/client/plugins";
 import { createAuthClient } from "better-auth/react";
 
 import { env } from "@/env";
 import { opaqueClient } from "@/lib/auth/opaque/client";
-import { getSafeRedirectPath } from "@/lib/auth/redirect";
 import { siweAuthClient } from "@/lib/auth/siwe/client";
 
 // Use current origin in browser to avoid IPv4/IPv6 localhost mismatch
@@ -41,22 +39,6 @@ export const authClient = createAuthClient({
     siweAuthClient(),
     oauthProviderClient(),
     organizationClient(),
-    twoFactorClient({
-      // Redirect to 2FA verification page when TOTP is required
-      onTwoFactorRedirect: () => {
-        if (globalThis.window !== undefined) {
-          // Preserve intended destination in URL
-          const redirectTo = new URLSearchParams(
-            globalThis.window.location.search
-          ).get("redirectTo");
-          const safeRedirect = getSafeRedirectPath(redirectTo, "");
-          const url = safeRedirect
-            ? `/two-factor/verify?redirectTo=${encodeURIComponent(safeRedirect)}`
-            : "/two-factor/verify";
-          globalThis.window.location.href = url;
-        }
-      },
-    }),
   ],
 });
 

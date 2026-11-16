@@ -998,21 +998,6 @@ async function seedIdentityState(params: {
   await seedIncompleteVerificationState(params.dbUrl, userId);
 }
 
-async function resetTwoFactor(dbUrl: string, email: string) {
-  const userId = await runSql(
-    dbUrl,
-    `SELECT id FROM "user" WHERE email = '${email.replaceAll("'", "''")}';`
-  );
-  if (!userId) {
-    return;
-  }
-  await runSql(dbUrl, `DELETE FROM two_factor WHERE user_id = '${userId}';`);
-  await runSql(
-    dbUrl,
-    `UPDATE "user" SET two_factor_enabled = 0 WHERE id = '${userId}';`
-  );
-}
-
 async function resetBlockchainState(dbUrl: string) {
   await runSql(dbUrl, "DELETE FROM blockchain_attestations;");
 }
@@ -1149,11 +1134,6 @@ export default async function globalSetup(config: GlobalSetupConfig) {
         `E2E global setup failed to sign up: ${bodyText || "unknown error"}`
       );
     }
-  }
-
-  await resetTwoFactor(E2E_DB_URL, email);
-  if (DEFAULT_APP_DB_URL !== E2E_DB_URL) {
-    await resetTwoFactor(DEFAULT_APP_DB_URL, email);
   }
 
   const signInResponse = await postWithRetries(api, "/api/auth/sign-in/email", {

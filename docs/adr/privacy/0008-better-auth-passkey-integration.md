@@ -56,7 +56,7 @@ A CIBA approval that needs user verification is confirmed with a passkey asserti
 
 ### Implementation Notes: Better Auth Packages
 
-Zentity uses the published Better Auth packages without local patches. Passkey-only accounts enable TOTP and backup codes through the upstream `twoFactor({ allowPasswordless: true })` option, and Zentity's own backup-code page offers the codes as a download. See [Unpatched Better Auth](../platform/0002-better-auth-patches.md) for the decision and the history of the patches it replaced.
+Zentity uses the published Better Auth packages without local patches, and it offers no two-factor authentication. See [Unpatched Better Auth](../platform/0002-better-auth-patches.md) for the decision and the history of the patches it replaced.
 
 ## Alternatives Considered
 
@@ -77,3 +77,4 @@ Zentity uses the published Better Auth packages without local patches. Passkey-o
 
 * 2026-11-15: CIBA approvals that need user verification use a request- and session-bound passkey step-up (`passkey/step-up.ts`) that verifies without creating a session.
 * 2026-11-15: Passkey sign-in and registration record the observed UV flag through the plugin's `afterVerification` hooks, and `amr` states it (`mfa` only with UV, never `hwk`). Authenticators without UV stay accepted.
+* 2026-11-16: Removed two-factor authentication. Passkey-only accounts no longer enable TOTP or backup codes.

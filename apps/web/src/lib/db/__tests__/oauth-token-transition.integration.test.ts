@@ -10,10 +10,10 @@ import { createTestUser, resetDatabase } from "@/test-utils/db-test-utils";
 
 const TRAILING_COMMA_BEFORE_CLOSE = /,\n\)$/;
 
-async function runTransitionScript(): Promise<string> {
+async function runTransitionScript(...args: string[]): Promise<string> {
   const { stdout } = await promisify(execFile)(
     "pnpm",
-    ["exec", "tsx", "scripts/backfill-oauth-token-transition.ts"],
+    ["exec", "tsx", "scripts/backfill-oauth-token-transition.ts", ...args],
     { env: process.env }
   );
   return stdout;
@@ -46,6 +46,53 @@ async function accessTokenAuthContext() {
       sql`SELECT "table", "to", on_update, on_delete FROM pragma_foreign_key_list('oauth_access_token') WHERE "from" = 'auth_context_id'`
     ),
   };
+}
+
+function userSchema() {
+  return Promise.all([
+    db.all(
+      sql`SELECT name, type, "notnull", dflt_value, pk FROM pragma_table_info('user') ORDER BY cid`
+    ),
+    db.all(
+      sql`SELECT name, "unique" FROM pragma_index_list('user') ORDER BY name`
+    ),
+  ]);
+}
+
+async function twoFactorState() {
+  const [table] = await db.all<{ n: number }>(
+    sql`SELECT count(*) AS n FROM sqlite_master WHERE tbl_name = 'two_factor'`
+  );
+  const [column] = await db.all<{ n: number }>(
+    sql`SELECT count(*) AS n FROM pragma_table_info('user') WHERE name = 'two_factor_enabled'`
+  );
+  return { tableObjects: table?.n, column: column?.n };
+}
+
+// The production schema's two-factor table and column (release 5b4283aa),
+// holding one enrolled user.
+async function addProductionTwoFactor(userId: string): Promise<void> {
+  await db.run(sql`CREATE TABLE two_factor (
+    id text PRIMARY KEY NOT NULL,
+    secret text NOT NULL,
+    backup_codes text NOT NULL,
+    user_id text NOT NULL,
+    verified integer DEFAULT true,
+    failed_verification_count integer DEFAULT 0,
+    locked_until integer,
+    FOREIGN KEY (user_id) REFERENCES user(id) ON UPDATE no action ON DELETE cascade
+  )`);
+  await db.run(sql`CREATE INDEX twoFactor_secret_idx ON two_factor (secret)`);
+  await db.run(sql`CREATE INDEX twoFactor_userId_idx ON two_factor (user_id)`);
+  await db.run(
+    sql`ALTER TABLE user ADD two_factor_enabled integer DEFAULT false NOT NULL`
+  );
+  await db.run(
+    sql`UPDATE user SET two_factor_enabled = 1 WHERE id = ${userId}`
+  );
+  await db.run(
+    sql`INSERT INTO two_factor (id, secret, backup_codes, user_id) VALUES ('tf1', 'secret', 'codes', ${userId})`
+  );
 }
 
 // Rebuilds `oauth_access_token` as main's `pnpm db:push` (#321) leaves it.
@@ -223,5 +270,35 @@ describe("deploy backfill", () => {
       "oauth_access_token.auth_context_id: already present"
     );
     expect(await accessTokenAuthContext()).toEqual(pushed);
+  });
+
+  it("drops the two-factor table and column only after the deploy", async () => {
+    const pushed = await userSchema();
+    const userId = await createTestUser();
+    await db.run(
+      sql`INSERT INTO session (id, token, userId, expiresAt, createdAt, updatedAt)
+        VALUES ('s1', 't1', ${userId}, 0, 0, 0)`
+    );
+    await addProductionTwoFactor(userId);
+
+    expect(await runTransitionScript()).toContain(
+      "two_factor and user.two_factor_enabled: kept until --after-deploy"
+    );
+    expect(await twoFactorState()).toEqual({ tableObjects: 4, column: 1 });
+
+    expect(await runTransitionScript("--after-deploy")).toContain(
+      "two_factor and user.two_factor_enabled: dropped"
+    );
+    expect(await twoFactorState()).toEqual({ tableObjects: 0, column: 0 });
+    expect(await userSchema()).toEqual(pushed);
+    expect(
+      await db.all(
+        sql`SELECT u.id, s.id AS session FROM user u JOIN session s ON s.userId = u.id`
+      )
+    ).toEqual([{ id: userId, session: "s1" }]);
+
+    expect(await runTransitionScript("--after-deploy")).toContain(
+      "two_factor and user.two_factor_enabled: already dropped"
+    );
   });
 });

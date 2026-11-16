@@ -107,7 +107,7 @@ export const getUserCreatedAt = cache(async function getUserCreatedAt(
 
 /**
  * Check if a user has a password set via any provider that challenges
- * with one at sensitive endpoints (2FA enable/disable, password change).
+ * with one at sensitive endpoints, such as a password change.
  * Users who signed up with passkey-only or OAuth won't have a password.
  *
  * Covers both the OPAQUE provider (our PAKE flow, stores in

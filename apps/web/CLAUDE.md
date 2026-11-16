@@ -18,7 +18,7 @@ Concise index for agents and humans. Deeper architecture lives in the repo root 
 
 | Path | Purpose |
 |---|---|
-| `(auth)/` | Sign-in, sign-up, recovery, 2FA, magic link — route group shares provider shell |
+| `(auth)/` | Sign-in, sign-up, recovery, magic link — route group shares provider shell |
 | `(consent)/` | Standalone consent screens (no dashboard chrome): OAuth consent, MCP interactive, CIBA approve |
 | `.well-known/` | OAuth/OIDC/agent discovery endpoints |
 | `api/` | REST endpoints grouped by domain noun: `fhe/`, `zk/`, `ciba/`, `oauth2/`, `status/`, `rp-admin/`, `secrets/`, `password/`, `assets/` |

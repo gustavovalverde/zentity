@@ -1,11 +1,12 @@
 /**
  * Recovery factors are what a user can recover an account with: the email
- * address, the OPAQUE password, a wallet, the vault root, and the recovery
- * key. On an account that holds a passkey, binding, replacing, or removing
- * one would let a password or a stolen session turn into lasting control,
- * so every such change asks `checkRecoveryFactorChange` first. Removing a
- * passkey asks too: an account that drops its last passkey leaves the rule.
- * So does deleting the account, which removes every factor at once.
+ * address, the OPAQUE password, a wallet, a linked social sign-in account,
+ * the vault root, and the recovery key. On an account that holds a passkey,
+ * binding, replacing, or removing one would let a password or a stolen
+ * session turn into lasting control, so every such change asks
+ * `checkRecoveryFactorChange` first. Removing a passkey asks too: an account
+ * that drops its last passkey leaves the rule. So does deleting the account,
+ * which removes every factor at once.
  *
  * Allowed states (NIST SP 800-63B-4 §4.1.2.1, OWASP ASVS 5 V7.5.1):
  * - `no_passkey`: the account holds no passkey, and keeps today's rules.
@@ -60,6 +61,7 @@ export type RecoveryFactorChange =
   | "passkey"
   | "password"
   | "wallet"
+  | "social_account"
   | "vault_reset"
   | "vault_root"
   | "recovery_key";
@@ -249,7 +251,7 @@ export async function checkRecoveryFactorChange(input: {
 
 // ── Notices ───────────────────────────────────────────────
 
-export type RecoveryFactorNotice =
+type RecoveryFactorNotice =
   | "email_changed"
   | "passkey_removed"
   | "password_added"
@@ -259,12 +261,17 @@ export type RecoveryFactorNotice =
   | "recovery_key_added"
   | "recovery_key_replaced"
   | "recovery_key_removed"
+  | "social_account_linked"
+  | "social_account_removed"
   | "vault_reset"
   | "vault_root_replaced"
   | "wallet_removed";
 
 const NOTICE_SUMMARIES: Record<
-  Exclude<RecoveryFactorNotice, "email_changed">,
+  Exclude<
+    RecoveryFactorNotice,
+    "email_changed" | "social_account_linked" | "social_account_removed"
+  >,
   string
 > = {
   passkey_removed: "A passkey was removed from your Zentity account.",
@@ -286,9 +293,41 @@ const NOTICE_SUMMARIES: Record<
 // A notice is useful for a day; a device offline longer than that gets none.
 const NOTICE_PUSH_TTL_MS = 24 * 60 * 60 * 1000;
 
+const SOCIAL_PROVIDER_NAMES: Record<string, string> = {
+  github: "GitHub",
+  google: "Google",
+};
+
 function maskEmail(email: string): string {
   const [local = "", domain = ""] = email.split("@");
   return `${local.slice(0, 1)}•••@${domain}`;
+}
+
+function socialAccountName(providerId: string | undefined): string {
+  const name = providerId ? SOCIAL_PROVIDER_NAMES[providerId] : undefined;
+  return name ? `${name} account` : "social sign-in account";
+}
+
+interface RecoveryFactorNoticeInput {
+  /** For `email_changed`: the address before and after the change. */
+  emailChange?: { from: string; to: string };
+  notice: RecoveryFactorNotice;
+  /** For the social account notices: the account's provider. */
+  providerId?: string;
+  userId: string;
+}
+
+function noticeSummary(input: RecoveryFactorNoticeInput, email: string) {
+  switch (input.notice) {
+    case "email_changed":
+      return `The email of your Zentity account was changed to ${maskEmail(input.emailChange?.to ?? email)}.`;
+    case "social_account_linked":
+      return `A ${socialAccountName(input.providerId)} was linked to your Zentity account and can now sign in to it.`;
+    case "social_account_removed":
+      return `A ${socialAccountName(input.providerId)} was unlinked from your Zentity account.`;
+    default:
+      return NOTICE_SUMMARIES[input.notice];
+  }
 }
 
 function hasMailbox(email: string): boolean {
@@ -301,12 +340,9 @@ function hasMailbox(email: string): boolean {
  * address. Anonymous accounts are still in sign-up and get none. Never
  * throws: a failed notice must not undo the change.
  */
-export async function notifyRecoveryFactorChange(input: {
-  notice: RecoveryFactorNotice;
-  /** For `email_changed`: the address before and after the change. */
-  emailChange?: { from: string; to: string };
-  userId: string;
-}): Promise<void> {
+export async function notifyRecoveryFactorChange(
+  input: RecoveryFactorNoticeInput
+): Promise<void> {
   try {
     const user = await db
       .select({ email: users.email, isAnonymous: users.isAnonymous })
@@ -316,10 +352,7 @@ export async function notifyRecoveryFactorChange(input: {
     if (!user || user.isAnonymous) {
       return;
     }
-    const summary =
-      input.notice === "email_changed"
-        ? `The email of your Zentity account was changed to ${maskEmail(input.emailChange?.to ?? user.email)}.`
-        : NOTICE_SUMMARIES[input.notice];
+    const summary = noticeSummary(input, user.email);
     const recipient = input.emailChange?.from ?? user.email;
     const settingsUrl = `${getAppOrigin()}/dashboard/settings`;
 
@@ -391,31 +424,41 @@ async function requireReverifiedSession(
 }
 
 /** The notice an allowed endpoint call sends once it succeeds. */
-const pendingNotice = defineRequestState<{
-  notice: RecoveryFactorNotice;
-  userId: string;
-} | null>(() => null);
+const pendingNotice = defineRequestState<RecoveryFactorNoticeInput | null>(
+  () => null
+);
 
 async function requireReverifiedRemoval(
   ctx: HookCtx,
   change: RecoveryFactorChange,
-  notice: RecoveryFactorNotice
+  notice: Omit<RecoveryFactorNoticeInput, "userId">
 ): Promise<void> {
   const userId = await requireReverifiedSession(ctx, change);
   if (userId) {
-    await pendingNotice.set({ notice, userId });
+    await pendingNotice.set({ ...notice, userId });
   }
 }
 
-// Unlinking these providers removes a recovery factor; other providers only
-// sign in.
-const UNLINKED_FACTORS: Record<
-  string,
-  { change: RecoveryFactorChange; notice: RecoveryFactorNotice }
-> = {
-  eip712: { change: "wallet", notice: "wallet_removed" },
-  opaque: { change: "password", notice: "password_removed" },
+interface AccountFactor {
+  change: RecoveryFactorChange;
+  removed: RecoveryFactorNotice;
+}
+
+// What an account of each provider recovers the account with. Every other
+// account comes from a social provider's OAuth callback or `/link-social`.
+const ACCOUNT_FACTORS: Record<string, AccountFactor> = {
+  credential: { change: "password", removed: "password_removed" },
+  eip712: { change: "wallet", removed: "wallet_removed" },
+  opaque: { change: "password", removed: "password_removed" },
 };
+const SOCIAL_ACCOUNT_FACTOR: AccountFactor = {
+  change: "social_account",
+  removed: "social_account_removed",
+};
+
+function accountFactor(providerId: string): AccountFactor {
+  return ACCOUNT_FACTORS[providerId] ?? SOCIAL_ACCOUNT_FACTOR;
+}
 
 async function beforeUnlinkAccount(ctx: HookCtx) {
   const session = await getSessionFromCtx(ctx);
@@ -431,9 +474,32 @@ async function beforeUnlinkAccount(ctx: HookCtx) {
       and(eq(accounts.id, accountId), eq(accounts.userId, session.user.id))
     )
     .get();
-  const factor = account ? UNLINKED_FACTORS[account.providerId] : undefined;
-  if (factor) {
-    await requireReverifiedRemoval(ctx, factor.change, factor.notice);
+  if (!account) {
+    // The endpoint answers for an account the user does not hold.
+    return;
+  }
+  const factor = accountFactor(account.providerId);
+  await requireReverifiedRemoval(ctx, factor.change, {
+    notice: factor.removed,
+    providerId: account.providerId,
+  });
+}
+
+/**
+ * Tells the user when a social sign-in account is linked, through
+ * `/link-social` or by a social sign-in that matched the account's verified
+ * address.
+ */
+async function afterAccountCreated(account: {
+  providerId: string;
+  userId: string;
+}) {
+  if (accountFactor(account.providerId) === SOCIAL_ACCOUNT_FACTOR) {
+    await notifyRecoveryFactorChange({
+      notice: "social_account_linked",
+      providerId: account.providerId,
+      userId: account.userId,
+    });
   }
 }
 
@@ -706,17 +772,32 @@ async function afterMagicLinkVerify(ctx: HookCtx) {
 export function recoveryFactorsPlugin() {
   return {
     id: "zentity-recovery-factors",
+    init: () => ({
+      options: {
+        databaseHooks: {
+          account: { create: { after: afterAccountCreated } },
+        },
+      },
+    }),
     hooks: {
       before: [
         {
           matcher: (ctx) => ctx.path === "/passkey/delete-passkey",
           handler: createAuthMiddleware((ctx) =>
-            requireReverifiedRemoval(ctx, "passkey", "passkey_removed")
+            requireReverifiedRemoval(ctx, "passkey", {
+              notice: "passkey_removed",
+            })
           ),
         },
         {
           matcher: (ctx) => ctx.path === "/unlink-account",
           handler: createAuthMiddleware(beforeUnlinkAccount),
+        },
+        {
+          matcher: (ctx) => ctx.path === "/link-social",
+          handler: createAuthMiddleware(async (ctx) => {
+            await requireReverifiedSession(ctx, "social_account");
+          }),
         },
         {
           matcher: (ctx) => ctx.path === "/delete-user",

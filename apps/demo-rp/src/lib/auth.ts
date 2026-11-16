@@ -28,8 +28,6 @@ import {
 const STRIP_FIELDS = new Set([
   "is_anonymous",
   "isAnonymous",
-  "two_factor_enabled",
-  "twoFactorEnabled",
   "passwordless_signup",
   "passwordlessSignup",
 ]);
