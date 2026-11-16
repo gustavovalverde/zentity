@@ -4,6 +4,30 @@ import { buildCibaPushPayload } from "../push-sender";
 
 const APPROVAL_URL = "https://app.zentity.xyz/approve?auth_req_id=req-1";
 
+const EUR_PURCHASE = {
+  type: "purchase",
+  merchant: { name: "Corner Books" },
+  item: "A paperback",
+  amount: { value: "12.00", currency: "EUR" },
+};
+
+const X402_PURCHASE = {
+  type: "x402_purchase",
+  resource_url:
+    "https://merchant.example/api/x402/access?resourceId=verified-identity",
+  resource_description: "Financial analytics",
+  payment_requirements: {
+    scheme: "exact",
+    network: "eip155:84532",
+    amount: "1",
+    asset: "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
+    payTo: "0x000000000000000000000000000000000000dEaD",
+    maxTimeoutSeconds: 300,
+    extra: { name: "USDC", version: "2" },
+  },
+  min_identity_strength: "documentary_full",
+};
+
 describe("buildCibaPushPayload", () => {
   it("sets requiresVaultUnlock to true for identity-scoped requests", () => {
     const payload = buildCibaPushPayload({
@@ -182,5 +206,41 @@ describe("buildCibaPushPayload", () => {
     });
 
     expect(payload.data).not.toHaveProperty("requiresBiometric");
+  });
+
+  // R4 and R18: purchases are described in server text, page only.
+  it("describes an x402 purchase in server text and never inline", () => {
+    const payload = buildCibaPushPayload({
+      requestId: "req-x402",
+      approvalUrl: APPROVAL_URL,
+      scope: "openid poh",
+      clientName: "Shopping Agent",
+      bindingMessage: "Pay $1 to merchant.example",
+      authorizationDetails: [X402_PURCHASE],
+    });
+
+    expect(payload.body).toBe(
+      "Shopping Agent: Prove your identity to merchant.example (Document, full)"
+    );
+    expect(payload.data.inlineApprove).toBe(false);
+    expect(payload.data).not.toHaveProperty("kind");
+    expect(JSON.stringify(payload)).not.toContain("$");
+  });
+
+  it("describes a direct purchase in its currency", () => {
+    const payload = buildCibaPushPayload({
+      requestId: "req-buy",
+      approvalUrl: APPROVAL_URL,
+      scope: "openid identity.name identity.address",
+      clientName: "Shopping Agent",
+      bindingMessage: "Buy from Corner Books",
+      authorizationDetails: [EUR_PURCHASE],
+    });
+
+    expect(payload.body).toBe(
+      "Shopping Agent: Purchase stated by the agent: A paperback from Corner Books, €12.00"
+    );
+    expect(payload.data.inlineApprove).toBe(false);
+    expect(JSON.stringify(payload)).not.toContain("$");
   });
 });

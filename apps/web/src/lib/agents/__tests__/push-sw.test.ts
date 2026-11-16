@@ -104,6 +104,18 @@ describe("push service worker", () => {
     expect(actionsOf(options)).toEqual(["review", "deny"]);
   });
 
+  // R18: a purchase push carries inlineApprove false, so no Approve.
+  it("offers no Approve action for a purchase push", async () => {
+    const options = await worker.push({
+      requestId: "req-1",
+      approvalUrl: APPROVAL_URL,
+      inlineApprove: false,
+      requiresVaultUnlock: false,
+    });
+
+    expect(actionsOf(options)).not.toContain("approve");
+  });
+
   it("offers only Deny for an identity request, even if marked inline", async () => {
     const options = await worker.push({
       requestId: "req-1",

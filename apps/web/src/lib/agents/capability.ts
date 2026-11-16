@@ -25,8 +25,6 @@ import { agentCapabilities } from "@/lib/db/schema/agent";
 
 export interface AuthorizationDetail {
   amount?: { currency?: string; value?: string };
-  item?: string;
-  merchant?: string;
   type?: string;
   [key: string]: unknown;
 }

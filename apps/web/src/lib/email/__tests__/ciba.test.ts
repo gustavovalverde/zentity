@@ -30,6 +30,30 @@ vi.mock("@/lib/db/schema/auth", async (importOriginal) => ({
 // for subsequent test files. The db is fully mocked via @/lib/db/connection,
 // so the real eq() from drizzle-orm works fine with the mock chain.
 
+const EUR_PURCHASE = {
+  type: "purchase",
+  merchant: { name: "Corner Books" },
+  item: "A paperback",
+  amount: { value: "12.00", currency: "EUR" },
+};
+
+const X402_PURCHASE = {
+  type: "x402_purchase",
+  resource_url:
+    "https://merchant.example/api/x402/access?resourceId=verified-identity",
+  resource_description: "Financial analytics",
+  payment_requirements: {
+    scheme: "exact",
+    network: "eip155:84532",
+    amount: "1",
+    asset: "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
+    payTo: "0x000000000000000000000000000000000000dEaD",
+    maxTimeoutSeconds: 300,
+    extra: { name: "USDC", version: "2" },
+  },
+  min_identity_strength: "documentary_full",
+};
+
 const DEFAULT_PARAMS = {
   userId: "user-1",
   requestId: "req-1",
@@ -224,5 +248,45 @@ describe("ciba-mailer", () => {
       expect(payload.html).toContain("0.00000001 ZEC");
       expect(payload.html).not.toContain("base unit");
     });
+  });
+
+  // R4 and R18: the email states the merchant's terms, labeled, without "$".
+  it.each([
+    [
+      "an x402 purchase",
+      X402_PURCHASE,
+      [
+        "Prove to merchant.example that your identity is verified (Document, full)",
+        "0.000001 USDC on Base Sepolia",
+        "Zentity does not sign or limit this payment.",
+        "Described by the merchant",
+      ],
+    ],
+    [
+      "a direct purchase",
+      EUR_PURCHASE,
+      ["Stated by the agent", "A paperback from Corner Books, €12.00"],
+    ],
+  ])("describes %s in server text", async (_case, detail, expected) => {
+    mockDbGet.mockReturnValue({
+      email: "alice@example.com",
+      emailVerified: true,
+    });
+
+    const { sendCibaNotification } = await import("../ciba");
+    await sendCibaNotification({
+      ...DEFAULT_PARAMS,
+      authorizationDetails: [detail],
+    });
+
+    const payload = mockSendEmail.mock.calls[0]?.[0] as {
+      html: string;
+      text: string;
+    };
+    for (const fragment of expected) {
+      expect(payload.text).toContain(fragment);
+    }
+    expect(payload.text).not.toContain("$");
+    expect(payload.html).not.toContain("$");
   });
 });

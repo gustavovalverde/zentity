@@ -19,6 +19,7 @@ import {
   ItemMedia,
   ItemTitle,
 } from "@/components/ui/item";
+import { describePurchase } from "@/lib/agents/labels";
 import { SCOPE_DESCRIPTIONS } from "@/lib/auth/oidc/disclosure/registry";
 
 import { PushNotificationBanner } from "./push-banner";
@@ -100,20 +101,10 @@ function formatPurchaseDetail(
     return null;
   }
   try {
-    const details = JSON.parse(authorizationDetails) as Array<{
-      amount?: { currency?: string; value?: string };
-      type?: string;
-    }>;
-    if (!Array.isArray(details)) {
-      return null;
-    }
-
-    for (const d of details) {
-      if (d.type === "purchase" && d.amount?.value) {
-        return `Purchase: $${d.amount.value} ${d.amount.currency ?? "USD"}`;
-      }
-    }
-    return null;
+    const details = JSON.parse(authorizationDetails) as unknown;
+    return Array.isArray(details)
+      ? (describePurchase(details[0])?.title ?? null)
+      : null;
   } catch {
     return null;
   }

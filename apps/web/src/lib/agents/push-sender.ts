@@ -9,7 +9,7 @@ import { sendNotification, WebPushError } from "web-push";
 
 import { env } from "@/env";
 import { approvalPolicy, type ScopeLabel } from "@/lib/agents/capability";
-import { formatPaymentAmount } from "@/lib/agents/labels";
+import { describePurchase, formatPaymentAmount } from "@/lib/agents/labels";
 import { isIdentityScope } from "@/lib/auth/oidc/disclosure/registry";
 import { db } from "@/lib/db/connection";
 import { pushSubscriptions } from "@/lib/db/schema/ciba";
@@ -132,26 +132,11 @@ function buildPaymentNotificationBody(
 
 function buildNotificationBody(
   clientLabel: string,
-  bindingMessage: string | undefined,
-  authorizationDetails: unknown
+  bindingMessage: string | undefined
 ): string {
-  if (bindingMessage) {
-    return `${clientLabel}: ${bindingMessage}`;
-  }
-
-  if (Array.isArray(authorizationDetails)) {
-    for (const detail of authorizationDetails) {
-      if (detail?.type === "purchase" && detail?.item) {
-        const amount =
-          detail.amount?.value && detail.amount?.currency
-            ? ` for ${detail.amount.currency === "USD" ? "$" : ""}${detail.amount.value}${detail.amount.currency === "USD" ? "" : ` ${detail.amount.currency}`}`
-            : "";
-        return `${clientLabel}: ${detail.item}${amount}`;
-      }
-    }
-  }
-
-  return `${clientLabel} is requesting access`;
+  return bindingMessage
+    ? `${clientLabel}: ${bindingMessage}`
+    : `${clientLabel} is requesting access`;
 }
 
 /** Names, in server text, what an inline approval shares. */
@@ -181,13 +166,18 @@ export function buildCibaPushPayload(
     ? undefined
     : sanitizeBindingMessage(data.bindingMessage);
 
-  const summary = paymentProjection
-    ? buildPaymentNotificationBody(clientLabel, paymentProjection)
-    : buildNotificationBody(
-        clientLabel,
-        safeBindingMessage,
-        data.authorizationDetails
-      );
+  // A purchase is described in server text, never by the agent's message.
+  const purchase = Array.isArray(data.authorizationDetails)
+    ? describePurchase(data.authorizationDetails[0])
+    : null;
+  let summary: string;
+  if (paymentProjection) {
+    summary = buildPaymentNotificationBody(clientLabel, paymentProjection);
+  } else if (purchase) {
+    summary = `${clientLabel}: ${purchase.pushText}`;
+  } else {
+    summary = buildNotificationBody(clientLabel, safeBindingMessage);
+  }
   const body = policy.inlineApprove
     ? withSharedLabels(summary, policy.labels)
     : summary;

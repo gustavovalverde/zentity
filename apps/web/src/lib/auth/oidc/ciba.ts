@@ -312,7 +312,7 @@ async function assertIdentityStrengthSatisfied(
     throw cibaDecisionError(
       "FORBIDDEN",
       "insufficient_identity_strength",
-      `This merchant requires identity verified to the ${formatIdentityStrength(requirement.required)} level`
+      `This merchant requires ${formatIdentityStrength(requirement.required)} identity verification, which you have not completed`
     );
   }
 }
