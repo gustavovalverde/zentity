@@ -305,7 +305,8 @@ const CIBA_GRANT_TYPE = "urn:openid:params:grant-type:ciba";
 
 export async function registerCibaClient(
   request: APIRequestContext,
-  labelPrefix = "ciba-e2e"
+  labelPrefix = "ciba-e2e",
+  metadata: Record<string, unknown> = {}
 ) {
   const res = await request.post(`${AUTH_BASE_URL}/oauth2/register`, {
     data: {
@@ -316,6 +317,7 @@ export async function registerCibaClient(
       token_endpoint_auth_method: "none",
       backchannel_token_delivery_mode: "poll",
       subject_type: "public",
+      ...metadata,
     },
     headers: ORIGIN_HEADERS,
   });

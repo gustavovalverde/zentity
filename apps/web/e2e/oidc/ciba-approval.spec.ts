@@ -203,7 +203,10 @@ test.describe("CIBA approval ceremony", () => {
     await page.goto("/");
     await createPasswordVaultUser(page, { firstName: "Ada" });
     const userId = await signedInUserId(page);
-    const clientId = await registerCibaClient(request, "ceremony-e2e");
+    // A payment client declares the RAR type it requests (RFC 9396 §10).
+    const clientId = await registerCibaClient(request, "ceremony-e2e", {
+      authorization_details_types: ["payment_authorization"],
+    });
     const { authReqId, requestId } = await requestApproval(request, {
       clientId,
       scope: "openid",
