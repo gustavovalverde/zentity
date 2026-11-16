@@ -10,6 +10,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { env } from "@/env";
 import { auth } from "@/lib/auth/auth-config";
+import {
+  issueSiweChallenge,
+  redeemSiweChallenge,
+} from "@/lib/auth/siwe/server";
 import { db } from "@/lib/db/connection";
 import { accounts, verifications, walletAddresses } from "@/lib/db/schema/auth";
 import { createTestUser, resetDatabase } from "@/test-utils/db-test-utils";
@@ -152,6 +156,33 @@ describe("Sign-In with Ethereum challenge", () => {
     expect(parseSiweMessage(message).statement).toBe(
       "Create a Zentity account with this wallet."
     );
+  });
+
+  it("redeems a first-party message only for the Request ID it names", async () => {
+    const { internalAdapter } = await auth.$context;
+    const issue = () =>
+      issueSiweChallenge(internalAdapter, {
+        address: WALLET.address,
+        chainId: CHAIN_ID,
+        purpose: "first-party-app",
+        requestId: "session-a",
+      });
+    const redeem = async (message: string, requestId: string) =>
+      redeemSiweChallenge(internalAdapter, {
+        message,
+        purpose: "first-party-app",
+        requestId,
+        signature: await WALLET.signMessage({ message }),
+      });
+
+    expect(await redeem(await issue(), "session-b")).toEqual({
+      ok: false,
+      error: "invalid_message",
+    });
+    expect(await redeem(await issue(), "session-a")).toMatchObject({
+      ok: true,
+      address: WALLET.address,
+    });
   });
 });
 
