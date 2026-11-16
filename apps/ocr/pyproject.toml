@@ -38,7 +38,7 @@ test = [
     "httpx==0.28.1",
 ]
 dev = [
-    "ruff==0.17.4",
+    "ruff==0.17.5",
     "pre-commit==4.7.0",
     # Security auditing
     "pip-audit==2.10.1",
