@@ -231,7 +231,7 @@ export async function deleteIncompleteSignup(userId: string): Promise<void> {
  * Links a wallet address to a user account.
  *
  * Called during wallet-based sign-up to store the wallet address in the
- * wallet_address table. This is critical for EIP-712 sign-in: without this link,
+ * wallet_address table. This is critical for wallet sign-in: without this link,
  * the user would get a new account on their next login attempt, making their
  * FHE keys inaccessible.
  *
@@ -251,7 +251,7 @@ export async function linkWalletAddress(params: {
 }): Promise<void> {
   const { userId, address, chainId, isPrimary = true } = params;
 
-  // Use checksum address format to match EIP-712 plugin lookups
+  // Use checksum address format to match wallet sign-in lookups
   const normalizedAddress = getAddress(address);
 
   await db

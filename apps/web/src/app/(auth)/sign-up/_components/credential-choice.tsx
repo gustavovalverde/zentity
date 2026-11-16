@@ -198,11 +198,10 @@ export function CredentialChoice({
                 </span>
               </TooltipTrigger>
               <TooltipContent className="max-w-xs" side="top">
-                <p className="font-medium">EIP-712 Signature</p>
+                <p className="font-medium">Sign-In with Ethereum</p>
                 <p className="mt-1 text-muted">
-                  Your wallet signs a structured message to prove ownership of
-                  your address. The signature is verified server-side to
-                  authenticate you, and your private key never leaves your
+                  Your wallet signs a message that names this site, which proves
+                  you own the address. Your private key never leaves your
                   wallet.
                 </p>
               </TooltipContent>

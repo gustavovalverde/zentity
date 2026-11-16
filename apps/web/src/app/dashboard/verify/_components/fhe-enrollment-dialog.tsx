@@ -5,7 +5,7 @@ import { FileKey, Fingerprint, KeyRound, Loader2, Wallet } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
-import { useChainId, useSignTypedData } from "wagmi";
+import { useChainId, useSignMessage, useSignTypedData } from "wagmi";
 
 import { Web3Provider } from "@/components/providers/web3-provider";
 import { RecoveryKeySetup } from "@/components/recovery-key-setup";
@@ -122,6 +122,7 @@ function WalletEnrollmentButton({
   const { address, isConnected } = useAppKitAccount();
   const chainId = useChainId();
   const { mutateAsync: signTypedData } = useSignTypedData();
+  const { mutateAsync: signMessage } = useSignMessage();
 
   const isRunning = stage !== "idle" && stage !== "done";
 
@@ -149,6 +150,7 @@ function WalletEnrollmentButton({
     }
 
     onEnroll("wallet", {
+      signMessage: (message) => signMessage({ message }),
       signTypedData,
       address: wallet.address,
       chainId: wallet.chainId,
@@ -160,6 +162,7 @@ function WalletEnrollmentButton({
     wallet,
     chainId,
     openWalletModal,
+    signMessage,
     signTypedData,
     onEnroll,
   ]);
@@ -184,6 +187,7 @@ function WalletEnrollmentButton({
 interface WalletContext {
   address: string;
   chainId: number;
+  signMessage: (message: string) => Promise<string>;
   signTypedData: (args: {
     domain: Record<string, unknown>;
     types: Record<string, Array<{ name: string; type: string }>>;
@@ -455,10 +459,10 @@ export function FheEnrollmentDialog({
       }
 
       advanceStage("unlocking");
-      const signInResult = await authClient.signIn.eip712({
+      const signInResult = await authClient.signIn.siwe({
         address: walletCtx.address,
         chainId: walletCtx.chainId,
-        signTypedData: walletCtx.signTypedData,
+        signMessage: walletCtx.signMessage,
       });
       if (signInResult.user.id !== userId) {
         throw new Error("Wallet confirmation returned a different account.");

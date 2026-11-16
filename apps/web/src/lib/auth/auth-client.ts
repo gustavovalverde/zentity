@@ -14,9 +14,9 @@ import {
 import { createAuthClient } from "better-auth/react";
 
 import { env } from "@/env";
-import { eip712AuthClient } from "@/lib/auth/eip712/client";
 import { opaqueClient } from "@/lib/auth/opaque/client";
 import { getSafeRedirectPath } from "@/lib/auth/redirect";
+import { siweAuthClient } from "@/lib/auth/siwe/client";
 
 // Use current origin in browser to avoid IPv4/IPv6 localhost mismatch
 // Node.js v17+ prefers IPv6, so browser may be at [::1] while env says localhost
@@ -38,7 +38,7 @@ export const authClient = createAuthClient({
     passkeyClient(),
     opaqueClient(),
     anonymousClient(),
-    eip712AuthClient(),
+    siweAuthClient(),
     oauthProviderClient(),
     organizationClient(),
     twoFactorClient({

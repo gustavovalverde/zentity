@@ -1,11 +1,9 @@
 "use client";
 
-import type { Eip712TypedData } from "@/lib/auth/eip712/types";
-
 import { useAppKit, useAppKitAccount } from "@reown/appkit/react";
 import { Wallet } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useChainId, useSignTypedData } from "wagmi";
+import { useChainId, useSignMessage } from "wagmi";
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -35,7 +33,7 @@ export function WalletSignUpForm({
   const { open } = useAppKit();
   const { address, isConnected } = useAppKitAccount();
   const chainId = useChainId();
-  const { mutateAsync: signTypedData } = useSignTypedData();
+  const { mutateAsync: signMessage } = useSignMessage();
 
   const [error, setError] = useState<string | null>(null);
   const [isSigning, setIsSigning] = useState(false);
@@ -73,21 +71,12 @@ export function WalletSignUpForm({
       // Step 1: Ensure anonymous session (unified sign-up path)
       await ensureAuthSession();
 
-      // Step 2: EIP-712 auth with deterministic-signature precheck.
-      const result = await authClient.signUp.eip712({
+      // Step 2: Sign-In with Ethereum, with a deterministic-signature precheck.
+      const result = await authClient.signUp.siwe({
         address,
         chainId,
         ...(email ? { email } : {}),
-        signTypedData: async (typedData: Eip712TypedData) =>
-          signTypedData({
-            domain: typedData.domain as Record<string, unknown>,
-            types: typedData.types as Record<
-              string,
-              Array<{ name: string; type: string }>
-            >,
-            primaryType: typedData.primaryType,
-            message: typedData.message,
-          }),
+        signMessage: (message) => signMessage({ message }),
       });
 
       const userId = result.user.id;
@@ -104,7 +93,7 @@ export function WalletSignUpForm({
     } finally {
       setIsSigning(false);
     }
-  }, [address, chainId, email, isConnected, onSuccess, signTypedData]);
+  }, [address, chainId, email, isConnected, onSuccess, signMessage]);
 
   useEffect(() => {
     if (isConnected && address && hasInitiatedConnect) {

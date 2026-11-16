@@ -17,11 +17,6 @@ import {
   createAuthenticationContext,
   getAuthenticationStateBySessionId,
 } from "@/lib/auth/auth-context";
-import { consumeWalletNonce, issueWalletNonce } from "@/lib/auth/eip712/server";
-import {
-  buildWalletAuthTypedData,
-  verifyEip712Signature,
-} from "@/lib/auth/eip712/typed-data";
 import { oauthProviderApi } from "@/lib/auth/oidc/haip/dpop";
 import { isZentityHostedResource } from "@/lib/auth/oidc/haip/resource-metadata";
 import { findSatisfiedAcr } from "@/lib/auth/oidc/step-up";
@@ -32,6 +27,10 @@ import {
   LOGIN_REQUEST_LENGTH,
   validateBase64Length,
 } from "@/lib/auth/opaque/validation";
+import {
+  issueSiweChallenge,
+  redeemSiweChallenge,
+} from "@/lib/auth/siwe/server";
 import { db } from "@/lib/db/connection";
 import {
   accounts,
@@ -86,9 +85,9 @@ const OpaqueFinishSchema = z.object({
   opaque_finish_request: z.string().min(1),
 });
 
-const Eip712FinishSchema = z.object({
+const SiweFinishSchema = z.object({
   auth_session: z.string().min(1),
-  eip712_signature: z.string().min(1),
+  siwe_signature: z.string().min(1),
 });
 
 // ── Helpers ─────────────────────────────────────────────
@@ -156,42 +155,36 @@ async function checkDpopContinuity(
   return null;
 }
 
-async function issueEip712Challenge(
+/**
+ * Issues the Sign-In with Ethereum message for this auth_session and keeps it
+ * as the session's state. Its Request ID is the session's id, so the
+ * signature authorizes this challenge only.
+ */
+async function issueSiweFirstPartyChallenge(
   ctx: GenericEndpointContext,
   sessionId: string,
   authSession: string,
   wallet: { address: string; chainId: number }
 ): Promise<Response> {
-  const nonce = await issueWalletNonce(
-    ctx.context.internalAdapter,
-    wallet.address,
-    wallet.chainId
-  );
+  const message = await issueSiweChallenge(ctx.context.internalAdapter, {
+    address: wallet.address,
+    chainId: wallet.chainId,
+    purpose: "first-party-app",
+    requestId: sessionId,
+  });
 
   await db
     .update(authChallengeSessions)
-    .set({
-      opaqueServerState: JSON.stringify({
-        walletAddress: wallet.address,
-        chainId: wallet.chainId,
-        nonce,
-      }),
-    })
+    .set({ opaqueServerState: message })
     .where(eq(authChallengeSessions.id, sessionId));
 
-  const typedData = buildWalletAuthTypedData(
-    wallet.address,
-    wallet.chainId,
-    nonce
-  );
-
+  // The stored challenge type keeps the wallet account's provider id, eip712.
   return Response.json(
     {
       auth_session: authSession,
-      challenge_type: "eip712",
+      challenge_type: "siwe",
       error: "insufficient_authorization",
-      nonce,
-      typed_data: typedData,
+      message,
     },
     { status: 401 }
   );
@@ -243,8 +236,8 @@ function handleChallengeRequest(
   if (body.auth_session && body.opaque_finish_request) {
     return handleOpaqueFinish(ctx, body);
   }
-  if (body.auth_session && body.eip712_signature) {
-    return handleEip712Finish(ctx, body);
+  if (body.auth_session && body.siwe_signature) {
+    return handleSiweFinish(ctx, body);
   }
   if (body.auth_session && body.opaque_login_request) {
     return handleOpaqueStart(ctx, body);
@@ -358,7 +351,7 @@ async function handleInitialRequest(
   }
 
   // Determine challenge type based on available credentials
-  // Priority: OPAQUE > EIP-712 wallet > redirect_to_web (passkey-only)
+  // Priority: OPAQUE > SIWE wallet > redirect_to_web (passkey-only)
   // Unknown users get OPAQUE challenge (timing-safe — indistinguishable from real OPAQUE users)
   let challengeType: "opaque" | "eip712" | "redirect_to_web" = "opaque";
   if (user) {
@@ -434,7 +427,7 @@ async function handleInitialRequest(
     }
 
     const chainId = params.chain_id ?? walletInfo.chainId;
-    return issueEip712Challenge(ctx, createdSession.id, authSession, {
+    return issueSiweFirstPartyChallenge(ctx, createdSession.id, authSession, {
       address: walletInfo.address,
       chainId,
     });
@@ -601,17 +594,23 @@ async function handleOpaqueFinish(
   return issueAuthorizationCode(ctx, session, user.id, auth_session);
 }
 
-// ── EIP-712 Round 2: Verify signature + issue auth code ─
+// ── SIWE Round 2: Verify signature + issue auth code ────
 
-async function handleEip712Finish(
+const SIWE_FINISH_ERRORS = {
+  invalid_nonce: "Nonce expired or already used",
+  invalid_message: "Authentication failed",
+  invalid_signature: "Invalid signature",
+} as const;
+
+async function handleSiweFinish(
   ctx: GenericEndpointContext,
   body: Record<string, unknown>
 ): Promise<Response> {
-  const parsed = Eip712FinishSchema.safeParse(body);
+  const parsed = SiweFinishSchema.safeParse(body);
   if (!parsed.success) {
     return errorJson(400, "invalid_request", parsed.error.issues[0]?.message);
   }
-  const { auth_session, eip712_signature } = parsed.data;
+  const { auth_session, siwe_signature } = parsed.data;
 
   const sessionOrError = await validateChallengeSession(auth_session);
   if (sessionOrError instanceof Response) {
@@ -622,7 +621,7 @@ async function handleEip712Finish(
     return errorJson(400, "invalid_session", "Invalid session state");
   }
   if (!(session.opaqueServerState && session.userId)) {
-    return errorJson(400, "invalid_session", "EIP-712 round 1 not completed");
+    return errorJson(400, "invalid_session", "SIWE round 1 not completed");
   }
 
   const dpopError = await checkDpopContinuity(ctx, session);
@@ -630,36 +629,18 @@ async function handleEip712Finish(
     return dpopError;
   }
 
-  // Parse wallet context from session
-  const wallet = JSON.parse(session.opaqueServerState) as {
-    walletAddress: string;
-    chainId: number;
-    nonce: string;
-  };
-
-  const nonceConsumed = await consumeWalletNonce(
-    ctx.context.internalAdapter,
-    wallet.nonce,
-    wallet.walletAddress,
-    wallet.chainId
-  );
-  if (!nonceConsumed) {
-    return errorJson(401, "access_denied", "Nonce expired or already used");
-  }
-
-  const typedData = buildWalletAuthTypedData(
-    wallet.walletAddress,
-    wallet.chainId,
-    wallet.nonce
-  );
-
-  const valid = await verifyEip712Signature(
-    eip712_signature,
-    typedData,
-    wallet.walletAddress
-  );
-  if (!valid) {
-    return errorJson(401, "access_denied", "Invalid signature");
+  const redemption = await redeemSiweChallenge(ctx.context.internalAdapter, {
+    message: session.opaqueServerState,
+    purpose: "first-party-app",
+    requestId: session.id,
+    signature: siwe_signature,
+  });
+  if (!redemption.ok) {
+    return errorJson(
+      401,
+      "access_denied",
+      SIWE_FINISH_ERRORS[redemption.error]
+    );
   }
 
   // Verify user still exists
@@ -820,7 +801,7 @@ async function handleStepUpReEntry(
       return errorJson(401, "access_denied", "Authentication failed");
     }
 
-    return issueEip712Challenge(ctx, session.id, authSession, wallet);
+    return issueSiweFirstPartyChallenge(ctx, session.id, authSession, wallet);
   }
 
   // OPAQUE
