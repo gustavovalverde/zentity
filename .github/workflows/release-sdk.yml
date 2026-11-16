@@ -1,0 +1,63 @@
+# Publish @zentity/sdk to npm
+#
+# Trigger: manual dispatch from main.
+#
+# Publishes the version in packages/sdk/package.json with provenance through
+# npm trusted publishing (OIDC). No npm token is stored in this repository.
+#
+# One-time setup on npmjs.com (package settings > Trusted Publisher > GitHub Actions):
+#   Organization or user: gustavovalverde
+#   Repository:           zentity
+#   Workflow filename:    release-sdk.yml
+#   Environment name:     release
+#
+# The trusted publisher is configured on the package's npm settings page. If
+# npm does not let you configure it before the package exists, publish 0.1.0
+# once from a maintainer machine with `npm publish --access public
+# --provenance=false` (publishConfig requests provenance, which only works in
+# CI), then add the trusted publisher and use this workflow for later versions.
+#
+# Release steps: bump packages/sdk/package.json and CHANGELOG.md in a merged PR,
+# then run this workflow from main.
+
+name: Release SDK
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: false
+
+permissions: {}
+
+jobs:
+  publish:
+    name: Publish @zentity/sdk
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment:
+      name: release
+      url: https://www.npmjs.com/package/@zentity/sdk
+    permissions:
+      contents: read
+      id-token: write # npm trusted publishing and provenance
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "26"
+          registry-url: "https://registry.npmjs.org"
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+      - run: pnpm install --frozen-lockfile
+        working-directory: packages/sdk
+      - run: pnpm run typecheck
+        working-directory: packages/sdk
+      - run: pnpm test
+        working-directory: packages/sdk
+      # prepack rebuilds dist, so the published files always match this commit.
+      - name: Publish
+        run: npm publish --access public --provenance
+        working-directory: packages/sdk
