@@ -32,7 +32,8 @@ import { refuseWalletAudience } from "./haip/resource-metadata";
  */
 
 // RFC 9396 §10 client metadata, stored by the CIBA plugin in the client's
-// metadata. The plugin keeps its reader private (upstream ask U17).
+// metadata. The plugin keeps its reader private (U17 in
+// docs/adr/platform/0002-better-auth-patches.md).
 const AUTHORIZATION_DETAILS_TYPES_FIELD = "authorization_details_types";
 
 /** Whether a client registered the `payment_authorization` RAR type. */

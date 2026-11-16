@@ -704,7 +704,9 @@ async function beforeDcrRegister(ctx: HookCtx) {
 // The provider recomputes a client's sector when its redirect URIs change but
 // keeps the client's tokens and grants, which would then resolve to the new
 // sector's subjects. A pairwise client could so move into another relying
-// party's sector and read that party's subject for each of its users.
+// party's sector and read that party's subject for each of its users. Interim
+// until the provider keeps the sector (U22 in
+// docs/adr/platform/0002-better-auth-patches.md).
 async function beforeUpdateClientKeepSector(ctx: HookCtx) {
   const clientId = ctx.body?.client_id;
   const redirectUris = ctx.body?.update?.redirect_uris;

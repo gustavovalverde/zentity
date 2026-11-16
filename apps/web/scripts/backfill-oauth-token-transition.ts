@@ -219,7 +219,7 @@ const client = createClient(authToken ? { url, authToken } : { url });
 
 // Mirrors the provider's `deriveSectorIdentifier` (oauth-provider
 // `utils/index.ts`), which it does not export; replace with the export once it
-// ships (upstream ask U15).
+// ships (U15 in docs/adr/platform/0002-better-auth-patches.md).
 function deriveSectorIdentifier(
   clientId: string,
   redirectUris: readonly string[]

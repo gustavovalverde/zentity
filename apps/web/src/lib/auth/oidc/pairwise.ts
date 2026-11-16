@@ -39,7 +39,7 @@ export function clientSector(client: SectorClient): string {
 }
 
 // Mirrors the provider's `deriveSectorIdentifier`, which it does not export
-// (upstream ask U15).
+// (U15 in docs/adr/platform/0002-better-auth-patches.md).
 function deriveSectorIdentifier(
   clientId: string,
   redirectUris: readonly string[]

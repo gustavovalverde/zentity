@@ -330,8 +330,9 @@ describe("pairwise subject resolution (integration)", () => {
       expect(await resolveSubForClientId(userId, clientId)).toBe(sub);
     });
 
-    // Upstream ask U16 would accept this set, since its sector is the client's
-    // own; flip the assertion when the provider stops refusing it.
+    // U16 in docs/adr/platform/0002-better-auth-patches.md would accept this
+    // set, since its sector is the client's own; flip the assertion when the
+    // provider stops refusing it.
     it("refuses a pairwise registration mixing loopback and https hosts", async () => {
       const { status, body } = await register(
         ["http://127.0.0.1:1234/cb", "https://example.com/cb"],
