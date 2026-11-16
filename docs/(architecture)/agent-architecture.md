@@ -522,7 +522,7 @@ Neither is a substitute for OAuth access tokens. They are proof artifacts layere
 
 ## Pairwise Agent Identifiers
 
-Pairwise privacy matters because the same agent installation may interact with multiple relying parties. Without a pairwise layer, every RP could correlate the same runtime or host across ecosystems. Zentity avoids that by deriving actor identifiers per client configuration.
+Pairwise privacy matters because the same agent installation may interact with multiple relying parties. Without a pairwise layer, every RP could correlate the same runtime or host across ecosystems. Zentity avoids that by deriving actor identifiers per token sector: the client, and the audience the token is for.
 
 ### Current derivation rule
 

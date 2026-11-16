@@ -955,7 +955,14 @@ The privacy considerations of VEIL §14 apply in addition to those below. Partic
 
 Without pairwise agent identifiers, `act.sub` in delegated tokens is a stable correlator across all RPs. Two colluding RPs can link agent activity across services, correlate the frequency and timing of operations, and infer usage patterns that may deanonymize the human.
 
-PACT mitigates this by deriving `act.sub` per-RP using the same sector-identifier mechanism as OIDC Core pairwise subjects.
+PACT mitigates this by deriving `act.sub`, and the user's `sub` in a token for an outside audience, from the token's own sector (§4.3): per client, and per audience within one client. No token carries a session, host, approval, request, authentication context, release, or task identifier, so two audiences cannot join on one.
+
+**Residual correlators.** Some values still repeat across one client's tokens for different audiences, and an AS SHOULD state them:
+
+- `azp` and `client_id`, which RFC 9068 §2.2 requires. A client registered once per installation is identified by its `client_id` alone, so per-audience subjects separate audiences only for clients that serve many users.
+- `grant_id` (all tokens of one grant), `reference_id` (all tokens of one approval), and the release binding claim of a staged identity release.
+- `cnf.jkt` when the client reuses one DPoP key across audiences.
+- The provider's `sid`, which names the browser session behind tokens issued from it.
 
 ### 13.2 PII in Tokens
 
