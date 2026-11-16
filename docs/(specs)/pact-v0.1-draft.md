@@ -1016,10 +1016,10 @@ This profile defines no new JWT claim: its access tokens use `act`, `authorizati
 
 It requests registrations in the "OAuth Parameters" registry (RFC 6749 §11.2), for use in token responses, and in the "OAuth Token Introspection Response" registry (RFC 7662 §3.1), for the members defined in §7.1:
 
-- `capabilities` — Array of approved named actions, with the constraint snapshot of a grant approval.
-- `oversight` — Object stating how the approval happened (`method`) and when (`approved_at`).
-- `delegation` — Object stating the token's delegation depth, as defined in §7.2.
-- `aap_claims_version` — The version of this profile's members.
+- `capabilities`: array of approved named actions, with the constraint snapshot of a grant approval.
+- `oversight`: object stating how the approval happened (`method`) and when (`approved_at`).
+- `delegation`: object stating the token's delegation depth, as defined in §7.2.
+- `aap_claims_version`: the version of this profile's members.
 
 ### 14.5 OAuth Extensions Error Registry
 
