@@ -28,7 +28,10 @@ import { type Oidc4vciOptions, oidc4vci } from "@better-auth/oidc4vci";
 import { oidc4vp } from "@better-auth/oidc4vp";
 import { passkey } from "@better-auth/passkey";
 import { setGlobalConfig as setOpenid4vcConfig } from "@openid4vc/utils";
-import { AGENT_BOOTSTRAP_SCOPES } from "@zentity/sdk/agent-contract";
+import {
+  AGENT_BOOTSTRAP_SCOPES,
+  AGENT_SESSION_INACTIVE_DESCRIPTION,
+} from "@zentity/sdk/agent-contract";
 import {
   AUTHORIZATION_DETAILS_TYPES,
   decodeJwtPayloadStrict,
@@ -1586,18 +1589,27 @@ function agentAssertionHeader(
 
 /**
  * A bc-authorize request that presents an Agent-Assertion must be the request
- * the assertion signed. A mismatch is refused before the plugin stores or
- * notifies anything, rather than proceeding as an unverified agent.
+ * the assertion signed, by a session that is still active. Either failure is
+ * refused before the plugin stores or notifies anything, rather than
+ * proceeding as an unverified agent; an inactive session gets its own
+ * description so the runtime can register a new one.
  */
-async function refuseMismatchedAgentAssertion(
+async function refuseUnverifiedAgentAssertion(
   ctx: HookCtx,
   body: Record<string, unknown>
 ): Promise<void> {
   const assertion = agentAssertionHeader(ctx);
-  if (assertion && !(await verifyAgentAssertionForRequest(body, assertion))) {
+  if (!assertion) {
+    return;
+  }
+  const outcome = await verifyAgentAssertionForRequest(body, assertion);
+  if (outcome !== "verified") {
     throw new APIError("BAD_REQUEST", {
       error: "invalid_request",
-      error_description: "Agent-Assertion does not match this request",
+      error_description:
+        outcome === "inactive_session"
+          ? AGENT_SESSION_INACTIVE_DESCRIPTION
+          : "Agent-Assertion does not match this request",
     });
   }
 }
@@ -2023,7 +2035,7 @@ export const auth = betterAuth({
           pinPaymentRequest(ctx.body);
           pinPurchaseRequest(ctx.body);
           normalizeUserTokenResources(ctx.body, { allowWalletAudience: true });
-          await refuseMismatchedAgentAssertion(ctx, ctx.body);
+          await refuseUnverifiedAgentAssertion(ctx, ctx.body);
         }
         return;
       }

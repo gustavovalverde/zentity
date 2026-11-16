@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { AGENT_SESSION_INACTIVE_DESCRIPTION } from "./agent-contract";
 import {
 	AAP_CLAIMS_VERSION,
 	type AccessTokenDelegationClaim,
@@ -151,6 +152,43 @@ export async function requestCibaApproval(
   return pollCibaToken(params, pendingAuthorization);
 }
 
+/**
+ * bc-authorize refused the request. `error` and `errorDescription` are the
+ * OAuth error response members, when the body had them.
+ */
+export class CibaAuthorizationError extends Error {
+  readonly error: string | undefined;
+  readonly errorDescription: string | undefined;
+  readonly status: number;
+
+  constructor(status: number, body: string) {
+    super(`CIBA authorization failed: ${status} ${body}`);
+    this.name = "CibaAuthorizationError";
+    this.status = status;
+    let parsed: z.output<typeof cibaErrorResponseSchema> | undefined;
+    try {
+      parsed = cibaErrorResponseSchema.safeParse(JSON.parse(body)).data;
+    } catch {
+      parsed = undefined;
+    }
+    this.error = parsed?.error;
+    this.errorDescription = parsed?.error_description;
+  }
+}
+
+/**
+ * Whether bc-authorize refused the Agent-Assertion because its session is no
+ * longer active. The runtime then registers a new session, signs the request
+ * again, and sends it once more.
+ */
+export function isAgentSessionInactiveError(error: unknown): boolean {
+  return (
+    error instanceof CibaAuthorizationError &&
+    error.error === "invalid_request" &&
+    error.errorDescription === AGENT_SESSION_INACTIVE_DESCRIPTION
+  );
+}
+
 export async function beginCibaApproval(
   params: CibaRequest
 ): Promise<CibaPendingAuthorization> {
@@ -172,7 +210,7 @@ export async function beginCibaApproval(
 
   if (!response.ok) {
     const text = await response.text();
-    throw new Error(`CIBA authorization failed: ${response.status} ${text}`);
+    throw new CibaAuthorizationError(response.status, text);
   }
 
   const authResponse = parseCibaResponse(

@@ -431,7 +431,7 @@ stateDiagram-v2
   revoked --> [*]
 ```
 
-There is no reactivation path. If a session expires, the MCP creates a new session under the same host.
+There is no reactivation path. If a session expires, the MCP creates a new session under the same host. bc-authorize refuses an Agent-Assertion from a session that is unknown, expired, or revoked with `invalid_request` "Agent session is not active", which differs from the "Agent-Assertion does not match this request" refusal; the MCP stdio server and demo-rp register a new session when they receive it, sign the request again, and send it once more.
 
 ### How expiry is applied
 

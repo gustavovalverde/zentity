@@ -170,27 +170,44 @@ async function cleanupExpiredAgentAssertionJtis(): Promise<void> {
   }
 }
 
+/** The session an assertion names as `iss`, or null for a malformed one. */
+function assertionSessionId(jwt: string): string | null {
+  try {
+    const { iss } = decodeJwtPayloadStrict(jwt) as { iss?: unknown };
+    return typeof iss === "string" && iss.length > 0 ? iss : null;
+  } catch {
+    return null;
+  }
+}
+
+async function findActiveSession(sessionId: string) {
+  const session = await db
+    .select({
+      hostId: agentSessions.hostId,
+      publicKey: agentSessions.publicKey,
+      status: agentSessions.status,
+    })
+    .from(agentSessions)
+    .where(eq(agentSessions.id, sessionId))
+    .limit(1)
+    .get();
+  if (
+    !session ||
+    session.status !== "active" ||
+    (await computeSessionState(sessionId)) !== "active"
+  ) {
+    return null;
+  }
+  return session;
+}
+
 async function verifyAgentAssertion(
   jwt: string
 ): Promise<AgentAssertionResult | null> {
   try {
-    const rawPayload = decodeJwtPayloadStrict(jwt) as { iss?: string };
-    const sessionId = rawPayload.iss;
-    if (!sessionId) {
-      return null;
-    }
-
-    const session = await db
-      .select({
-        hostId: agentSessions.hostId,
-        publicKey: agentSessions.publicKey,
-        status: agentSessions.status,
-      })
-      .from(agentSessions)
-      .where(eq(agentSessions.id, sessionId))
-      .limit(1)
-      .get();
-    if (!session || session.status !== "active") {
+    const sessionId = assertionSessionId(jwt);
+    const session = sessionId ? await findActiveSession(sessionId) : null;
+    if (!(sessionId && session)) {
       return null;
     }
 
@@ -201,11 +218,6 @@ async function verifyAgentAssertion(
       typ: "agent-assertion+jwt",
       requiredClaims: ["jti", "exp"],
     });
-
-    const lifecycle = await computeSessionState(sessionId);
-    if (lifecycle !== "active") {
-      return null;
-    }
 
     const { jti, exp } = payload;
     if (
@@ -278,27 +290,34 @@ function formString(value: unknown): string | undefined {
  * plugin stores it: the session's signature, a live session of its host, and
  * a `task_hash` over this request's binding message, scopes, `acr_values`,
  * and `authorization_details`. It does not reserve the assertion `jti`;
- * binding the stored request does that once the plugin has stored it.
+ * binding the stored request does that once the plugin has stored it. An
+ * assertion whose session is unknown or no longer active is
+ * `inactive_session`, so the runtime knows to register a new session.
  */
 export async function verifyAgentAssertionForRequest(
   body: Record<string, unknown>,
   assertionJwt: string
-): Promise<boolean> {
+): Promise<"inactive_session" | "mismatch" | "verified"> {
   const bindingMessage = formString(body.binding_message);
   const scope = formString(body.scope);
   if (!(bindingMessage && scope)) {
-    return false;
+    return "mismatch";
   }
   const assertion = await verifyAgentAssertion(assertionJwt);
-  return Boolean(
-    assertion &&
-      (await matchesTaskHash(assertion, {
-        bindingMessage,
-        scope,
-        acrValues: formString(body.acr_values),
-        authorizationDetails: formString(body.authorization_details),
-      }))
-  );
+  if (!assertion) {
+    const sessionId = assertionSessionId(assertionJwt);
+    return sessionId && !(await findActiveSession(sessionId))
+      ? "inactive_session"
+      : "mismatch";
+  }
+  return (await matchesTaskHash(assertion, {
+    bindingMessage,
+    scope,
+    acrValues: formString(body.acr_values),
+    authorizationDetails: formString(body.authorization_details),
+  }))
+    ? "verified"
+    : "mismatch";
 }
 
 export async function bindAgentAssertionToCibaRequest(

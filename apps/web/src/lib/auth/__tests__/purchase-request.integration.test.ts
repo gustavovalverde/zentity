@@ -1,6 +1,7 @@
 import crypto from "node:crypto";
 
 import { signAgentAssertion, type TaskHashInput } from "@zentity/sdk";
+import { AGENT_SESSION_INACTIVE_DESCRIPTION } from "@zentity/sdk/agent-contract";
 import { eq } from "drizzle-orm";
 import { exportJWK, generateKeyPair } from "jose";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -312,8 +313,9 @@ describe("purchase requests at bc-authorize", () => {
     expect(pushMock.sent).toBe(0);
   });
 
-  it("refuses an Agent-Assertion from an unknown session", async () => {
-    const agent = await createRegisteredAgent(userId, CLIENT_ID);
+  async function signedPurchaseRequest(
+    agent: Awaited<ReturnType<typeof createRegisteredAgent>>
+  ) {
     const body = {
       client_id: CLIENT_ID,
       scope: DIRECT_SCOPE,
@@ -326,16 +328,65 @@ describe("purchase requests at bc-authorize", () => {
       scope: body.scope,
       authorizationDetails: body.authorization_details,
       ...agent,
-      sessionId: "unknown-session",
     });
+    return postBcAuthorize(body, { "Agent-Assertion": assertion });
+  }
 
-    const response = await postBcAuthorize(body, {
-      "Agent-Assertion": assertion,
-    });
+  // A runtime tells an inactive session from a mismatched request, registers
+  // a new session, and signs again.
+  it.each([
+    [
+      "an unknown session",
+      (agent: { sessionId: string }) => {
+        agent.sessionId = "unknown-session";
+      },
+    ],
+    [
+      "a session idle past its TTL",
+      async (agent: { sessionId: string }) => {
+        await db
+          .update(agentSessions)
+          .set({ lastActiveAt: new Date(Date.now() - 31 * 60 * 1000) })
+          .where(eq(agentSessions.id, agent.sessionId))
+          .run();
+      },
+    ],
+    [
+      "a revoked session",
+      async (agent: { sessionId: string }) => {
+        await db
+          .update(agentSessions)
+          .set({ status: "revoked" })
+          .where(eq(agentSessions.id, agent.sessionId))
+          .run();
+      },
+    ],
+  ])(
+    "refuses an Agent-Assertion from %s until the runtime registers a new one",
+    async (_case, lapse) => {
+      const agent = await createRegisteredAgent(userId, CLIENT_ID);
+      await lapse(agent);
 
-    expect(response.status).toBe(400);
-    expect(response.json.error).toBe("invalid_request");
-  });
+      const refused = await signedPurchaseRequest(agent);
+
+      expect(refused.status).toBe(400);
+      expect(refused.json).toEqual({
+        error: "invalid_request",
+        error_description: AGENT_SESSION_INACTIVE_DESCRIPTION,
+      });
+      expect(await storedRequests()).toHaveLength(0);
+
+      const renewed = await signedPurchaseRequest(
+        await createRegisteredAgent(userId, CLIENT_ID)
+      );
+
+      expect(renewed.status).toBe(200);
+      expect(await storedAgentBinding()).toEqual({
+        assertionVerified: true,
+        scope: DIRECT_SCOPE,
+      });
+    }
+  );
 
   // R1: both purchase types are registered.
   it.each([
