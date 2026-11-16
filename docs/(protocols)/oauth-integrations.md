@@ -827,9 +827,32 @@ See [SSI Architecture](<../(architecture)/ssi-architecture.md>) for the complete
   "acr_values_supported": ["urn:zentity:assurance:tier-0", "urn:zentity:assurance:tier-1", "urn:zentity:assurance:tier-2", "urn:zentity:assurance:tier-3"],
   "backchannel_token_delivery_modes_supported": ["poll", "ping"],
   "client_id_metadata_document_supported": true,
-  "resource_indicators_supported": true
+  "resource_indicators_supported": true,
+  "authorization_details_types_supported": ["openid_credential", "payment_authorization", "purchase", "x402_purchase"]
 }
 ```
+
+`authorization_details_types_supported` comes from the same map the CIBA plugin registers its types from, so discovery cannot list a type bc-authorize refuses.
+
+### Proof-of-Human issuer
+
+`GET /.well-known/proof-of-human` returns:
+
+```json
+{
+  "issuer": "https://app.zentity.xyz",
+  "poh_endpoint": "https://app.zentity.xyz/api/auth/oauth2/proof-of-human",
+  "jwks_uri": "https://app.zentity.xyz/api/auth/oauth2/jwks",
+  "identity_strengths_supported": ["documentary", "documentary_full", "cryptographic_chip"],
+  "token_types_supported": ["poh+jwt"],
+  "presentation_methods_supported": ["dpop"],
+  "max_token_lifetime": 300,
+  "token_signing_alg": "EdDSA",
+  "dpop_signing_alg_values_supported": ["ES256"]
+}
+```
+
+`identity_strengths_supported` is the vocabulary an x402 merchant's `minIdentityStrength` and an `x402_purchase` entry's `min_identity_strength` use, weakest first. No numeric tier appears in discovery.
 
 ### Protected resource (RFC 9728)
 

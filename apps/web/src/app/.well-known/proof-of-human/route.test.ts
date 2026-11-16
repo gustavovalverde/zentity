@@ -16,14 +16,22 @@ describe("proof-of-human discovery metadata", () => {
     expect(response.headers.get("content-type")).toBe("application/json");
     expect(response.headers.get("cache-control")).toBe("public, max-age=3600");
 
-    const body = (await response.json()) as Record<string, unknown>;
-    expect(body.issuer).toBe("https://app.zentity.xyz");
-    expect(body.poh_endpoint).toBe(
-      "https://app.zentity.xyz/api/auth/oauth2/proof-of-human"
-    );
-    expect(body.tiers_supported).toEqual([1, 2, 3, 4]);
-    expect(body.token_signing_alg).toBe("EdDSA");
-    expect(body.x402_compatible).toBe(true);
+    // R15: identity strengths by name, and no numeric tier anywhere.
+    expect(await response.json()).toEqual({
+      issuer: "https://app.zentity.xyz",
+      poh_endpoint: "https://app.zentity.xyz/api/auth/oauth2/proof-of-human",
+      jwks_uri: "https://app.zentity.xyz/api/auth/oauth2/jwks",
+      identity_strengths_supported: [
+        "documentary",
+        "documentary_full",
+        "cryptographic_chip",
+      ],
+      token_types_supported: ["poh+jwt"],
+      presentation_methods_supported: ["dpop"],
+      max_token_lifetime: 300,
+      token_signing_alg: "EdDSA",
+      dpop_signing_alg_values_supported: ["ES256"],
+    });
   });
 
   it("points jwks_uri to the PoH issuer signing keys", async () => {
