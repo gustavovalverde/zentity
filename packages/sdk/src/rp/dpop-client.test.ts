@@ -1,51 +1,11 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-
-const joseMocks = vi.hoisted(() => {
-  class MockSignJWT {
-    claims: Record<string, unknown>;
-    header: Record<string, unknown> | undefined;
-
-    constructor(claims: Record<string, unknown>) {
-      this.claims = { ...claims };
-    }
-
-    setIssuedAt() {
-      return this;
-    }
-
-    setProtectedHeader(header: Record<string, unknown>) {
-      this.header = header;
-      return this;
-    }
-
-    async sign() {
-      return JSON.stringify({
-        claims: this.claims,
-        header: this.header,
-      });
-    }
-  }
-
-  return {
-    base64url: {
-      encode: (input: Uint8Array | string) =>
-        Buffer.from(input as Uint8Array).toString("base64url"),
-    },
-    exportJWK: vi.fn(async (key: unknown) =>
-      key === "private-key"
-        ? { crv: "P-256", d: "private", kty: "EC", x: "pub-x", y: "pub-y" }
-        : { crv: "P-256", kty: "EC", x: "pub-x", y: "pub-y" }
-    ),
-    generateKeyPair: vi.fn(async () => ({
-      privateKey: "private-key",
-      publicKey: "public-key",
-    })),
-    importJWK: vi.fn(async () => "imported-private-key"),
-    SignJWT: MockSignJWT,
-  };
-});
-
-vi.mock("jose", () => joseMocks);
+import {
+  base64url,
+  decodeJwt,
+  decodeProtectedHeader,
+  EmbeddedJWK,
+  jwtVerify,
+} from "jose";
+import { describe, expect, it, vi } from "vitest";
 
 import {
   createDpopClient,
@@ -53,261 +13,377 @@ import {
   generateDpopKeyPair,
 } from "./dpop-client";
 
-describe("dpop client", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-    vi.stubGlobal("crypto", {
-      randomUUID: vi.fn(() => "nonce-id"),
-      subtle: {
-        digest: vi.fn(async () => new Uint8Array([1, 2, 3]).buffer),
-      },
+const TOKEN_URL = "https://issuer.example/oauth2/token";
+const RESOURCE_URL = "https://issuer.example/api/resource";
+
+async function sha256(value: string): Promise<string> {
+  const digest = await crypto.subtle.digest(
+    "SHA-256",
+    new TextEncoder().encode(value)
+  );
+  return base64url.encode(new Uint8Array(digest));
+}
+
+function sent(transport: ReturnType<typeof vi.fn>, call: number) {
+  const [url, init] = transport.mock.calls[call] as [string, RequestInit];
+  const headers = new Headers(init.headers);
+  const proof = headers.get("DPoP") ?? "";
+  return { url, init, headers, proof, claims: decodeJwt(proof) };
+}
+
+function jsonError(
+  status: number,
+  error: string,
+  headers: Record<string, string> = {}
+): Response {
+  return new Response(JSON.stringify({ error }), { status, headers });
+}
+
+describe("generateDpopKeyPair", () => {
+  it("returns an ES256 key pair as JWKs", async () => {
+    const { privateJwk, publicJwk } = await generateDpopKeyPair();
+
+    expect(privateJwk).toMatchObject({ kty: "EC", crv: "P-256" });
+    expect(privateJwk.d).toEqual(expect.any(String));
+    expect(publicJwk).toEqual({
+      kty: "EC",
+      crv: "P-256",
+      x: privateJwk.x,
+      y: privateJwk.y,
     });
   });
+});
 
-  afterEach(() => {
-    vi.unstubAllGlobals();
-  });
-
-  it("generates a serialized ES256 key pair", async () => {
+describe("proofFor", () => {
+  it("signs a proof with the client's key", async () => {
     const keyPair = await generateDpopKeyPair();
-
-    expect(keyPair).toEqual({
-      privateJwk: {
-        crv: "P-256",
-        d: "private",
-        kty: "EC",
-        x: "pub-x",
-        y: "pub-y",
-      },
-      publicJwk: {
-        crv: "P-256",
-        kty: "EC",
-        x: "pub-x",
-        y: "pub-y",
-      },
-    });
-    expect(joseMocks.generateKeyPair).toHaveBeenCalledWith("ES256", {
-      extractable: true,
-    });
-  });
-
-  it("builds DPoP proofs from a persisted key pair", async () => {
-    const client = await createDpopClientFromKeyPair({
-      privateJwk: {
-        crv: "P-256",
-        d: "private",
-        kty: "EC",
-        x: "pub-x",
-        y: "pub-y",
-      },
-      publicJwk: { crv: "P-256", kty: "EC", x: "pub-x", y: "pub-y" },
-    });
+    const client = await createDpopClientFromKeyPair(keyPair);
 
     const proof = await client.proofFor(
-      "GET",
-      "https://issuer.example/userinfo",
+      "get",
+      "https://issuer.example/userinfo?scope=openid",
       "access-token",
-      "retry-nonce"
+      "server-nonce"
     );
 
-    expect(proof).toContain("\"htu\":\"https://issuer.example/userinfo\"");
-    expect(proof).toContain("\"htm\":\"GET\"");
-    expect(proof).toContain("\"nonce\":\"retry-nonce\"");
-    expect(proof).toContain("\"jti\":\"nonce-id\"");
-    expect(proof).toContain("\"typ\":\"dpop+jwt\"");
+    const { payload, protectedHeader } = await jwtVerify(proof, EmbeddedJWK, {
+      typ: "dpop+jwt",
+      algorithms: ["ES256"],
+    });
+    expect(protectedHeader.jwk).toEqual(keyPair.publicJwk);
+    expect(payload).toMatchObject({
+      htm: "GET",
+      htu: "https://issuer.example/userinfo",
+      nonce: "server-nonce",
+      ath: await sha256("access-token"),
+    });
+    expect(payload.jti).toEqual(expect.any(String));
+    expect(payload.iat).toEqual(expect.any(Number));
   });
 
-  it("normalizes htu to the origin and path", async () => {
+  it("omits ath and nonce when they are not given", async () => {
     const client = await createDpopClient();
 
-    const proof = await client.proofFor(
-      "POST",
-      "https://issuer.example/oauth2/token?client_id=abc"
-    );
+    const claims = decodeJwt(await client.proofFor("POST", TOKEN_URL));
 
-    expect(proof).toContain("\"htu\":\"https://issuer.example/oauth2/token\"");
+    expect(claims.ath).toBeUndefined();
+    expect(claims.nonce).toBeUndefined();
+  });
+
+  it("gives every proof a new jti", async () => {
+    const client = await createDpopClient();
+
+    const first = decodeJwt(await client.proofFor("POST", TOKEN_URL));
+    const second = decodeJwt(await client.proofFor("POST", TOKEN_URL));
+
+    expect(first.jti).not.toBe(second.jti);
   });
 
   it("drops the query and fragment from htu instead of rejecting the URL", async () => {
     const client = await createDpopClient();
 
     for (const url of [
-      "https://issuer.example/oauth2/token#frag",
-      "https://issuer.example/oauth2/token?client_id=abc#frag",
-      new URL("https://issuer.example/oauth2/token#frag"),
+      `${TOKEN_URL}#frag`,
+      `${TOKEN_URL}#`,
+      `${TOKEN_URL}?client_id=abc#frag`,
+      new URL(`${TOKEN_URL}#frag`),
     ]) {
-      const proof = await client.proofFor("POST", url);
-      expect(proof).toContain(
-        "\"htu\":\"https://issuer.example/oauth2/token\""
-      );
-      expect(proof).not.toContain("frag");
+      const claims = decodeJwt(await client.proofFor("POST", url));
+      expect(claims.htu).toBe(TOKEN_URL);
     }
   });
+});
 
-  describe("fetch", () => {
-    const TOKEN_URL = "https://issuer.example/oauth2/token";
+describe("fetch", () => {
+  it("calls the transport with (url, init), the DPoP header, and the original body on both attempts", async () => {
+    const client = await createDpopClient();
+    const body = new URLSearchParams({ grant_type: "client_credentials" });
+    const transport = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(
+        jsonError(400, "use_dpop_nonce", { "DPoP-Nonce": "nonce-1" })
+      )
+      .mockResolvedValueOnce(new Response("{}", { status: 200 }));
 
-    function sent(transport: ReturnType<typeof vi.fn>, call: number) {
-      const init = transport.mock.calls[call]?.[1] as RequestInit;
-      const headers = new Headers(init.headers);
-      const proof = JSON.parse(headers.get("DPoP") ?? "{}") as {
-        claims: Record<string, unknown>;
-      };
-      return { headers, claims: proof.claims, init };
-    }
+    const response = await client.fetch(new URL(TOKEN_URL), {
+      method: "post",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body,
+      fetch: transport,
+    });
 
-    function jsonError(
-      status: number,
-      error: string,
-      headers: Record<string, string> = {}
-    ): Response {
-      return new Response(JSON.stringify({ error }), { status, headers });
-    }
-
-    it("retries a use_dpop_nonce token error once with the new nonce", async () => {
-      const client = await createDpopClient();
-      const transport = vi
-        .fn<typeof fetch>()
-        .mockResolvedValueOnce(
-          jsonError(400, "use_dpop_nonce", { "DPoP-Nonce": "nonce-1" })
-        )
-        .mockResolvedValueOnce(new Response("{}", { status: 200 }));
-
-      const response = await client.fetch(TOKEN_URL, {
-        method: "post",
-        body: new URLSearchParams({ grant_type: "client_credentials" }),
-        fetch: transport,
-      });
-
-      expect(response.status).toBe(200);
-      expect(transport).toHaveBeenCalledTimes(2);
-      expect(sent(transport, 0).claims.nonce).toBeUndefined();
-      expect(sent(transport, 1).claims).toMatchObject({
-        htm: "POST",
-        htu: TOKEN_URL,
-        nonce: "nonce-1",
-      });
-      expect(String(sent(transport, 1).init.body)).toBe(
-        "grant_type=client_credentials"
+    expect(response.status).toBe(200);
+    expect(transport).toHaveBeenCalledTimes(2);
+    for (const call of [0, 1]) {
+      const attempt = sent(transport, call);
+      expect(attempt.url).toBe(TOKEN_URL);
+      expect(attempt.init.method).toBe("POST");
+      expect(attempt.init.body).toBe(body);
+      expect(attempt.headers.get("Content-Type")).toBe(
+        "application/x-www-form-urlencoded"
       );
+      await expect(
+        jwtVerify(attempt.proof, EmbeddedJWK, { typ: "dpop+jwt" })
+      ).resolves.toBeDefined();
+    }
+    expect(sent(transport, 0).claims.nonce).toBeUndefined();
+    expect(sent(transport, 1).claims).toMatchObject({
+      htm: "POST",
+      htu: TOKEN_URL,
+      nonce: "nonce-1",
+    });
+    expect(sent(transport, 1).claims.jti).not.toBe(
+      sent(transport, 0).claims.jti
+    );
+  });
+
+  it("does not retry an invalid_grant error that carries a DPoP-Nonce", async () => {
+    const client = await createDpopClient();
+    const transport = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(
+        jsonError(400, "invalid_grant", { "DPoP-Nonce": "nonce-1" })
+      )
+      .mockResolvedValueOnce(new Response("{}", { status: 200 }));
+
+    const response = await client.fetch(TOKEN_URL, {
+      method: "POST",
+      fetch: transport,
     });
 
-    it("does not retry an invalid_grant error that carries a DPoP-Nonce", async () => {
-      const client = await createDpopClient();
-      const transport = vi
-        .fn<typeof fetch>()
-        .mockResolvedValueOnce(
-          jsonError(400, "invalid_grant", { "DPoP-Nonce": "nonce-1" })
-        )
-        .mockResolvedValueOnce(new Response("{}", { status: 200 }));
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({ error: "invalid_grant" });
+    expect(transport).toHaveBeenCalledTimes(1);
 
-      const response = await client.fetch(TOKEN_URL, {
-        method: "POST",
-        fetch: transport,
-      });
+    await client.fetch(TOKEN_URL, { method: "POST", fetch: transport });
+    expect(sent(transport, 1).claims.nonce).toBe("nonce-1");
+  });
 
-      expect(response.status).toBe(400);
-      await expect(response.json()).resolves.toEqual({
-        error: "invalid_grant",
-      });
-      expect(transport).toHaveBeenCalledTimes(1);
+  it("retries at most once when the server keeps asking for a nonce", async () => {
+    const client = await createDpopClient();
+    const transport = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(
+        jsonError(400, "use_dpop_nonce", { "DPoP-Nonce": "nonce-1" })
+      )
+      .mockResolvedValueOnce(
+        jsonError(400, "use_dpop_nonce", { "DPoP-Nonce": "nonce-2" })
+      );
 
-      await client.fetch(TOKEN_URL, { method: "POST", fetch: transport });
-      expect(sent(transport, 1).claims.nonce).toBe("nonce-1");
+    const response = await client.fetch(TOKEN_URL, {
+      method: "POST",
+      fetch: transport,
     });
 
-    it("retries at most once when the server keeps asking for a nonce", async () => {
-      const client = await createDpopClient();
-      const transport = vi
-        .fn<typeof fetch>()
-        .mockResolvedValueOnce(
-          jsonError(400, "use_dpop_nonce", { "DPoP-Nonce": "nonce-1" })
-        )
-        .mockResolvedValueOnce(
-          jsonError(400, "use_dpop_nonce", { "DPoP-Nonce": "nonce-2" })
-        );
+    expect(response.status).toBe(400);
+    expect(transport).toHaveBeenCalledTimes(2);
+  });
 
-      const response = await client.fetch(TOKEN_URL, {
-        method: "POST",
-        fetch: transport,
-      });
+  it("does not retry when the challenge repeats the nonce the proof carried", async () => {
+    const client = await createDpopClient();
+    const transport = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(
+        new Response("{}", {
+          status: 200,
+          headers: { "DPoP-Nonce": "nonce-1" },
+        })
+      )
+      .mockResolvedValueOnce(
+        jsonError(400, "use_dpop_nonce", { "DPoP-Nonce": "nonce-1" })
+      );
 
-      expect(response.status).toBe(400);
-      expect(transport).toHaveBeenCalledTimes(2);
+    await client.fetch(TOKEN_URL, { method: "POST", fetch: transport });
+    const response = await client.fetch(TOKEN_URL, {
+      method: "POST",
+      fetch: transport,
     });
 
-    it("sends the nonce cached from an earlier success on the first attempt", async () => {
-      const client = await createDpopClient();
-      const transport = vi
-        .fn<typeof fetch>()
-        .mockResolvedValueOnce(
-          new Response("{}", {
-            status: 200,
-            headers: { "DPoP-Nonce": "nonce-1" },
-          })
-        )
-        .mockResolvedValueOnce(new Response("{}", { status: 200 }))
-        .mockResolvedValueOnce(new Response("{}", { status: 200 }));
+    expect(response.status).toBe(400);
+    expect(sent(transport, 1).claims.nonce).toBe("nonce-1");
+    expect(transport).toHaveBeenCalledTimes(2);
+  });
 
-      await client.fetch(TOKEN_URL, { method: "POST", fetch: transport });
-      await client.fetch("https://issuer.example/oauth2/userinfo", {
-        accessToken: "access-token",
-        fetch: transport,
-      });
-      await client.fetch("https://other.example/resource", {
-        fetch: transport,
-      });
+  it("sends the nonce cached from an earlier success, per origin", async () => {
+    const client = await createDpopClient();
+    const transport = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(
+        new Response("{}", {
+          status: 200,
+          headers: { "DPoP-Nonce": "nonce-1" },
+        })
+      )
+      .mockResolvedValueOnce(new Response("{}", { status: 200 }))
+      .mockResolvedValueOnce(new Response("{}", { status: 200 }));
 
-      const userinfo = sent(transport, 1);
-      expect(userinfo.claims).toMatchObject({
-        htm: "GET",
-        nonce: "nonce-1",
-        ath: expect.any(String),
-      });
-      expect(userinfo.headers.get("Authorization")).toBe("DPoP access-token");
-      expect(sent(transport, 2).claims.nonce).toBeUndefined();
-      expect(transport).toHaveBeenCalledTimes(3);
+    await client.fetch(TOKEN_URL, { method: "POST", fetch: transport });
+    await client.fetch("https://issuer.example/oauth2/userinfo", {
+      accessToken: "access-token",
+      fetch: transport,
+    });
+    await client.fetch("https://other.example/resource", { fetch: transport });
+
+    const userinfo = sent(transport, 1);
+    expect(userinfo.claims).toMatchObject({
+      htm: "GET",
+      nonce: "nonce-1",
+      ath: await sha256("access-token"),
+    });
+    expect(userinfo.headers.get("Authorization")).toBe("DPoP access-token");
+    expect(sent(transport, 2).claims.nonce).toBeUndefined();
+    expect(transport).toHaveBeenCalledTimes(3);
+  });
+
+  it("keeps nonces separate for each client", async () => {
+    const first = await createDpopClient();
+    const second = await createDpopClient();
+    const transport = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(
+        new Response("{}", {
+          status: 200,
+          headers: { "DPoP-Nonce": "nonce-1" },
+        })
+      )
+      .mockResolvedValueOnce(new Response("{}", { status: 200 }));
+
+    await first.fetch(TOKEN_URL, { method: "POST", fetch: transport });
+    await second.fetch(TOKEN_URL, { method: "POST", fetch: transport });
+
+    expect(sent(transport, 1).claims.nonce).toBeUndefined();
+  });
+
+  it("retries a resource-server 401 only for a DPoP use_dpop_nonce challenge", async () => {
+    const client = await createDpopClient();
+    const transport = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(
+        new Response(null, {
+          status: 401,
+          headers: {
+            "DPoP-Nonce": "nonce-1",
+            "WWW-Authenticate":
+              'DPoP error="use_dpop_nonce", error_description="Resource server requires nonce in DPoP proof"',
+          },
+        })
+      )
+      .mockResolvedValueOnce(new Response("{}", { status: 200 }))
+      .mockResolvedValueOnce(
+        new Response(null, {
+          status: 401,
+          headers: {
+            "DPoP-Nonce": "nonce-2",
+            "WWW-Authenticate": 'DPoP error="invalid_token"',
+          },
+        })
+      )
+      .mockResolvedValueOnce(
+        new Response(null, {
+          status: 401,
+          headers: {
+            "DPoP-Nonce": "nonce-3",
+            "WWW-Authenticate": 'Bearer error="use_dpop_nonce"',
+          },
+        })
+      );
+
+    const first = await client.fetch(RESOURCE_URL, {
+      accessToken: "access-token",
+      fetch: transport,
+    });
+    const second = await client.fetch(RESOURCE_URL, {
+      accessToken: "access-token",
+      fetch: transport,
+    });
+    const third = await client.fetch(RESOURCE_URL, {
+      accessToken: "access-token",
+      fetch: transport,
     });
 
-    it("retries a resource-server 401 only for a use_dpop_nonce challenge", async () => {
-      const client = await createDpopClient();
-      const resourceUrl = "https://issuer.example/api/resource";
-      const transport = vi
-        .fn<typeof fetch>()
-        .mockResolvedValueOnce(
-          new Response(null, {
-            status: 401,
-            headers: {
-              "DPoP-Nonce": "nonce-1",
-              "WWW-Authenticate":
-                'DPoP error="use_dpop_nonce", error_description="Resource server requires nonce in DPoP proof"',
-            },
-          })
-        )
-        .mockResolvedValueOnce(new Response("{}", { status: 200 }))
-        .mockResolvedValueOnce(
-          new Response(null, {
-            status: 401,
-            headers: {
-              "DPoP-Nonce": "nonce-2",
-              "WWW-Authenticate": 'DPoP error="invalid_token"',
-            },
-          })
-        );
+    expect(first.status).toBe(200);
+    expect(sent(transport, 1).claims.nonce).toBe("nonce-1");
+    expect(second.status).toBe(401);
+    expect(third.status).toBe(401);
+    expect(transport).toHaveBeenCalledTimes(4);
+  });
 
-      const first = await client.fetch(resourceUrl, {
-        accessToken: "access-token",
-        fetch: transport,
-      });
-      const second = await client.fetch(resourceUrl, {
-        accessToken: "access-token",
-        fetch: transport,
-      });
-
-      expect(first.status).toBe(200);
-      expect(sent(transport, 1).claims.nonce).toBe("nonce-1");
-      expect(second.status).toBe(401);
-      expect(transport).toHaveBeenCalledTimes(3);
+  it("retries when the transport keeps an unread clone of the challenge", async () => {
+    const client = await createDpopClient();
+    const kept: Response[] = [];
+    let attempts = 0;
+    const transport = vi.fn<typeof fetch>(async () => {
+      attempts += 1;
+      const response: Response =
+        attempts === 1
+          ? new Response("challenge", {
+              status: 401,
+              headers: {
+                "DPoP-Nonce": "nonce-1",
+                "WWW-Authenticate": 'DPoP error="use_dpop_nonce"',
+              },
+            })
+          : new Response("{}", { status: 200 });
+      kept.push(response.clone());
+      return response;
     });
+
+    const response = await client.fetch(RESOURCE_URL, {
+      accessToken: "access-token",
+      fetch: transport,
+    });
+
+    expect(response.status).toBe(200);
+    expect(transport).toHaveBeenCalledTimes(2);
+    await expect(kept[0]?.text()).resolves.toBe("challenge");
+  });
+
+  it("leaves a URL's fragment out of the proof's htu", async () => {
+    const client = await createDpopClient();
+    const transport = vi.fn<typeof fetch>(
+      async () => new Response("{}", { status: 200 })
+    );
+
+    const response = await client.fetch(`${TOKEN_URL}#frag`, {
+      method: "POST",
+      fetch: transport,
+    });
+
+    expect(response.status).toBe(200);
+    expect(sent(transport, 0).claims.htu).toBe(TOKEN_URL);
+  });
+
+  it("puts the client's public key in every proof", async () => {
+    const keyPair = await generateDpopKeyPair();
+    const client = await createDpopClientFromKeyPair(keyPair);
+    const transport = vi
+      .fn<typeof fetch>()
+      .mockResolvedValue(new Response("{}", { status: 200 }));
+
+    await client.fetch(RESOURCE_URL, { fetch: transport });
+
+    expect(decodeProtectedHeader(sent(transport, 0).proof).jwk).toEqual(
+      keyPair.publicJwk
+    );
   });
 });

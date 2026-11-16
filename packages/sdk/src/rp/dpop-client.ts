@@ -1,14 +1,12 @@
+import {
+  createDpopNonceCache,
+  createDpopProof,
+  DPOP_NONCE_HEADER,
+  isDpopNonceChallenge,
+} from "@better-auth/core/oauth2/dpop-client";
 import { p256 } from "@noble/curves/nist.js";
 import { bytesToNumberBE, numberToBytesBE } from "@noble/curves/utils.js";
-import {
-  base64url,
-  exportJWK,
-  generateKeyPair,
-  importJWK,
-  type JWK,
-  SignJWT,
-} from "jose";
-import { normalizeDpopHtu } from "./dpop-htu";
+import { base64url, exportJWK, generateKeyPair, type JWK } from "jose";
 
 const P256_SCALAR_BYTES = 32;
 // HKDF parameters for the zpay payment-channel DPoP key. They are wire
@@ -17,6 +15,7 @@ const P256_SCALAR_BYTES = 32;
 // binding depend on. Keep them stable across repos and runtimes.
 const DEFAULT_DPOP_SEED_SALT = "zpay-dpop-key-v1";
 const DEFAULT_DPOP_SEED_INFO = "zpay/v1/dpop";
+const ES256_KEY_ALGORITHM = { name: "ECDSA", namedCurve: "P-256" } as const;
 
 export interface DpopKeyPair {
   privateJwk: JWK;
@@ -29,7 +28,10 @@ export interface DpopRequestInit extends RequestInit {
    * request carries `Authorization: DPoP <accessToken>`.
    */
   accessToken?: string;
-  /** Transport to send the request with. Defaults to the global `fetch`. */
+  /**
+   * Transport to send the request with, called as `(url, init)` with the
+   * `DPoP` header set. Defaults to the global `fetch`.
+   */
   fetch?: typeof globalThis.fetch;
 }
 
@@ -41,8 +43,9 @@ export interface DpopClient {
    *
    * The client remembers the latest `DPoP-Nonce` each origin returned, on
    * success or error, and puts it in the first proof. When the server
-   * answers `use_dpop_nonce` (a 400 JSON error from an authorization server,
-   * or a 401 `WWW-Authenticate` error from a resource server), the request
+   * answers `use_dpop_nonce` with a nonce the proof did not already carry
+   * (a 400 JSON error from an authorization server, or a 401
+   * `WWW-Authenticate: DPoP` challenge from a resource server), the request
    * is retried once with the new nonce. Every other response, including
    * errors that carry a `DPoP-Nonce`, is returned as is. The retry resends
    * `init.body`, so pass a replayable body such as a string or
@@ -61,41 +64,37 @@ export interface DpopClient {
   ): Promise<string>;
 }
 
-const DPOP_NONCE_HEADER = "DPoP-Nonce";
-const USE_DPOP_NONCE = "use_dpop_nonce";
-const WWW_AUTHENTICATE_USE_DPOP_NONCE_RE = /\berror\s*=\s*"?use_dpop_nonce"?/i;
-
-function toUrlString(url: string | URL): string {
-  return url instanceof URL ? url.toString() : url;
-}
-
-async function hashAccessToken(token: string): Promise<string> {
-  const digest = await crypto.subtle.digest(
-    "SHA-256",
-    new TextEncoder().encode(token)
-  );
-  return base64url.encode(new Uint8Array(digest));
-}
-
-async function isNonceChallenge(response: Response): Promise<boolean> {
-  if (response.status === 401) {
-    const challenge = response.headers.get("WWW-Authenticate") ?? "";
-    return WWW_AUTHENTICATE_USE_DPOP_NONCE_RE.test(challenge);
-  }
-  if (response.status !== 400) {
-    return false;
-  }
-  try {
-    const body = (await response.clone().json()) as { error?: unknown };
-    return body?.error === USE_DPOP_NONCE;
-  } catch {
-    return false;
-  }
+/**
+ * RFC 9449 §4.2 `htu` has no fragment. A fragment never reaches the server,
+ * so the client drops it rather than failing; Better Auth's proof signer
+ * rejects one, as a verifier must.
+ */
+function withoutFragment(url: string | URL): string {
+  const target = new URL(url);
+  target.hash = "";
+  return target.href;
 }
 
 async function createClient(keyPair: DpopKeyPair): Promise<DpopClient> {
-  const privateKey = await importJWK(keyPair.privateJwk, "ES256");
-  const noncesByOrigin = new Map<string, string>();
+  const signingKeyPair: CryptoKeyPair = {
+    privateKey: await crypto.subtle.importKey(
+      "jwk",
+      keyPair.privateJwk,
+      ES256_KEY_ALGORITHM,
+      false,
+      ["sign"]
+    ),
+    // Extractable because the proof header embeds the public JWK, which
+    // Better Auth's proof signer exports from this key.
+    publicKey: await crypto.subtle.importKey(
+      "jwk",
+      keyPair.publicJwk,
+      ES256_KEY_ALGORITHM,
+      true,
+      ["verify"]
+    ),
+  };
+  const nonceCache = createDpopNonceCache();
 
   async function proofFor(
     method: string,
@@ -103,29 +102,25 @@ async function createClient(keyPair: DpopKeyPair): Promise<DpopClient> {
     accessToken?: string,
     nonce?: string
   ): Promise<string> {
-    return new SignJWT({
-      htm: method,
-      htu: normalizeDpopHtu(url),
-      jti: crypto.randomUUID(),
-      ...(accessToken ? { ath: await hashAccessToken(accessToken) } : {}),
+    return createDpopProof({
+      keyPair: signingKeyPair,
+      method,
+      url: withoutFragment(url),
+      ...(accessToken ? { accessToken } : {}),
       ...(nonce ? { nonce } : {}),
-    })
-      .setIssuedAt()
-      .setProtectedHeader({
-        alg: "ES256",
-        jwk: keyPair.publicJwk,
-        typ: "dpop+jwt",
-      })
-      .sign(privateKey);
+    });
   }
 
   return {
     keyPair,
     proofFor,
+    // Not Better Auth's createDpopFetch: before retrying it awaits
+    // cancelling the challenge body, which never settles when the transport
+    // kept an unread clone of the response.
     async fetch(url, init = {}) {
       const { accessToken, fetch: transport = globalThis.fetch, ...request } =
         init;
-      const target = toUrlString(url);
+      const target = String(url);
       const origin = new URL(target).origin;
       const method = (request.method ?? "GET").toUpperCase();
 
@@ -140,15 +135,21 @@ async function createClient(keyPair: DpopKeyPair): Promise<DpopClient> {
           method,
           headers,
         });
-        const nextNonce = response.headers.get(DPOP_NONCE_HEADER);
+        const nextNonce = response.headers.get(DPOP_NONCE_HEADER) ?? undefined;
         if (nextNonce) {
-          noncesByOrigin.set(origin, nextNonce);
+          await nonceCache.set(origin, nextNonce);
         }
         return { response, nextNonce };
       };
 
-      const first = await send(noncesByOrigin.get(origin));
-      if (first.nextNonce && (await isNonceChallenge(first.response))) {
+      const sentNonce = await nonceCache.get(origin);
+      const first = await send(sentNonce);
+      // The nonce the rejected proof already carried would fail again.
+      if (
+        first.nextNonce &&
+        first.nextNonce !== sentNonce &&
+        (await isDpopNonceChallenge(first.response))
+      ) {
         return (await send(first.nextNonce)).response;
       }
       return first.response;

@@ -26,17 +26,19 @@
     "README.md",
     "CHANGELOG.md",
     "LICENSE",
-    "PATENTS"
+    "PATENTS",
+    "THIRD_PARTY_NOTICES.md"
   ],
   "scripts": {
-    "build": "tsup src/index.ts src/agent-contract.ts src/fpa/index.ts src/node/index.ts src/protocol/index.ts src/rp/index.ts src/testing/index.ts --format esm,cjs --dts --clean --out-dir dist",
-    "build:watch": "tsup src/index.ts src/agent-contract.ts src/fpa/index.ts src/node/index.ts src/protocol/index.ts src/rp/index.ts src/testing/index.ts --format esm,cjs --dts --watch --out-dir dist",
+    "build": "tsup",
+    "build:watch": "tsup --watch",
     "clean": "rm -rf dist",
     "prepack": "pnpm run build",
     "test": "vitest run",
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
+    "@better-auth/core": "1.8.0-beta.10",
     "@types/node": "^24.19.2",
     "tsup": "^9.0.0",
     "typescript": "^7.0.2",

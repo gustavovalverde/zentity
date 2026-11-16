@@ -111,16 +111,18 @@ const userInfo = await dpopClient.fetch(userInfoEndpoint, { accessToken });
 The client handles nonces as follows:
 
 - It remembers the latest `DPoP-Nonce` header from each origin, on success and error responses, and puts that nonce in the next proof for the origin.
-- It retries a request once when the server answers `use_dpop_nonce`. An authorization server sends this error in a 400 JSON body. A resource server sends it in a 401 `WWW-Authenticate` header.
-- It returns every other response unchanged, including errors such as `invalid_grant` that carry a `DPoP-Nonce` header.
+- It retries a request once when the server answers `use_dpop_nonce` with a nonce the proof did not already carry. An authorization server sends this error in a 400 JSON body. A resource server sends it in a 401 `WWW-Authenticate: DPoP` challenge.
+- It returns every other response unchanged, including errors such as `invalid_grant` that carry a `DPoP-Nonce` header, and a `use_dpop_nonce` error that repeats the nonce already sent.
 
 With `accessToken` set, the proof carries the token hash (`ath`) and the request carries `Authorization: DPoP <accessToken>`.
+
+Pass `fetch` to send the request through your own transport. The client calls it with `(url, init)` for each attempt, with the `DPoP` header added to your headers.
 
 The retry sends the request body again. Pass a body that can be read twice, such as a string or `URLSearchParams`, not a stream.
 
 Proofs use the request URL without its query and fragment as `htu` (RFC 9449 §4.2). The client drops a fragment instead of failing, because a fragment is never sent on the wire, so the proof still names the same origin and path as the request.
 
-Each client keeps its own nonces. When a server requires nonces, a new client needs one extra round trip to learn the nonce. Reuse one client per key instead of creating one per request.
+Each client keeps its own nonces, for the 100 origins that sent one most recently. When a server requires nonces, a new client needs one extra round trip to learn the nonce. Reuse one client per key instead of creating one per request.
 
 ## Verifying Tokens and DPoP Proofs
 
