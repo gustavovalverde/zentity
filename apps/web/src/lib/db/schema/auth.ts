@@ -170,7 +170,7 @@ export const walletAddresses = sqliteTable(
     isPrimary: integer("is_primary", { mode: "boolean" })
       .notNull()
       .default(false),
-    createdAt: text("created_at").notNull().default(sql`(datetime('now'))`),
+    createdAt: text("created_at").notNull().default(isoTimestampNow),
   },
   (table) => [
     index("wallet_address_user_id_idx").on(table.userId),
