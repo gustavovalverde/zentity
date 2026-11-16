@@ -4,7 +4,6 @@ import { meetsIdentityStrength } from "@zentity/sdk/protocol";
 import {
   assertApprovedRequirement,
   assertIdentityStrength,
-  createInMemoryProofOfHumanReplayStore,
   createPaymentRequired,
   createProofOfHumanTokenVerifier,
   encodePaymentResponseHeader,
@@ -33,6 +32,7 @@ import {
   getProofOfHumanBinding,
   isPohError,
 } from "@/lib/poh-client";
+import { presentationReplayStore } from "@/lib/presentation-replay";
 import { buildRouteConfig, type X402RouteConfig } from "@/lib/x402-server";
 
 /**
@@ -51,10 +51,6 @@ const bodySchema = z.object({
 });
 
 const TRAILING_SLASHES = /\/+$/;
-
-// PoH and DPoP proof `jti` values this instance has seen. One instance only;
-// a deployment with several needs a shared store.
-const replayStore = createInMemoryProofOfHumanReplayStore();
 
 // The identity registry mirror on Base compares a uint8 level; the wire
 // carries only the strength name.
@@ -220,7 +216,7 @@ export async function GET(request: Request) {
         audience: new URL(resourceUrl).origin,
         issuer: zentityIssuer(),
         jwks: zentityJwksUrl(),
-        replayStore,
+        replayStore: presentationReplayStore,
         request,
       });
       assertIdentityStrength(claims, minimum);
@@ -255,7 +251,7 @@ export async function GET(request: Request) {
 
   if (claims) {
     try {
-      await recordProofOfHumanUse(claims, replayStore);
+      await recordProofOfHumanUse(claims, presentationReplayStore);
     } catch (error) {
       if (error instanceof ProofOfHumanPresentationError) {
         return presentationRefusal(error);

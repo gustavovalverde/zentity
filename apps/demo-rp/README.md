@@ -115,7 +115,7 @@ Aether uses the `useCibaFlow` polling hook, architecturally distinct from the OA
 5. For an identity-gated resource, the RP's server obtains a client-mode Proof-of-Human token for the signed-in user from Zentity and checks it; the token never reaches the browser or the payment payload
 6. On-chain resources check Base `IdentityRegistryMirror.isCompliant(payer, level)`
 
-Agents use `GET /api/x402/access?resourceId=<id>` instead. The 402 carries `WWW-Authenticate: DPoP algs="ES256"`, the `auth-hints` extension naming Zentity's issuer, and `extensions.zentity = { info: { minIdentityStrength }, schema }`. The agent retries with `PAYMENT-SIGNATURE`, `Authorization: DPoP <merchant-mode Proof-of-Human token>`, and a DPoP proof. The route checks, in order: the token and proof (`verifyProofOfHumanPresentation`), the identity strength, the approved terms against the route and the payment, the facilitator's verification, the token's single use, and settlement. Its replay store is in memory, so the merchant serves one instance; a deployment with several instances needs a shared store. On-chain resources refuse agent tokens with `401 invalid_token`.
+Agents use `GET /api/x402/access?resourceId=<id>` instead. The 402 carries `WWW-Authenticate: DPoP algs="ES256"`, the `auth-hints` extension naming Zentity's issuer, and `extensions.zentity = { info: { minIdentityStrength }, schema }`. The agent retries with `PAYMENT-SIGNATURE`, `Authorization: DPoP <merchant-mode Proof-of-Human token>`, and a DPoP proof. The route checks, in order: the token and proof (`verifyProofOfHumanPresentation`), the identity strength, the approved terms against the route and the payment, the facilitator's verification, the token's single use, and settlement. It records the PoH and DPoP proof `jti` values in the demo's database (`presentation_replay`), so every instance refuses a token or proof that another instance accepted. On-chain resources refuse agent tokens with `401 invalid_token`.
 
 For the on-chain resource, the demo uses the Base Sepolia deployment manifest from `@zentity/contracts`. Set `BASE_SEPOLIA_IDENTITY_REGISTRY_MIRROR` only when you need to point at a different mirror deployment. If no package manifest or override is available, the demo reports `identity_registry_mirror_not_configured` instead of silently falling back to a mock.
 
@@ -158,6 +158,7 @@ Current cases that need a push:
 - `vp_session`: `clientId` and `signedRequest` are `NOT NULL`, and `requestFetchedAt` is new.
 - `validity_notice.receivedAt`: changed from text to integer.
 - `dcr_client.registrationFingerprint`: a new nullable column. Each cached scenario client registers again on its next use, because it has no fingerprint yet.
+- `presentation_replay`: a new table, where the x402 merchant records the Proof-of-Human and DPoP proof `jti` values it accepted. Push it before a release that serves x402 resources.
 
 ## Environment Variables
 

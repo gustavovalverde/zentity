@@ -160,3 +160,10 @@ export const vpSessions = sqliteTable("vp_session", {
     .notNull()
     .$defaultFn(() => new Date(Date.now() + 5 * 60 * 1000)),
 });
+
+// Proof-of-Human and DPoP proof `jti` values the x402 merchant has accepted,
+// shared by every instance so a presentation is used once across them.
+export const presentationReplay = sqliteTable("presentation_replay", {
+  key: text("key").primaryKey(),
+  expiresAt: integer("expiresAt", { mode: "timestamp_ms" }).notNull(),
+});

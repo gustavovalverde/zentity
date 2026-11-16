@@ -48,6 +48,14 @@ vi.mock("@/lib/facilitator", () => ({
   verifyViaFacilitator: mocks.verifyViaFacilitator,
 }));
 
+// One store for the whole file stands in for the database the deployed
+// merchant's instances share.
+vi.mock("@/lib/presentation-replay", async () => ({
+  presentationReplayStore: (
+    await import("@zentity/sdk/rp")
+  ).createInMemoryProofOfHumanReplayStore(),
+}));
+
 vi.mock("@/lib/poh-client", () => ({
   acquirePohToken: mocks.acquirePohToken,
   getProofOfHumanBinding: mocks.getProofOfHumanBinding,
