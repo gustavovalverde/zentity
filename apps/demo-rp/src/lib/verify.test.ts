@@ -147,6 +147,8 @@ function issueCredential(options: CredentialOptions = {}): Promise<string> {
  */
 function signStatusList(
   overrides: {
+    /** Seconds since the epoch; defaults to now. */
+    iat?: number;
     iss?: string;
     key?: CryptoKey;
     /** Pads the token with a claim of this many characters. */
@@ -165,7 +167,7 @@ function signStatusList(
       : {}),
   })
     .setProtectedHeader({ alg: "ES256", typ: "statuslist+jwt" })
-    .setIssuedAt()
+    .setIssuedAt(overrides.iat)
     .setExpirationTime("1h")
     .sign(overrides.key ?? issuerKeys.privateKey);
 }
@@ -270,6 +272,29 @@ describe("verifyVpToken", () => {
     expect(init?.signal).toBeInstanceOf(AbortSignal);
   });
 
+  it.each([
+    ["the status list", "statusList"],
+    ["the KB-JWT", "kbJwt"],
+  ] as const)(
+    "accepts %s minted a few seconds ahead of the verifier's clock",
+    async (_label, token) => {
+      const ahead = nowSeconds() + 5;
+      if (token === "statusList") {
+        fetchMock.mockImplementation(async () =>
+          statusListResponse(await signStatusList({ iat: ahead }))
+        );
+      }
+      const vpToken = await bind(
+        await presentDisclosures(["verified"]),
+        token === "kbJwt" ? { iat: ahead } : {}
+      );
+
+      await expect(verifyVpToken(vpToken, EXPECTED)).resolves.toEqual({
+        verified: true,
+      });
+    }
+  );
+
   it("rejects a credential the status list marks revoked", async () => {
     const revoked = await issueCredential({
       status: statusReference(REVOKED_IDX),
@@ -339,6 +364,11 @@ describe("verifyVpToken", () => {
         statusListResponse(
           await signStatusList({ iss: "https://app.zentity.xyz" })
         ),
+    ],
+    [
+      "the status list was minted more than the clock skew ahead",
+      async () =>
+        statusListResponse(await signStatusList({ iat: nowSeconds() + 60 })),
     ],
     [
       "the status list was published for another uri",
@@ -502,7 +532,11 @@ describe("verifyVpToken", () => {
   it.each([
     ["another nonce", { nonce: "other-nonce" }],
     ["another audience", { aud: "https://other-verifier.example" }],
-    ["an iat older than five minutes", { iat: nowSeconds() - 301 }],
+    [
+      "an iat older than five minutes plus the clock skew",
+      { iat: nowSeconds() - 331 },
+    ],
+    ["an iat more than the clock skew ahead", { iat: nowSeconds() + 60 }],
     ["a typ other than kb+jwt", { typ: "JWT" }],
   ])("rejects a KB-JWT with %s", async (_label, overrides) => {
     const vpToken = await bind(

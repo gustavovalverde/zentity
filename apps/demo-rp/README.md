@@ -259,6 +259,7 @@ The `/veripass` page implements a digital credential wallet with an OID4VP verif
 - Every disclosure must match an `_sd` digest the issuer signed. Disclosures are also decoded strictly, so duplicate JSON member names are rejected.
 - The KB-JWT (`typ: kb+jwt`) must be signed by the holder key in the credential's `cnf.jwk`, and its `sd_hash` must cover exactly the presented issuer JWT and disclosures.
 - The KB-JWT `aud` must be the session's `client_id`, its `nonce` the session nonce, and its `iat` no older than 300 seconds.
+- Time checks on the credential, the status list token, and the KB-JWT allow 30 seconds of clock skew, because the status list token is minted when it is fetched and wallets set the KB-JWT `iat` from their own clocks.
 
 The session result holds only the claims the holder selectively disclosed, not the issuer's always-visible claims such as `iss`, `vct`, or `cnf`.
 

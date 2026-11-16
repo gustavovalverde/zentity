@@ -14,6 +14,9 @@ import type {
 } from "@/scenarios/veripass/verifier-scenario";
 
 const MAX_KB_JWT_AGE_SECONDS = 300;
+// Zentity mints the status list token when it is fetched, and wallets set the
+// KB-JWT iat from their own clocks, so either can be slightly ahead of ours.
+const CLOCK_SKEW_SECONDS = 30;
 const STATUS_LIST_MEDIA_TYPE = "application/statuslist+jwt";
 const STATUS_LIST_TIMEOUT_MS = 5000;
 const MAX_STATUS_LIST_BYTES = 64 * 1024;
@@ -184,6 +187,7 @@ function selectPresentation(
  * signed by the same JWKS, must mark it valid. The KB-JWT must be signed by
  * the credential's `cnf.jwk` holder key over this exact presentation
  * (`sd_hash`), for this verifier and nonce, within the last five minutes.
+ * Time checks allow 30 seconds of clock skew.
  */
 export async function verifyVpToken(
   vpToken: unknown,
@@ -210,6 +214,7 @@ export async function verifyVpToken(
       keyBindingNonce: expected.nonce,
       expectedKeyBindingAudience: expected.audience,
       keyBindingMaxAgeSeconds: MAX_KB_JWT_AGE_SECONDS,
+      skewSeconds: CLOCK_SKEW_SECONDS,
     });
     // verify() skips holder binding without a nonce, and the status check
     // without a status reference; never accept either.
