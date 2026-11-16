@@ -99,7 +99,12 @@ pnpm test:e2e        # Run Playwright E2E tests
 pnpm test:e2e:ui     # Run E2E with Playwright UI
 ```
 
-### E2E Notes (Hardhat vs Sepolia)
+### E2E Notes (OIDC-only, Hardhat, Sepolia)
+
+**OIDC-only (runs nightly in CI):**
+
+- `E2E_OIDC_ONLY=true pnpm exec playwright test --config playwright.config.mts --project=oidc` starts `e2e/automation/start-oidc-dev.ts` (fresh SQLite database, no Hardhat, no confidential chain) and runs the four `e2e/oidc/*.spec.ts` files. It needs no FHE service, OCR service, browser, dev x5c certificates, or `MCP_PUBLIC_URL`, only the `.env` that `pnpm setup` generates and a built `@zentity/sdk`.
+- `.github/workflows/e2e-oidc.yml` runs it on a nightly schedule and on `workflow_dispatch`, never on pull requests. It generates secrets with `pnpm run setup` instead of storing repository secrets, and on failure uploads the Playwright report and the Next dev log as artifacts. The specs use Playwright's `request` fixture only, so the job installs no browsers; a spec that needs `page` must add an install and cache step.
 
 **Hardhat (default):**
 
