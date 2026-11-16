@@ -19,14 +19,12 @@ function watchDocs(): Plugin {
   };
 }
 
-// Reads markdown files from the monorepo docs/ at build time and exposes them
+// Reads markdown files (the whitepaper from content/, legal pages from the
+// monorepo docs/) at build time and exposes them
 // as plain string exports via `virtual:markdown-content`. This avoids both the
 // runtime readFile (broken on Vercel) and ?raw imports (hijacked by fumadocs-mdx).
 const markdownFiles: Record<string, string> = {
-  whitepaper: path.resolve(
-    docsDir,
-    "papers/whitepapers/verification-without-collection/WHITEPAPER.md",
-  ),
+  whitepaper: path.resolve(__dirname, "content/whitepaper.md"),
   privacy: path.resolve(docsDir, "legal/privacy-policy.md"),
   terms: path.resolve(docsDir, "legal/terms-of-service.md"),
 };

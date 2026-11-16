@@ -173,7 +173,7 @@ jobs:
   # TypeScript / JavaScript (apps/landing)
   # ============================================
   landing-lint:
-    name: Landing (Biome + tsc)
+    name: Landing (Biome + tsc + build)
     needs: changes
     if: needs.changes.outputs.landing == 'true' || needs.changes.outputs.ci == 'true'
     runs-on: ubuntu-latest
@@ -190,6 +190,8 @@ jobs:
       - run: pnpm run lint:check
         working-directory: apps/landing
       - run: pnpm run type-check
+        working-directory: apps/landing
+      - run: pnpm run build
         working-directory: apps/landing
 
   # ============================================
