@@ -118,7 +118,7 @@ These rules apply identically regardless of channel:
 | Standard or proof scopes only | Consent |
 | Any `identity.*` scope present | Consent + vault unlock + exact binding |
 | CIBA with `identity.*` scopes | Always requires explicit human approval (never auto-approved) |
-| `authorization_details` with `type: "purchase"` | CIBA approval with business action metadata |
+| `authorization_details` with `type: "purchase"` or `"x402_purchase"` | CIBA approval with a user-verified passkey assertion, never a grant or a notification |
 
 Channels adapt **transport and UX**, not disclosure semantics:
 
@@ -149,11 +149,13 @@ If `identity.name` is in scope but the `claims` parameter requests only `given_n
 ```json
 {
   "type": "purchase",
-  "merchant": "wine-shop",
-  "amount": "49.99",
-  "currency": "USD"
+  "merchant": { "name": "Wine Shop" },
+  "item": "Rioja Reserva 2019",
+  "amount": { "value": "49.99", "currency": "EUR" }
 }
 ```
+
+Every registered type has a strict schema: an unknown member, a control character, or a second purchase entry is refused with `invalid_authorization_details`. A `purchase` request pairs the entry with the identity scopes the merchant needs for delivery, which the user releases once through UserInfo. An `x402_purchase` entry instead carries an x402 merchant's `resource_url`, its `payment_requirements` copied verbatim, and its `min_identity_strength`, with scope exactly `openid poh`; it releases no identity claims, only a merchant-bound Proof-of-Human token.
 
 It is **never** used for claim selection. Claims are selected via scopes and the `claims` parameter.
 
@@ -202,7 +204,7 @@ This is requested via the `claims` parameter with a `verified_claims` entry, not
 3. `my_profile(fields)` → compiles fields to identity scopes via CIBA
 4. `my_proofs` → proof claims via `proof:identity` scope
 5. `check_compliance` → operational `compliance:read` scope
-6. `purchase` → action metadata via `authorization_details` + identity scopes for fulfillment
+6. `purchase` → a `purchase` entry via `authorization_details` + identity scopes for fulfillment; with `url`, an `x402_purchase` entry and `openid poh`, which releases no identity claims
 7. The MCP transport layer requires only `openid` — identity scopes are negotiated per-tool via CIBA
 
 ### Demo RP

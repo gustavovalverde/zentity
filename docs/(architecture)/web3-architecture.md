@@ -427,6 +427,42 @@ This keeps the mirror eventually consistent with the canonical read model while 
 
 The mirror is not a second source of identity truth. It is a public delivery surface for payment-time reads, and any new public predicate must go through a separate privacy review before it is added.
 
+### x402 Proof-of-Human presentation
+
+An x402 merchant that requires a verified human advertises it in its `402 Payment Required`, and an agent answers with a merchant-bound Proof-of-Human token beside the payment:
+
+```text
+HTTP/1.1 402 Payment Required
+WWW-Authenticate: DPoP algs="ES256"
+PAYMENT-REQUIRED: <base64 JSON>
+```
+
+```json
+{
+  "x402Version": 2,
+  "resource": { "url": "https://merchant.example/api/x402/access?resourceId=verified-identity" },
+  "accepts": [ { "scheme": "exact", "network": "eip155:84532", "amount": "1",
+                 "asset": "0x036CbD53842c5426634e7929541eC2318f3dCF7e", "payTo": "0x...",
+                 "maxTimeoutSeconds": 300, "extra": { "name": "USDC", "version": "2" } } ],
+  "extensions": {
+    "auth-hints": { "info": { "authRequirements": [ { "acceptIndexes": [0], "methods": [
+        { "type": "oauth2", "tokenType": "DPoP",
+          "authorizationServer": "https://app.zentity.xyz/api/auth",
+          "tokenEndpoint": "https://app.zentity.xyz/api/auth/oauth2/token" } ] } ] },
+      "schema": { } },
+    "zentity": { "info": { "minIdentityStrength": "documentary_full" }, "schema": { } }
+  }
+}
+```
+
+- `resource.url` is the absolute URL of the resource, so the agent can check it is on the origin it called, and the approval names that merchant.
+- `zentity.info.minIdentityStrength` is `documentary`, `documentary_full`, or `cryptographic_chip`. A resource that also checks the Base mirror adds `identityRegistryMirror`; agents do not use such a resource, and the merchant refuses an agent token for it with `401 invalid_token`.
+- The agent retries with `PAYMENT-SIGNATURE`, `Authorization: DPoP <poh>`, and a DPoP proof by the key it generated for this purchase. The payment payload carries no Zentity token, so the facilitator never sees one.
+- The merchant checks the token and the proof, the identity strength, that the approved requirement equals its own and the payment's for this URL, the facilitator's `/verify`, the token's single use, and only then settles. `@zentity/sdk/rp` runs these checks (`verifyProofOfHumanPresentation`, `assertIdentityStrength`, `assertApprovedRequirement`, `recordProofOfHumanUse`).
+- Amounts are atomic units of a registered asset (Base Sepolia USDC only). The agent's own wallet pays; Zentity does not sign or limit the payment, and the payer address links the user across merchants until payments are signed through Zentity's agent wallet.
+
+The token's claims and lifetime are in [Proof of Human](<../(protocols)/oauth-integrations.md#proof-of-human>), and the decision in [ADR privacy/0016](../adr/privacy/0016-proof-of-human-audience-binding.md).
+
 ---
 
 ## Data Privacy Model

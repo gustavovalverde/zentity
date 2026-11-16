@@ -178,6 +178,7 @@ Current cases that need a push:
 | `ZENTITY_JWKS_URL` | — | Override JWKS endpoint for VP token verification |
 | `BASE_SEPOLIA_RPC_URL` | <https://sepolia.base.org> | Base Sepolia RPC for x402 mirror reads |
 | `BASE_SEPOLIA_IDENTITY_REGISTRY_MIRROR` | Package manifest | Optional deployed `IdentityRegistryMirror` override for x402 on-chain checks |
+| `X402_FACILITATOR_URL` | `@x402/core`'s public facilitator | x402 facilitator that verifies and settles payments; the E2E points it at a mock |
 | `DATABASE_AUTH_TOKEN` | — | Turso auth token (for remote database) |
 
 ## Architecture
