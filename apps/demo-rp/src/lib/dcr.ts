@@ -65,16 +65,33 @@ export async function readDcrClient(
   }
 }
 
+/**
+ * Stores the scenario's client. Replacing a client also forgets every sign-in
+ * made through the old one: its tokens and subject belong to that client, so
+ * the user signs in again through the new one.
+ */
 export async function saveDcrClientId(
   scenarioId: RouteScenarioId,
   clientId: string,
   registrationFingerprint: string
 ): Promise<void> {
   const client = { clientId, clientSecret: null, registrationFingerprint };
-  await getDb()
-    .insert(dcrClient)
-    .values({ scenarioId, ...client })
-    .onConflictDoUpdate({ target: dcrClient.scenarioId, set: client });
+  await getDb().transaction(async (tx) => {
+    const previous = await tx
+      .select({ clientId: dcrClient.clientId })
+      .from(dcrClient)
+      .where(eq(dcrClient.scenarioId, scenarioId))
+      .get();
+    await tx
+      .insert(dcrClient)
+      .values({ scenarioId, ...client })
+      .onConflictDoUpdate({ target: dcrClient.scenarioId, set: client });
+    if (previous && previous.clientId !== clientId) {
+      await tx
+        .delete(account)
+        .where(eq(account.providerId, getOAuthProviderId(scenarioId)));
+    }
+  });
 }
 
 export async function findRouteScenarioByClientId(
