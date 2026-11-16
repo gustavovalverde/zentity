@@ -170,6 +170,29 @@ export async function waitForAetherAuthorization(page: Page) {
   return body.auth_req_id;
 }
 
+let approver: { browser: Browser; page: Page } | undefined;
+
+/**
+ * The seeded user's browser on Zentity, with a virtual authenticator that
+ * holds their passkey. It is kept for the run: once the user has a passkey,
+ * adding another needs a passkey step-up a new authenticator cannot answer.
+ */
+async function approverPage(browser: Browser): Promise<Page> {
+  if (approver?.browser === browser && !approver.page.isClosed()) {
+    return approver.page;
+  }
+  const context = await browser.newContext({
+    baseURL: issuerBaseURL,
+    storageState: webAuthStatePath,
+  });
+  const page = await context.newPage();
+  await page.goto("/");
+  await addPrfAuthenticator(page);
+  await registerPasskeyForUser(page, readAuthSeed().password);
+  approver = { browser, page };
+  return page;
+}
+
 /**
  * Approves a request that needs user verification the way a user does: on
  * Zentity's approval page, with a passkey the seeded user registers first.
@@ -178,24 +201,12 @@ export async function approveCibaRequestWithPasskey(
   browser: Browser,
   authReqId: string
 ) {
-  const context = await browser.newContext({
-    baseURL: issuerBaseURL,
-    storageState: webAuthStatePath,
+  const page = await approverPage(browser);
+  await page.goto(`/approve/${await findCibaRequestId(authReqId)}`);
+  await page.getByRole("button", { name: "Approve with passkey" }).click();
+  await expect(page.getByText("Request Approved")).toBeVisible({
+    timeout: 30_000,
   });
-  try {
-    const page = await context.newPage();
-    await page.goto("/");
-    await addPrfAuthenticator(page);
-    await registerPasskeyForUser(page, readAuthSeed().password);
-
-    await page.goto(`/approve/${await findCibaRequestId(authReqId)}`);
-    await page.getByRole("button", { name: "Approve with passkey" }).click();
-    await expect(page.getByText("Request Approved")).toBeVisible({
-      timeout: 30_000,
-    });
-  } finally {
-    await context.close();
-  }
 }
 
 export async function importVeripassCredential(
