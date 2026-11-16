@@ -51,6 +51,8 @@ jobs:
               - 'pnpm-workspace.yaml'
             landing:
               - 'apps/landing/**'
+              - 'docs/**'
+              - 'apps/mcp/src/**'
             python:
               - 'apps/ocr/**'
             rust:

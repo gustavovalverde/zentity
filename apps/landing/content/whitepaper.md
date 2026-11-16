@@ -362,7 +362,7 @@ The breaches described at the opening of this paper share a single root cause: t
 
 The technology exists, the standards exist, and the regulatory alignment exists; the question is whether we choose to deploy it.
 
-***
+---
 
 **Ready to separate verification from collection?**
 [Explore the open-source architecture](https://github.com/gustavovalverde/zentity) or [read the integration documentation](../../../oauth-integrations.md) to start building with Zentity.
