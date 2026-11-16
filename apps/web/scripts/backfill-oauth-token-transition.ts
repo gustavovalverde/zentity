@@ -4,9 +4,9 @@
  * One-time transition for the move to the OAuth provider's JWT revocation,
  * per-token `accessTokenClaims`, the first-party-apps plugin, the CIBA
  * approval record, its token and Proof-of-Human columns, OIDC4VCI
- * credentials without a subject, and the removal of two-factor
- * authentication. Every step is idempotent, and the script applies them in
- * one transaction.
+ * credentials without a subject, the removal of two-factor authentication,
+ * and the passkey enrollment record. Every step is idempotent, and the
+ * script applies them in one transaction.
  *
  * 1. Moves the timestamp defaults that #298 and #338 changed from
  *    `datetime('now')` to an ISO 8601 timestamp, and recreates the two partial
@@ -83,6 +83,15 @@
  *    may go before that release stops serving. `ALTER TABLE ... DROP COLUMN`
  *    keeps every other column, row, and index of `user`; no index or foreign
  *    key names the column.
+ * 16. Adds `account.passwordSetMethod`, `passkey.enrollment_method`, and
+ *    `secret_wrappers.verifier_hash` with the DDL `pnpm db:push` would emit.
+ *    drizzle names every schema column in an insert, so until they exist the
+ *    new release can store no sign-in account, passkey, or vault wrapper.
+ *    All three are nullable, and the previous release never names them.
+ *    Passwords set before the deploy have no method and count toward an
+ *    account recovery once they are 7 days old. Recovery keys saved before
+ *    the deploy have no verifier: they still open the vault, and Settings
+ *    asks to replace them before they can confirm an account recovery.
  *
  * Rollout order. Production moves to this release in one deploy of the web
  * service, the MCP server, and demo-rp. Merging a pull request deploys
@@ -296,6 +305,13 @@ const CIBA_APPROVAL_ADDED_COLUMNS = [
 const ACCESS_TOKEN_AUTH_CONTEXT_DDL =
   "ALTER TABLE `oauth_access_token` ADD `auth_context_id` text REFERENCES authentication_context(id) ON DELETE set null ON UPDATE no action";
 
+// `drizzle-kit push` output for these columns in auth.ts and privacy.ts.
+const ADDED_NULLABLE_COLUMNS = [
+  ["account", "passwordSetMethod"],
+  ["passkey", "enrollment_method"],
+  ["secret_wrappers", "verifier_hash"],
+] as const;
+
 const TWO_FACTOR_TABLE_DROP_DDL = "DROP TABLE `two_factor`";
 const TWO_FACTOR_COLUMN_DROP_DDL =
   "ALTER TABLE `user` DROP COLUMN `two_factor_enabled`";
@@ -432,6 +448,13 @@ async function main(): Promise<void> {
   ];
   const twoFactorDrops = afterDeploy ? twoFactorData : [];
 
+  const nullableColumns: string[] = [];
+  for (const [table, column] of ADDED_NULLABLE_COLUMNS) {
+    if ((await hasTable(table)) && !(await hasColumn(table, column))) {
+      nullableColumns.push(`ALTER TABLE \`${table}\` ADD \`${column}\` text`);
+    }
+  }
+
   const timestampDefaults = await isoTimestampDefaultStatements();
   const addGrantable =
     (await hasTable("agent_capability")) &&
@@ -459,6 +482,7 @@ async function main(): Promise<void> {
     ...cibaApprovalIndexes,
     ...(allowNullCredential ? [OIDC4VCI_CREDENTIAL_NULLABLE_DDL] : []),
     OIDC4VCI_STATUS_ENTRY_INDEX_DDL,
+    ...nullableColumns,
     ...twoFactorDrops,
   ];
 
@@ -568,6 +592,9 @@ async function main(): Promise<void> {
     twoFactor = "kept until --after-deploy";
   }
   console.log(`two_factor and user.two_factor_enabled: ${twoFactor}`);
+  console.log(
+    `account.passwordSetMethod, passkey.enrollment_method, and secret_wrappers.verifier_hash: ${nullableColumns.length} added`
+  );
 }
 
 main()

@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useId, useState } from "react";
 
+import { RecoveryKeySetup } from "@/components/recovery-key-setup";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -51,9 +52,14 @@ type Phase =
   | { name: "no_vault" }
   | { name: "unlock" }
   | { name: "connect"; vaultKey: VaultKey }
-  | { name: "remove_lost"; candidates: AccessPasskey[] }
+  | { name: "remove_lost"; candidates: AccessPasskey[]; vaultKey: VaultKey }
   | { name: "fresh_start" }
-  | { name: "done"; opened: SecretType[]; credentialLabel: string };
+  | {
+      name: "done";
+      opened: SecretType[];
+      credentialLabel: string;
+      vaultKey: VaultKey | null;
+    };
 
 const SECRET_LABELS: Record<SecretType, string> = {
   [SECRET_TYPES.FHE_KEYS]: "Encryption keys",
@@ -62,11 +68,11 @@ const SECRET_LABELS: Record<SecretType, string> = {
 
 function unlockMethodsFor(
   access: VaultAccess,
-  lostPasskey: boolean
+  assumeLost: boolean
 ): VaultUnlockMethods {
   const methods = vaultUnlockMethods(access);
   // With one connected passkey on the lost-passkey path, that passkey is the lost one.
-  if (lostPasskey && methods.passkeyCredentialIds.length < 2) {
+  if (assumeLost && methods.passkeyCredentialIds.length < 2) {
     return { ...methods, passkeyCredentialIds: [] };
   }
   return methods;
@@ -95,34 +101,93 @@ async function bindCredential(
   }
 }
 
+async function retirePasskey(passkey: AccessPasskey) {
+  const result = await removePasskey({
+    id: passkey.id,
+    credentialId: passkey.credentialId,
+    opensVault: passkey.connected,
+  });
+  if (result.error) {
+    throw new Error(result.error.message || "Couldn't remove that passkey.");
+  }
+}
+
 /**
  * Connects a replacement sign-in credential to the user's vault: open the
  * vault with any credential that still works (or the recovery key), wrap the
  * vault key for the replacement, and retire the credential that was lost.
  * When nothing can open the vault, offers to start over with new keys.
+ *
+ * `openedVault` is a vault key the recovery already opened, so the user is
+ * not asked again. `offerRecoveryKey` asks the user to save a new recovery
+ * key at the end, after the old one confirmed the recovery.
+ * `passkeyInUse` says this session signed in with one of the account's
+ * passkeys, so none of them is assumed lost or removed without the user
+ * choosing it.
  */
 export function VaultRecovery({
   newPasskey,
-}: Readonly<{ newPasskey?: PasskeyMaterial | undefined }>) {
+  openedVault,
+  offerRecoveryKey = false,
+  passkeyInUse = false,
+}: Readonly<{
+  newPasskey?: PasskeyMaterial | undefined;
+  openedVault?: VaultKey | null | undefined;
+  offerRecoveryKey?: boolean;
+  passkeyInUse?: boolean;
+}>) {
   const lostPasskey = newPasskey !== undefined;
+  const assumeLost = lostPasskey && !passkeyInUse;
   const [access, setAccess] = useState<VaultAccess | null>(null);
   const [phase, setPhase] = useState<Phase>({ name: "loading" });
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
   const finish = useCallback(
-    async (material: VaultCredentialMaterial, credentialLabel: string) => {
+    async (
+      material: VaultCredentialMaterial,
+      credentialLabel: string,
+      vaultKey: VaultKey | null
+    ) => {
       const opened = await verifyVaultCredential(material);
-      setPhase({ name: "done", opened, credentialLabel });
+      setPhase({ name: "done", opened, credentialLabel, vaultKey });
     },
     []
+  );
+
+  const connectNewPasskey = useCallback(
+    async (currentAccess: VaultAccess | null, vaultKey: VaultKey) => {
+      setError(null);
+      if (!newPasskey) {
+        setPhase({ name: "connect", vaultKey });
+        return;
+      }
+
+      await addVaultCredential(vaultKey, newPasskey);
+      await bindCredential(vaultKey, newPasskey).catch(reportRejection);
+
+      const candidates = (currentAccess?.passkeys ?? []).filter(
+        (passkey) =>
+          passkey.credentialId !== vaultKey.unlockedWith &&
+          passkey.credentialId !== newPasskey.credentialId
+      );
+      const [onlyCandidate] = candidates;
+      if (assumeLost && candidates.length === 1 && onlyCandidate) {
+        await retirePasskey(onlyCandidate);
+      } else if (candidates.length > 0) {
+        setPhase({ name: "remove_lost", candidates, vaultKey });
+        return;
+      }
+      await finish(newPasskey, "your new passkey", vaultKey);
+    },
+    [assumeLost, finish, newPasskey]
   );
 
   useEffect(() => {
     let active = true;
     trpc.secrets.access
       .query()
-      .then((result) => {
+      .then(async (result) => {
         if (!active) {
           return;
         }
@@ -140,8 +205,12 @@ export function VaultRecovery({
           }
           return;
         }
+        if (openedVault && openedVault.secretId === result.secretId) {
+          await connectNewPasskey(result, openedVault);
+          return;
+        }
         setPhase(
-          hasVaultUnlockMethod(unlockMethodsFor(result, lostPasskey))
+          hasVaultUnlockMethod(unlockMethodsFor(result, assumeLost))
             ? { name: "unlock" }
             : { name: "fresh_start" }
         );
@@ -149,12 +218,13 @@ export function VaultRecovery({
       .catch((err: unknown) => {
         if (active) {
           setError(err instanceof Error ? err.message : String(err));
+          setPhase({ name: "unlock" });
         }
       });
     return () => {
       active = false;
     };
-  }, [lostPasskey]);
+  }, [assumeLost, connectNewPasskey, lostPasskey, openedVault]);
 
   const lostCandidates = (unlockedWith: string | null): AccessPasskey[] =>
     (access?.passkeys ?? []).filter(
@@ -163,37 +233,8 @@ export function VaultRecovery({
         passkey.credentialId !== newPasskey?.credentialId
     );
 
-  const retirePasskey = async (passkey: AccessPasskey) => {
-    const result = await removePasskey({
-      id: passkey.id,
-      credentialId: passkey.credentialId,
-      opensVault: passkey.connected,
-    });
-    if (result.error) {
-      throw new Error(result.error.message || "Couldn't remove that passkey.");
-    }
-  };
-
-  const handleUnlocked = async (vaultKey: VaultKey) => {
-    setError(null);
-    if (!newPasskey) {
-      setPhase({ name: "connect", vaultKey });
-      return;
-    }
-
-    await addVaultCredential(vaultKey, newPasskey);
-    await bindCredential(vaultKey, newPasskey).catch(reportRejection);
-
-    const candidates = lostCandidates(vaultKey.unlockedWith);
-    const [onlyCandidate] = candidates;
-    if (candidates.length === 1 && onlyCandidate) {
-      await retirePasskey(onlyCandidate);
-    } else if (candidates.length > 1) {
-      setPhase({ name: "remove_lost", candidates });
-      return;
-    }
-    await finish(newPasskey, "your new passkey");
-  };
+  const handleUnlocked = (vaultKey: VaultKey) =>
+    connectNewPasskey(access, vaultKey);
 
   const startOver = async () => {
     setBusy(true);
@@ -201,7 +242,7 @@ export function VaultRecovery({
     try {
       await withPasskeyConfirmation(() => trpc.secrets.resetVault.mutate());
       const [onlyCandidate, ...others] = lostCandidates(null);
-      if (lostPasskey && onlyCandidate && others.length === 0) {
+      if (assumeLost && onlyCandidate && others.length === 0) {
         await deletePasskey(onlyCandidate.id);
       }
       redirectTo("/dashboard/verify");
@@ -255,7 +296,7 @@ export function VaultRecovery({
           {errorAlert}
           {access ? (
             <VaultUnlockOptions
-              methods={unlockMethodsFor(access, lostPasskey)}
+              methods={unlockMethodsFor(access, assumeLost)}
               onUnlocked={handleUnlocked}
             />
           ) : null}
@@ -270,27 +311,31 @@ export function VaultRecovery({
         </div>
       );
 
-    case "connect":
+    case "connect": {
+      const { vaultKey } = phase;
       return access ? (
         <ConnectCredentials
           access={access}
-          onDone={(material, label) => finish(material, label)}
-          vaultKey={phase.vaultKey}
+          onDone={(material, label) => finish(material, label, vaultKey)}
+          vaultKey={vaultKey}
         />
       ) : null;
+    }
 
-    case "remove_lost":
+    case "remove_lost": {
+      const { vaultKey } = phase;
       return (
         <RemoveLostPasskeys
           candidates={phase.candidates}
           onDone={() =>
             newPasskey
-              ? finish(newPasskey, "your new passkey")
+              ? finish(newPasskey, "your new passkey", vaultKey)
               : Promise.resolve()
           }
           onRemove={retirePasskey}
         />
       );
+    }
 
     case "fresh_start":
       return (
@@ -320,7 +365,7 @@ export function VaultRecovery({
               Start over with new keys
             </Button>
             {access &&
-            hasVaultUnlockMethod(unlockMethodsFor(access, lostPasskey)) ? (
+            hasVaultUnlockMethod(unlockMethodsFor(access, assumeLost)) ? (
               <Button
                 disabled={busy}
                 onClick={() => setPhase({ name: "unlock" })}
@@ -342,6 +387,27 @@ export function VaultRecovery({
       );
 
     case "done":
+      if (offerRecoveryKey && phase.vaultKey) {
+        const { vaultKey } = phase;
+        return (
+          <div className="space-y-4">
+            <div className="space-y-1">
+              <p className="font-medium">Save your new recovery key</p>
+              <p className="text-muted-foreground text-sm">
+                Your recovery key confirmed this recovery, so it can't confirm
+                another one. It still opens your encrypted data until you
+                replace it.
+              </p>
+            </div>
+            <RecoveryKeySetup
+              onCancel={() => setPhase({ ...phase, vaultKey: null })}
+              onSaved={() => setPhase({ ...phase, vaultKey: null })}
+              replacing
+              vaultKey={vaultKey}
+            />
+          </div>
+        );
+      }
       return (
         <div className="space-y-4">
           <div className="space-y-1">
@@ -583,7 +649,7 @@ function RemoveLostPasskeys({
       <div className="space-y-1">
         <p className="font-medium">Remove passkeys you no longer have</p>
         <p className="text-muted-foreground text-sm">
-          Your new passkey is connected. Remove the passkey you lost so it can't
+          Your new passkey is connected. Remove any passkey you lost so it can't
           be used to sign in.
         </p>
       </div>

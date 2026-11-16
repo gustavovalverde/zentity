@@ -13,6 +13,7 @@ import {
   TriangleAlert,
   X,
 } from "lucide-react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useOptimistic, useState } from "react";
 import { toast } from "sonner";
@@ -62,7 +63,7 @@ import {
   listUserPasskeys,
   registerPasskeyWithPrf,
   renamePasskey,
-  signInWithPasskey,
+  withPasskeyConfirmation,
 } from "@/lib/auth/passkey/client";
 import { checkPrfSupport } from "@/lib/auth/passkey/prf";
 import { formatDate } from "@/lib/date-format";
@@ -70,7 +71,9 @@ import { generatePrfSalt } from "@/lib/privacy/credentials/derivation";
 import {
   addVaultCredential,
   removePasskey,
+  unlockVaultKey,
   type VaultKey,
+  vaultPasskeySalts,
 } from "@/lib/privacy/secrets/vault";
 
 interface PasskeyCredential {
@@ -103,6 +106,11 @@ interface EditState {
 }
 
 const INITIAL_EDIT_STATE: EditState = { id: null, name: "" };
+
+interface PasskeyConfirmation {
+  credentialId: string | null;
+  prfOutput: Uint8Array | null;
+}
 const SESSION_NOT_FRESH_CODE = "SESSION_NOT_FRESH";
 
 export function PasskeyManagementSection({
@@ -164,37 +172,71 @@ export function PasskeyManagementSection({
       });
   }, [loadPasskeys]);
 
+  /**
+   * Opens the vault after a passkey was added: with the confirming passkey's
+   * PRF output when it opens the vault, or by asking the user.
+   */
+  const openVaultAfterRegistration = async (
+    confirmation: PasskeyConfirmation | null,
+    salts: Record<string, Uint8Array>
+  ): Promise<VaultKey | null> => {
+    const prfSalt = confirmation?.credentialId
+      ? salts[confirmation.credentialId]
+      : undefined;
+    if (confirmation?.credentialId && confirmation.prfOutput && prfSalt) {
+      const vaultKey = await unlockVaultKey({
+        type: "passkey",
+        credentialId: confirmation.credentialId,
+        prfOutput: confirmation.prfOutput,
+        prfSalt,
+      }).catch(() => null);
+      if (vaultKey) {
+        return vaultKey;
+      }
+    }
+    const request = await requestVaultKey();
+    return request.status === "unlocked" ? request.vaultKey : null;
+  };
+
   const registerPasskey = async (
     vaultKey: VaultKey | null
   ): Promise<"registered" | "needs_password"> => {
     const prfSalt = generatePrfSalt();
     const name = `Passkey ${optimisticPasskeys.length + 1}`;
-    let registration = await registerPasskeyWithPrf({ name, prfSalt });
+    const hasPasskey = optimisticPasskeys.length > 0;
+    // On an account with a passkey, the server asks for a passkey sign-in
+    // first; one prompt then also opens the vault.
+    const salts = hasPasskey ? await vaultPasskeySalts() : {};
+    let confirmation: PasskeyConfirmation | null = null;
+    const registration = await withPasskeyConfirmation(
+      () => registerPasskeyWithPrf({ name, prfSalt }),
+      {
+        credentialIdToSalt: salts,
+        onPasskeyConfirmed: (confirmed) => {
+          confirmation = confirmed;
+        },
+      }
+    );
 
     if (
       !registration.ok &&
       registration.error?.code === SESSION_NOT_FRESH_CODE
     ) {
-      if (optimisticPasskeys.length === 0) {
-        setPendingVaultKey(vaultKey);
-        setPasswordPromptOpen(true);
-        return "needs_password";
-      }
-      const stepUp = await signInWithPasskey();
-      if (!stepUp.ok) {
-        throw new Error(
-          stepUp.message || "Please verify your identity to add a new passkey."
-        );
-      }
-      registration = await registerPasskeyWithPrf({ name, prfSalt });
+      setPendingVaultKey(vaultKey);
+      setPasswordPromptOpen(true);
+      return "needs_password";
     }
-
     if (!registration.ok) {
       throw new Error(registration.message);
     }
 
-    if (vaultKey) {
-      await addVaultCredential(vaultKey, {
+    const opened =
+      vaultKey ??
+      (hasPasskey
+        ? await openVaultAfterRegistration(confirmation, salts)
+        : null);
+    if (opened) {
+      await addVaultCredential(opened, {
         type: "passkey",
         credentialId: registration.credentialId,
         prfOutput: registration.prfOutput,
@@ -215,30 +257,18 @@ export function PasskeyManagementSection({
     setPasswordError(null);
     setIsAdding(true);
     try {
-      // Opening the vault proves possession of an existing credential, so a
-      // stolen session alone can't add a passkey that unlocks it.
-      const request = await requestVaultKey();
-      if (request.status === "cancelled") {
-        return;
-      }
-
-      if (request.status === "no_vault") {
-        if (optimisticPasskeys.length === 0) {
-          setPasswordPromptOpen(true);
+      // Before the first passkey, the password or wallet opens the vault so
+      // the new passkey can open it too.
+      let vaultKey: VaultKey | null = null;
+      if (optimisticPasskeys.length === 0) {
+        const request = await requestVaultKey();
+        if (request.status === "cancelled") {
           return;
         }
-        const stepUp = await signInWithPasskey();
-        if (!stepUp.ok) {
-          throw new Error(
-            stepUp.message ||
-              "Please verify your identity to add a new passkey."
-          );
-        }
+        vaultKey = request.status === "unlocked" ? request.vaultKey : null;
       }
 
-      const outcome = await registerPasskey(
-        request.status === "unlocked" ? request.vaultKey : null
-      );
+      const outcome = await registerPasskey(vaultKey);
       if (outcome === "needs_password") {
         return;
       }
@@ -253,7 +283,8 @@ export function PasskeyManagementSection({
 
       if (
         message.includes("NotAllowedError") ||
-        message.includes("cancelled")
+        message.includes("cancelled") ||
+        message === "Nothing was changed."
       ) {
         setIsAdding(false);
         return; // User cancelled
@@ -542,6 +573,18 @@ export function PasskeyManagementSection({
           )}
           Add Passkey
         </Button>
+
+        {optimisticPasskeys.length > 0 ? (
+          <p className="text-center text-muted-foreground text-xs">
+            Don't have your passkey here?{" "}
+            <Link
+              className="font-medium text-primary hover:underline"
+              href="/recovery/passkey"
+            >
+              Recover your account
+            </Link>
+          </p>
+        ) : null}
 
         {prfSupported === false && (
           <Alert>

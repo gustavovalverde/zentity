@@ -235,6 +235,11 @@ export const secretWrappers = sqliteTable(
     wrappedDek: text("wrapped_dek").notNull(),
     prfSalt: text("prf_salt"),
     kekSource: text("kek_source").notNull().default("prf"),
+    /**
+     * Recovery key wrapper only: SHA-256 (hex) of the verifier the browser
+     * derives from the key. Null once the key confirmed a recovery.
+     */
+    verifierHash: text("verifier_hash"),
     createdAt: text("created_at").notNull().default(isoTimestampNow),
     updatedAt: text("updated_at")
       .notNull()

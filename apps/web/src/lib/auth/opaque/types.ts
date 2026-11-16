@@ -27,8 +27,22 @@ interface OpaquePasswordResetOptions {
   ) => Promise<void>;
 }
 
+/** The endpoint storing a password: sign-up, a signed-in change, or a reset by email. */
+export type PasswordChangeVia = "sign_up" | "registration" | "reset";
+
 export interface OpaquePluginOptions
   extends Partial<OpaquePasswordResetOptions> {
+  /**
+   * Runs before a password is stored. It refuses the change by throwing,
+   * and returns how the password was set, which the account stores as
+   * `passwordSetMethod`.
+   */
+  authorizePasswordChange?: (change: {
+    hasPassword: boolean;
+    sessionId: string | null;
+    userId: string;
+    via: PasswordChangeVia;
+  }) => Promise<string>;
   /**
    * OPAQUE server setup string or a getter function that returns it.
    * Using a getter function allows lazy evaluation (deferred until runtime),

@@ -264,6 +264,26 @@ The controls in this section prevent session-level attacks: token replay, creden
 - Login state is encrypted and time-limited to reduce replay risk.
 - OPAQUE endpoints are rate-limited to slow online guessing.
 
+### Passkey Enrollment and Account Recovery
+
+**Threat:** An agent or attacker that knows the password, controls the mailbox, or holds a stolen session adds a passkey it controls, which then passes the user-verification step-up for payments and purchases. The same actor could change what recovers the account (the email, the password, the recovery key) and keep control after the user removes its session.
+
+**Control:** On an account that holds a passkey, `recovery-factors.ts` allows a new passkey, or a change to a recovery factor, only from a session that holds one of these:
+
+- a user-verified passkey sign-in in the last 5 minutes;
+- an account recovery in the last 10 minutes: one recovery code (an email link, or the recovery key) and one more proof (the password, a wallet, or the other recovery code);
+- an email link alone, on an account with no password, wallet, or recovery key.
+
+A password that a mailbox alone set never counts, so a mailbox stays one factor: `account.passwordSetMethod` records how each password was set, and neither a reset by email nor an email link on an account with nothing else makes a password that confirms a recovery. A reset by email also cannot add a password to an account that holds a passkey. A wallet, and a password set before that record existed, count only once they are 7 days old. The password and the wallet each prove themselves inside the current session (`/password/opaque/verify/*`, `/wallet/siwe/verify/*`), so either pairs with an email link. For the same reason, an email link alone cannot plant a recovery key or remove the password or wallet on an account that has them. The recovery key is checked against the SHA-256 of a verifier stored on its vault wrapper. The verifier is a custody fact of that wrapper, removed with it, and is not used for identity binding. One recovery adds one passkey and spends the recovery key's verifier. The last passkey can be removed only from an account recovery, so removing passkeys cannot take the account out of the rule. Every added passkey, used recovery key, and recovery factor change is announced by email to the account's address and by web push.
+
+**Residuals:**
+
+- A fresh session can still add the first passkey to an account that has none (NIST SP 800-63B-4 allows binding at the account's current assurance). The user is notified.
+- A factor bound before the first passkey, such as a recovery key or email set from a password session, stays usable.
+- An account with a placeholder email and no push subscription gets no notice.
+- An account whose only factors are a passkey and a wallet with a placeholder email has no recovery once the passkey is lost, unless it saved a recovery key.
+- An account whose owner lost every passkey, forgot the password, and has no recovery key or wallet cannot be recovered in the product. A password reset by email signs in again but never confirms a recovery, because the mailbox that reset it may not be the owner's.
+
 ### Service-to-Service Authentication
 
 - Internal services (FHE, OCR) require authenticated requests in production.

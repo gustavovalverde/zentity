@@ -26,7 +26,11 @@ import {
   updateEncryptedSecretMetadata,
   upsertSecretWrapper,
 } from "@/lib/db/queries/privacy";
-import { encryptedSecrets, secretWrappers } from "@/lib/db/schema/privacy";
+import {
+  encryptedSecrets,
+  type SecretWrapperRecord,
+  secretWrappers,
+} from "@/lib/db/schema/privacy";
 import {
   kekSourceSchema,
   OPAQUE_CREDENTIAL_ID,
@@ -49,6 +53,7 @@ import { getVaultAccess } from "@/lib/privacy/secrets/vault-access";
 
 import {
   protectedProcedure,
+  requirePasskeyRemoval,
   requireRecoveryFactorChange,
   router,
 } from "../server";
@@ -134,6 +139,14 @@ function assertWrapperForSecretType(input: {
   assertUnlockingWrapper({ ...input, kekSource: kekSource.data });
 }
 
+/** A wrapper as the browser sees it: the recovery key verifier stays here. */
+function clientWrapper({
+  verifierHash: _verifierHash,
+  ...wrapper
+}: SecretWrapperRecord) {
+  return wrapper;
+}
+
 async function requireVaultRoot(userId: string) {
   const root = await getEncryptedSecretByUserAndType(
     userId,
@@ -167,7 +180,7 @@ export const secretsRouter = router({
       }
 
       const wrappers = await getSecretWrappersBySecretId(secret.id);
-      return { secret, wrappers };
+      return { secret, wrappers: wrappers.map(clientWrapper) };
     }),
 
   access: protectedProcedure.query(({ ctx }) => getVaultAccess(ctx.userId)),
@@ -352,7 +365,7 @@ export const secretsRouter = router({
         });
       }
 
-      return { secret, wrapper };
+      return { secret, wrapper: clientWrapper(wrapper) };
     }),
 
   addWrapper: protectedProcedure
@@ -363,12 +376,20 @@ export const secretsRouter = router({
         wrappedDek: wrappedDekSchema,
         prfSalt: prfSaltSchema.optional(),
         kekSource: unlockingKekSourceSchema,
+        /** Recovery key only: SHA-256 of `deriveRecoveryKeyVerifier`'s output. */
+        verifierHash: sha256HexSchema.optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
       assertUnlockingWrapper(input);
       const writesRecoveryKey =
         input.credentialId === RECOVERY_KEY_CREDENTIAL_ID;
+      if (writesRecoveryKey !== Boolean(input.verifierHash)) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "Only a recovery key carries a verifier, and it must.",
+        });
+      }
       if (writesRecoveryKey) {
         await requireRecoveryFactorChange(ctx, "recovery_key");
       }
@@ -392,6 +413,7 @@ export const secretsRouter = router({
         wrappedDek: input.wrappedDek,
         prfSalt: input.prfSalt,
         kekSource: input.kekSource,
+        verifierHash: input.verifierHash?.toLowerCase(),
       });
       if (writesRecoveryKey) {
         await notifyRecoveryFactorChange({
@@ -400,7 +422,7 @@ export const secretsRouter = router({
         });
       }
 
-      return { wrapper };
+      return { wrapper: clientWrapper(wrapper) };
     }),
 
   removeCredential: protectedProcedure
@@ -418,10 +440,14 @@ export const secretsRouter = router({
           message: "This credential does not unlock your encrypted data.",
         });
       }
-      await requireRecoveryFactorChange(
-        ctx,
-        UNLOCKING_FACTORS[wrapper.kekSource] ?? "vault_root"
-      );
+      if (wrapper.kekSource === "prf") {
+        await requirePasskeyRemoval(ctx, input.credentialId);
+      } else {
+        await requireRecoveryFactorChange(
+          ctx,
+          UNLOCKING_FACTORS[wrapper.kekSource] ?? "vault_root"
+        );
+      }
 
       const remaining = wrappers.filter(
         (w) => w.credentialId !== input.credentialId

@@ -33,7 +33,7 @@ The backend signs attestation permits from verified identity state. The browser 
 ### Auth & session gating
 
 - **Wallet connection ≠ session**: Reown AppKit connects a wallet, but it does not create a server session, and connecting never asks the wallet for a signature.
-- **Wallet-as-auth**: a wallet can be the account's credential. After the user chooses wallet sign-in or sign-up, the server issues a Sign-In with Ethereum (EIP-4361) message naming the app origin (`/api/auth/sign-in/siwe/*`, `/api/auth/sign-up/siwe/*`), and the wallet signs it with EIP-191 `personal_sign`. This is separate from the EIP-712 `KeyDerivation` signature that wraps the user's keys.
+- **Wallet-as-auth**: a wallet can be the account's credential. After the user chooses wallet sign-in or sign-up, the server issues a Sign-In with Ethereum (EIP-4361) message naming the app origin (`/api/auth/sign-in/siwe/*`, `/api/auth/sign-up/siwe/*`), and the wallet signs it with EIP-191 `personal_sign`. A signed-in user can also confirm the wallet without starting another session (`/api/auth/wallet/siwe/verify/*`), which counts toward an account recovery. This is separate from the EIP-712 `KeyDerivation` signature that wraps the user's keys.
 - **Server gating**: Web3/FHE APIs require a Better Auth session and explicit credential unlock for encrypted payloads.
 
 ---

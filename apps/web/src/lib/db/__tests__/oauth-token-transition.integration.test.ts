@@ -5,6 +5,7 @@ import { sql } from "drizzle-orm";
 import { beforeEach, describe, expect, it } from "vitest";
 
 import { db } from "@/lib/db/connection";
+import { passkeys } from "@/lib/db/schema/auth";
 import { oauthAccessTokens } from "@/lib/db/schema/oauth-provider";
 import { createTestUser, resetDatabase } from "@/test-utils/db-test-utils";
 
@@ -46,6 +47,20 @@ async function accessTokenAuthContext() {
       sql`SELECT "table", "to", on_update, on_delete FROM pragma_foreign_key_list('oauth_access_token') WHERE "from" = 'auth_context_id'`
     ),
   };
+}
+
+function enrollmentColumns() {
+  return Promise.all([
+    db.all(
+      sql`SELECT name, type, "notnull", dflt_value, pk FROM pragma_table_info('account') WHERE name = 'passwordSetMethod'`
+    ),
+    db.all(
+      sql`SELECT name, type, "notnull", dflt_value, pk FROM pragma_table_info('passkey') WHERE name = 'enrollment_method'`
+    ),
+    db.all(
+      sql`SELECT name, type, "notnull", dflt_value, pk FROM pragma_table_info('secret_wrappers') WHERE name = 'verifier_hash'`
+    ),
+  ]);
 }
 
 function userSchema() {
@@ -270,6 +285,35 @@ describe("deploy backfill", () => {
       "oauth_access_token.auth_context_id: already present"
     );
     expect(await accessTokenAuthContext()).toEqual(pushed);
+  });
+
+  it("adds the passkey enrollment record columns as db:push does, before the release serves traffic", async () => {
+    const pushed = await enrollmentColumns();
+    expect(pushed.flat()).toHaveLength(3);
+    const userId = await createTestUser();
+
+    await db.run(sql`ALTER TABLE account DROP COLUMN passwordSetMethod`);
+    await db.run(sql`ALTER TABLE passkey DROP COLUMN enrollment_method`);
+    await db.run(sql`ALTER TABLE secret_wrappers DROP COLUMN verifier_hash`);
+    await expect(
+      db.insert(passkeys).values({
+        id: "transition-probe",
+        publicKey: "key",
+        userId,
+        credentialID: "transition-probe",
+        deviceType: "singleDevice",
+      })
+    ).rejects.toMatchObject({
+      cause: { message: expect.stringContaining("enrollment_method") },
+    });
+
+    expect(await runTransitionScript()).toContain(
+      "account.passwordSetMethod, passkey.enrollment_method, and secret_wrappers.verifier_hash: 3 added"
+    );
+    expect(await enrollmentColumns()).toEqual(pushed);
+    expect(await runTransitionScript()).toContain(
+      "account.passwordSetMethod, passkey.enrollment_method, and secret_wrappers.verifier_hash: 0 added"
+    );
   });
 
   it("drops the two-factor table and column only after the deploy", async () => {

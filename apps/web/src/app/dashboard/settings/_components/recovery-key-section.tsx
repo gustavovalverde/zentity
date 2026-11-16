@@ -2,12 +2,13 @@
 
 import type { VaultAccess } from "@/lib/privacy/secrets/vault-access";
 
-import { FileKey } from "lucide-react";
+import { FileKey, TriangleAlert } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { toast } from "sonner";
 
 import { RecoveryKeySetup } from "@/components/recovery-key-setup";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -97,8 +98,8 @@ export function RecoveryKeySection({
           Recovery Key
         </CardTitle>
         <CardDescription>
-          24 words that open your encryption keys and verified profile if you
-          lose your other sign-in methods
+          24 words that open your encryption keys and verified profile, and
+          confirm one account recovery, if you lose your other sign-in methods
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -109,6 +110,17 @@ export function RecoveryKeySection({
                 ? `Created ${formatDate(recoveryKey.createdAt, "Unknown date")}.`
                 : "You haven't saved a recovery key."}
             </p>
+            {recoveryKey && !recoveryKey.confirmsRecovery ? (
+              <Alert variant="warning">
+                <TriangleAlert />
+                <AlertDescription>
+                  This recovery key still opens your encrypted data, but it
+                  can't confirm an account recovery: it was used for one, or it
+                  was saved before keys could. Replace it to use it if you lose
+                  your passkey.
+                </AlertDescription>
+              </Alert>
+            ) : null}
             <div className="flex flex-wrap gap-2">
               <Button
                 disabled={busy}

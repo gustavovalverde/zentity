@@ -8,6 +8,28 @@ const TEST_ORIGIN = "http://localhost:3000";
 
 const FLAG_USER_PRESENT = 0x01;
 const FLAG_USER_VERIFIED = 0x04;
+const FLAG_ATTESTED_CREDENTIAL_DATA = 0x40;
+
+/** A CBOR item header (RFC 8949 §3) for lengths below 65536. */
+function cborHeader(majorType: number, length: number): Buffer {
+  const major = majorType * 32;
+  if (length < 24) {
+    return Buffer.from([major + length]);
+  }
+  if (length < 256) {
+    return Buffer.from([major + 24, length]);
+  }
+  return Buffer.from([major + 25, Math.floor(length / 256), length % 256]);
+}
+
+function cborText(text: string): Buffer {
+  const bytes = Buffer.from(text, "utf8");
+  return Buffer.concat([cborHeader(3, bytes.length), bytes]);
+}
+
+function cborBytes(bytes: Buffer): Buffer {
+  return Buffer.concat([cborHeader(2, bytes.length), bytes]);
+}
 
 function base64Url(bytes: Uint8Array | Buffer): string {
   return Buffer.from(bytes).toString("base64url");
@@ -38,6 +60,27 @@ export interface TestAssertionOptions {
   type?: string;
   userPresent?: boolean;
   userVerified?: boolean;
+}
+
+export interface TestAttestationOptions {
+  challenge: string;
+  origin?: string;
+  rpId?: string;
+  userVerified?: boolean;
+}
+
+/** The JSON a browser posts for a WebAuthn registration. */
+export interface TestAttestationResponse {
+  authenticatorAttachment: "platform";
+  clientExtensionResults: Record<string, never>;
+  id: string;
+  rawId: string;
+  response: {
+    attestationObject: string;
+    clientDataJSON: string;
+    transports: string[];
+  };
+  type: "public-key";
 }
 
 /** The JSON a browser posts for a WebAuthn assertion. */
@@ -94,6 +137,61 @@ export class TestAuthenticator {
       })
       .run();
     return this;
+  }
+
+  /**
+   * Creates this passkey the way a browser registers one, with a `none`
+   * attestation, for the passkey plugin's `verify-registration`.
+   */
+  attest(options: TestAttestationOptions): TestAttestationResponse {
+    const credentialId = Buffer.from(this.credentialId, "base64url");
+    const flags =
+      FLAG_USER_PRESENT +
+      FLAG_ATTESTED_CREDENTIAL_DATA +
+      (options.userVerified === false ? 0 : FLAG_USER_VERIFIED);
+    const credentialIdLength = Buffer.alloc(2);
+    credentialIdLength.writeUInt16BE(credentialId.length);
+    const authenticatorData = Buffer.concat([
+      crypto
+        .createHash("sha256")
+        .update(options.rpId ?? TEST_RP_ID)
+        .digest(),
+      Buffer.from([flags]),
+      Buffer.alloc(4),
+      Buffer.alloc(16),
+      credentialIdLength,
+      credentialId,
+      coseEc2PublicKey(this.publicJwk),
+    ]);
+    const attestationObject = Buffer.concat([
+      cborHeader(5, 3),
+      cborText("fmt"),
+      cborText("none"),
+      cborText("attStmt"),
+      cborHeader(5, 0),
+      cborText("authData"),
+      cborBytes(authenticatorData),
+    ]);
+    const clientDataJSON = Buffer.from(
+      JSON.stringify({
+        type: "webauthn.create",
+        challenge: options.challenge,
+        origin: options.origin ?? TEST_ORIGIN,
+        crossOrigin: false,
+      })
+    );
+    return {
+      id: this.credentialId,
+      rawId: this.credentialId,
+      type: "public-key",
+      authenticatorAttachment: "platform",
+      clientExtensionResults: {},
+      response: {
+        attestationObject: base64Url(attestationObject),
+        clientDataJSON: base64Url(clientDataJSON),
+        transports: ["internal"],
+      },
+    };
   }
 
   assert(options: TestAssertionOptions): TestAssertionResponse {

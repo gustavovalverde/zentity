@@ -16,9 +16,12 @@ export interface PrfAuthenticator {
 /**
  * Attach a CTAP2 platform authenticator with PRF support to the page, so
  * passkey registration and PRF evaluation run without user interaction.
+ * Without `userVerification`, it signs every assertion without verifying the
+ * user, like a security key that has no PIN.
  */
 export async function addPrfAuthenticator(
-  page: Page
+  page: Page,
+  { userVerification = true }: { userVerification?: boolean } = {}
 ): Promise<PrfAuthenticator> {
   const cdp = await page.context().newCDPSession(page);
   await cdp.send("WebAuthn.enable", { enableUI: false });
@@ -30,8 +33,8 @@ export async function addPrfAuthenticator(
         ctap2Version: "ctap2_1",
         transport: "internal",
         hasResidentKey: true,
-        hasUserVerification: true,
-        isUserVerified: true,
+        hasUserVerification: userVerification,
+        isUserVerified: userVerification,
         automaticPresenceSimulation: true,
         hasPrf: true,
       },

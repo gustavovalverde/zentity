@@ -21,7 +21,10 @@ import type {
 } from "./catalog";
 
 import { authClient } from "@/lib/auth/auth-client";
-import { withPasskeyConfirmation } from "@/lib/auth/passkey/client";
+import {
+  forgetPasskeyOnDevice,
+  withPasskeyConfirmation,
+} from "@/lib/auth/passkey/client";
 import {
   type ApprovalAssertion,
   evaluatePrf,
@@ -38,6 +41,7 @@ import {
   deriveKekFromRecoveryKey,
   deriveKekFromVaultKey,
   deriveKekFromWalletSignature,
+  deriveRecoveryKeyVerifier,
 } from "@/lib/privacy/credentials/derivation";
 import {
   getWalletCredentialId,
@@ -47,6 +51,7 @@ import { unwrapDek, wrapDek } from "@/lib/privacy/credentials/wrap";
 import {
   base64ToBytes,
   bytesToBase64,
+  sha256Hex,
 } from "@/lib/privacy/primitives/symmetric";
 import { trpc } from "@/lib/trpc/client";
 
@@ -661,6 +666,16 @@ export async function addVaultCredential(
     ...(material.type === "passkey"
       ? { prfSalt: bytesToBase64(material.prfSalt) }
       : {}),
+    ...(material.type === "recovery_key"
+      ? {
+          verifierHash: await sha256Hex(
+            await deriveRecoveryKeyVerifier(
+              material.recoveryKey,
+              vaultKey.userId
+            )
+          ),
+        }
+      : {}),
   });
 }
 
@@ -679,12 +694,12 @@ export async function removeVaultCredential(
  * confirmation runs before either step, and a cancelled confirmation leaves
  * the passkey able to open the vault.
  */
-export function removePasskey(passkey: {
+export async function removePasskey(passkey: {
   credentialId: string;
   id: string;
   opensVault: boolean;
 }) {
-  return withPasskeyConfirmation(async () => {
+  const result = await withPasskeyConfirmation(async () => {
     if (passkey.opensVault) {
       await trpc.secrets.removeCredential.mutate({
         credentialId: passkey.credentialId,
@@ -692,6 +707,25 @@ export function removePasskey(passkey: {
     }
     return authClient.passkey.deletePasskey({ id: passkey.id });
   });
+  if (!result.error) {
+    forgetPasskeyOnDevice(passkey.credentialId);
+  }
+  return result;
+}
+
+/**
+ * The PRF salt of every passkey that opens the vault, so one passkey
+ * sign-in can also unlock it (`signInWithPasskey`'s `credentialIdToSalt`).
+ */
+export async function vaultPasskeySalts(): Promise<Record<string, Uint8Array>> {
+  const bundle = await getSecretBundle(VAULT_ROOT_SECRET_TYPE);
+  const salts: Record<string, Uint8Array> = {};
+  for (const wrapper of bundle.wrappers) {
+    if (wrapper.prfSalt) {
+      salts[wrapper.credentialId] = base64ToBytes(wrapper.prfSalt);
+    }
+  }
+  return salts;
 }
 
 /**

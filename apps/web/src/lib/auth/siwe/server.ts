@@ -1,7 +1,11 @@
 import type { InternalAdapter } from "@better-auth/core";
 
 import { APIError, type BetterAuthPlugin } from "better-auth";
-import { createAuthEndpoint, getSessionFromCtx } from "better-auth/api";
+import {
+  createAuthEndpoint,
+  getSessionFromCtx,
+  sensitiveSessionMiddleware,
+} from "better-auth/api";
 import { setSessionCookie } from "better-auth/cookies";
 import { generateRandomString } from "better-auth/crypto";
 import { type Address, getAddress, isAddress, verifyMessage } from "viem";
@@ -13,19 +17,24 @@ import {
 import { z } from "zod";
 
 import { env } from "@/env";
-import { createSessionAuthenticationContext } from "@/lib/auth/auth-context";
+import {
+  createSessionAuthenticationContext,
+  replaceSessionAuthenticationContext,
+} from "@/lib/auth/auth-context";
+import { isWalletLinkedToUser } from "@/lib/db/queries/auth";
 
 /**
  * What a wallet signature authorizes. Each purpose has its own statement, and
  * a challenge redeems only for the purpose it was issued for, so a signature
  * made to sign in cannot create an account or authorize a first-party app.
  */
-type SiwePurpose = "sign-in" | "sign-up" | "first-party-app";
+type SiwePurpose = "sign-in" | "sign-up" | "first-party-app" | "confirm";
 
 const STATEMENTS: Record<SiwePurpose, string> = {
   "sign-in": "Sign in to Zentity with this wallet.",
   "sign-up": "Create a Zentity account with this wallet.",
   "first-party-app": "Sign in to Zentity from a first-party app.",
+  confirm: "Confirm it's you to Zentity with this wallet.",
 };
 
 const CHALLENGE_TTL_MS = 5 * 60 * 1000;
@@ -207,6 +216,14 @@ const challengeBody = z.object({
   address: z.string().refine((value) => isAddress(value), "Invalid address"),
   chainId: z.number().int().positive(),
 });
+
+function walletNotLinked(): APIError {
+  return new APIError("BAD_REQUEST", {
+    code: "WALLET_NOT_LINKED",
+    message:
+      "This wallet isn't linked to your account. Connect the wallet you signed up with.",
+  });
+}
 
 export const siweAuth = (options: { emailDomainName: string }) => {
   const { emailDomainName } = options;
@@ -392,6 +409,62 @@ export const siweAuth = (options: { emailDomainName: string }) => {
             token: newSession.token,
             user: { id: userId },
           });
+        }
+      ),
+
+      /**
+       * A wallet confirmation inside the current session, as
+       * `/password/opaque/verify/*` is for the password: it records an
+       * `eip712` sign-in on this session without starting another, so the
+       * wallet can pair with an email link in an account recovery
+       * (`recovery-factors.ts`).
+       */
+      siweConfirmChallenge: createAuthEndpoint(
+        "/wallet/siwe/verify/challenge",
+        {
+          method: "POST",
+          body: challengeBody,
+          use: [sensitiveSessionMiddleware],
+        },
+        async (ctx) => {
+          const { user } = ctx.context.session;
+          if (!(await isWalletLinkedToUser(user.id, ctx.body.address))) {
+            throw walletNotLinked();
+          }
+          const message = await issueSiweChallenge(
+            ctx.context.internalAdapter,
+            { ...ctx.body, purpose: "confirm" }
+          );
+          return ctx.json({ message });
+        }
+      ),
+
+      siweConfirmComplete: createAuthEndpoint(
+        "/wallet/siwe/verify/complete",
+        {
+          method: "POST",
+          body: z.object({
+            message: z.string().min(1),
+            signature: z.string().min(1),
+          }),
+          use: [sensitiveSessionMiddleware],
+        },
+        async (ctx) => {
+          const { address } = await redeemOrThrow(ctx.context.internalAdapter, {
+            ...ctx.body,
+            purpose: "confirm",
+          });
+          const { session, user } = ctx.context.session;
+          if (!(await isWalletLinkedToUser(user.id, address))) {
+            throw walletNotLinked();
+          }
+          await replaceSessionAuthenticationContext({
+            userId: user.id,
+            loginMethod: "eip712",
+            sourceKind: "better_auth",
+            sessionId: session.id,
+          });
+          return ctx.json({ success: true });
         }
       ),
 
