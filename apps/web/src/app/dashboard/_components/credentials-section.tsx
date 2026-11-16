@@ -4,6 +4,7 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import {
   AlertTriangle,
   CheckCircle,
+  ChevronDown,
   Clock,
   Code,
   Copy,
@@ -13,7 +14,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { QRCodeSVG } from "qrcode.react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useId, useState } from "react";
 import { toast } from "sonner";
 
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -27,6 +28,11 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
 import {
   Dialog,
   DialogContent,
@@ -42,6 +48,8 @@ import {
   EmptyMedia,
   EmptyTitle,
 } from "@/components/ui/empty";
+import { Field, FieldDescription, FieldLabel } from "@/components/ui/field";
+import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
 import { asyncHandler } from "@/lib/async-handler";
@@ -77,6 +85,8 @@ export function CredentialsSection() {
     null
   );
   const [countdown, setCountdown] = useState(0);
+  const [walletClientId, setWalletClientId] = useState("");
+  const walletClientIdInputId = useId();
 
   const trpc = useTRPC();
   const statusQuery = useQuery(trpc.credentials.status.queryOptions());
@@ -107,7 +117,10 @@ export function CredentialsSection() {
 
   const handleGetCredential = useCallback(async () => {
     try {
-      const result = await createOfferMutation.mutateAsync({});
+      const trimmedClientId = walletClientId.trim();
+      const result = await createOfferMutation.mutateAsync(
+        trimmedClientId ? { walletClientId: trimmedClientId } : {}
+      );
 
       setOfferDialog({
         offerUri: result.offerUri,
@@ -120,7 +133,7 @@ export function CredentialsSection() {
           error instanceof Error ? error.message : "Please try again",
       });
     }
-  }, [createOfferMutation]);
+  }, [createOfferMutation, walletClientId]);
 
   const handleCopyUri = useCallback(async () => {
     if (!offerDialog?.offerUri) {
@@ -258,6 +271,38 @@ export function CredentialsSection() {
               time you present it.
             </AlertDescription>
           </Alert>
+
+          <Collapsible>
+            <CollapsibleTrigger asChild>
+              <Button
+                className="group h-auto p-0 text-muted-foreground"
+                size="sm"
+                type="button"
+                variant="link"
+              >
+                Use a registered wallet
+                <ChevronDown className="ml-1 h-4 w-4 transition-transform group-data-[state=open]:rotate-180" />
+              </Button>
+            </CollapsibleTrigger>
+            <CollapsibleContent className="pt-3">
+              <Field>
+                <FieldLabel htmlFor={walletClientIdInputId}>
+                  Wallet client ID
+                </FieldLabel>
+                <Input
+                  autoCapitalize="none"
+                  autoComplete="off"
+                  id={walletClientIdInputId}
+                  onChange={(event) => setWalletClientId(event.target.value)}
+                  spellCheck={false}
+                  value={walletClientId}
+                />
+                <FieldDescription>
+                  Only the wallet with this client ID can accept the offer.
+                </FieldDescription>
+              </Field>
+            </CollapsibleContent>
+          </Collapsible>
         </CardContent>
         <CardFooter>
           <Button

@@ -16,16 +16,42 @@ import "server-only";
 
 import { eq } from "drizzle-orm";
 
+import { parseStoredStringArray } from "@/lib/db/adapter-compat";
 import { db } from "@/lib/db/connection";
 import { oauthClients } from "@/lib/db/schema/oauth-provider";
 
 export const BUILT_IN_WALLET_CLIENT_ID = "zentity-wallet";
 
+const PRE_AUTHORIZED_CODE_GRANT_TYPE =
+  "urn:ietf:params:oauth:grant-type:pre-authorized_code";
 const WALLET_CLIENT_SECTOR = `client/${BUILT_IN_WALLET_CLIENT_ID}`;
 const WALLET_CLIENT_SCOPES = ["openid", "proof:identity"];
-const WALLET_CLIENT_GRANT_TYPES = [
-  "urn:ietf:params:oauth:grant-type:pre-authorized_code",
-];
+const WALLET_CLIENT_GRANT_TYPES = [PRE_AUTHORIZED_CODE_GRANT_TYPE];
+
+/**
+ * Whether a registered client can redeem a credential offer made for it: it
+ * exists, is enabled, and registered the pre-authorized code grant.
+ */
+export async function canRedeemCredentialOffers(
+  clientId: string
+): Promise<boolean> {
+  const client = await db
+    .select({
+      disabled: oauthClients.disabled,
+      grantTypes: oauthClients.grantTypes,
+    })
+    .from(oauthClients)
+    .where(eq(oauthClients.clientId, clientId))
+    .limit(1)
+    .get();
+  return (
+    !!client &&
+    !client.disabled &&
+    parseStoredStringArray(client.grantTypes).includes(
+      PRE_AUTHORIZED_CODE_GRANT_TYPE
+    )
+  );
+}
 
 /**
  * Ensure the OIDC4VCI wallet client exists and is pairwise. Creates it, or
