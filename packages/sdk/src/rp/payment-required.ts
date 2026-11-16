@@ -43,7 +43,7 @@ export interface CreatePaymentRequiredOptions {
 	resource: Pick<ResourceInfo, "url">;
 }
 
-export function buildPaymentRequiredPayload(
+function buildPaymentRequiredPayload(
 	options: CreatePaymentRequiredOptions,
 ): PaymentRequiredPayload {
 	const resource: ResourceInfo = {

@@ -45,7 +45,7 @@ export interface ProofOfHumanClaims {
  * issuer-side `COMPLIANCE_ONCHAIN_TIERS` constant so RP and chain agree on
  * what each tier means.
  */
-export const IDENTITY_STRENGTH_TIERS: Record<IdentityEvidenceStrength, number> =
+const IDENTITY_STRENGTH_TIERS: Record<IdentityEvidenceStrength, number> =
   {
     none: 0,
     documentary: 1,
@@ -109,7 +109,7 @@ function asStrength(value: unknown): IdentityEvidenceStrength {
     : "none";
 }
 
-export function parseProofOfHumanClaims(claims: unknown): ProofOfHumanClaims {
+function parseProofOfHumanClaims(claims: unknown): ProofOfHumanClaims {
   if (!claims || typeof claims !== "object" || Array.isArray(claims)) {
     throw new Error("Proof-of-human token missing poh claim");
   }
@@ -140,7 +140,7 @@ export function parseProofOfHumanClaims(claims: unknown): ProofOfHumanClaims {
   };
 }
 
-export function parseProofOfHumanConfirmation(
+function parseProofOfHumanConfirmation(
   confirmation: unknown
 ): { jkt: string } | undefined {
   if (

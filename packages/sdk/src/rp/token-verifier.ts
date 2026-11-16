@@ -5,7 +5,6 @@ import {
   type JWTVerifyResult,
   jwtVerify,
 } from "jose";
-import type { AccessTokenClaims } from "../protocol/claims";
 import { createDiscoveryResolver } from "../protocol/discovery";
 
 const DEFAULT_JWKS_TTL_MS = 5 * 60 * 1000;
@@ -29,10 +28,6 @@ export interface OpenIdTokenVerifierOptions {
   discoveryTtlMs?: number;
   discoveryUrl?: string | URL;
   issuerUrl: string | URL;
-}
-
-export interface VerifyAccessTokenOptions extends OpenIdTokenVerifierOptions {
-  audience: string | string[];
 }
 
 function toUrl(value: string | URL): URL {
@@ -106,15 +101,4 @@ export function createOpenIdTokenVerifier(
       });
     },
   };
-}
-
-export async function verifyAccessToken<
-  T extends JWTPayload & AccessTokenClaims = JWTPayload & AccessTokenClaims,
->(
-  token: string,
-  options: VerifyAccessTokenOptions
-): Promise<JWTVerifyResult<T>> {
-  return createOpenIdTokenVerifier(options).verify<T>(token, {
-    audience: options.audience,
-  });
 }

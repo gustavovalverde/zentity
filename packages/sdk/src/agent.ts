@@ -91,7 +91,7 @@ export class ComplianceInsufficientError extends Error {
   }
 }
 
-export function decodeAccessToken(
+function decodeAccessToken(
   token: string
 ): AccessTokenClaims & Record<string, unknown> {
   return decodeJwt(token) as AccessTokenClaims & Record<string, unknown>;
