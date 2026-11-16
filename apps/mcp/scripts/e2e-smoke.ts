@@ -20,9 +20,9 @@
  *
  * Environment:
  *   ZENTITY_URL              Zentity base URL (default: http://localhost:3000)
- *   SMOKE_LOGIN_HINT         User id of the approving user (HTTP transport); the
- *                            smoke client registers with public subjects, so
- *                            the user id is the subject CIBA accepts
+ *   MCP_CLIENT_ID, MCP_CLIENT_SECRET
+ *                            The MCP HTTP server's confidential client (HTTP
+ *                            transport), from `pnpm mcp:provision` in apps/web
  *   SMOKE_TIMEOUT_MS         How long to wait for each sign-in or approval (default: 300000)
  */
 
@@ -37,9 +37,12 @@ import {
   StreamableHTTPClientTransport,
 } from "@modelcontextprotocol/client";
 import { StdioClientTransport } from "@modelcontextprotocol/client/stdio";
-import { requestCibaApproval } from "@zentity/sdk";
-import { buildLoopbackClientRegistration } from "@zentity/sdk/node";
-import { createDpopClient } from "@zentity/sdk/rp";
+import type { StoredFirstPartyAuthState } from "@zentity/sdk/fpa";
+import {
+  buildLoopbackClientRegistration,
+  createInstalledClientAuth,
+} from "@zentity/sdk/node";
+import { createDpopClientFromKeyPair } from "@zentity/sdk/rp";
 
 const args = process.argv.slice(2);
 const withCiba = args.includes("--with-ciba");
@@ -173,45 +176,37 @@ async function connectStdio(home: string): Promise<Client> {
   return client;
 }
 
+/**
+ * Signs in as a remote MCP host would: an authorization-code login for the
+ * MCP resource, whose JWT the MCP server exchanges as its own client. State
+ * stays in memory, so the operator's ~/.zentity is untouched.
+ */
 async function requestRemoteToken(mcpUrl: string) {
-  const loginHint = process.env.SMOKE_LOGIN_HINT;
-  assert(loginHint, "SMOKE_LOGIN_HINT is required for the HTTP transport");
-
-  const registration = await fetch(`${zentityUrl}/api/auth/oauth2/register`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      ...buildLoopbackClientRegistration({
-        clientName: "zentity-e2e-smoke",
-        grantTypes: ["authorization_code", "urn:openid:params:grant-type:ciba"],
-        scope: REMOTE_SCOPES,
-      }),
-      subject_type: "public",
+  let state: StoredFirstPartyAuthState | undefined;
+  const remoteHost = createInstalledClientAuth({
+    clientRegistrationRequest: buildLoopbackClientRegistration({
+      clientName: "zentity-e2e-smoke",
+      grantTypes: ["authorization_code", "refresh_token"],
+      scope: REMOTE_SCOPES,
     }),
-  });
-  assert(
-    registration.ok,
-    `client registration failed: ${registration.status} ${await registration.clone().text()}`
-  );
-  const { client_id: clientId } = (await registration.json()) as {
-    client_id: string;
-  };
-
-  const dpopClient = await createDpopClient();
-  const tokenSet = await requestCibaApproval({
-    cibaEndpoint: `${zentityUrl}/api/auth/oauth2/bc-authorize`,
-    tokenEndpoint: `${zentityUrl}/api/auth/oauth2/token`,
-    clientId,
-    dpopClient,
-    loginHint,
-    scope: REMOTE_SCOPES,
-    bindingMessage: "Zentity smoke test: connect to the MCP server",
-    resource: new URL(mcpUrl).origin,
-    onPendingApproval: (pending) => {
-      console.log(`    → Approve MCP access: ${pending.approvalUrl}`);
+    issuerUrl: zentityUrl,
+    loginResource: new URL(mcpUrl).origin,
+    loginScope: REMOTE_SCOPES,
+    openUrl: (url) => {
+      console.log(`    → Sign in for MCP access: ${url}`);
+    },
+    storage: {
+      load: () => state,
+      save: (next) => {
+        state = next;
+      },
     },
   });
-  return { accessToken: tokenSet.accessToken, dpopClient };
+  const session = await remoteHost.ensureOAuthSession();
+  return {
+    accessToken: session.accessToken,
+    dpopClient: await createDpopClientFromKeyPair(session.dpopKey),
+  };
 }
 
 async function connectHttp(home: string): Promise<Client> {
@@ -223,6 +218,8 @@ async function connectHttp(home: string): Promise<Client> {
       env: {
         HOME: home,
         PATH: process.env.PATH ?? "",
+        MCP_CLIENT_ID: process.env.MCP_CLIENT_ID ?? "",
+        MCP_CLIENT_SECRET: process.env.MCP_CLIENT_SECRET ?? "",
         MCP_PUBLIC_URL: publicUrl,
         ZENTITY_MCP_NO_BROWSER: "1",
         ZENTITY_URL: zentityUrl,
