@@ -86,6 +86,48 @@ describe("POST /api/auth/oauth2/register", () => {
     return { status: response.status, payload, client };
   }
 
+  // R14: anyone may register, so a public subject would let any client name
+  // every user by the same identifier.
+  it("refuses a public subject type", async () => {
+    const { status, payload, client } = await register({
+      client_name: "Public RP",
+      redirect_uris: [`${RP_ORIGIN}/callback`],
+      subject_type: "public",
+    });
+
+    expect(status).toBe(400);
+    expect(payload).toEqual({
+      error: "invalid_client_metadata",
+      error_description:
+        'subject_type "public" is not supported; clients receive pairwise subject identifiers',
+    });
+    expect(client).toBeUndefined();
+  });
+
+  it("registers a client without a subject type as pairwise", async () => {
+    const { status, client } = await register({
+      client_name: "Default RP",
+      redirect_uris: [`${RP_ORIGIN}/callback`],
+    });
+
+    expect(status).toBe(201);
+    expect(client?.subjectType).toBe("pairwise");
+  });
+
+  // The actor opt-out is for administrators only (PACT §13.4).
+  it("does not store an agent subject type a registration sends", async () => {
+    const { status, client } = await register({
+      client_name: "Agent RP",
+      redirect_uris: [`${RP_ORIGIN}/callback`],
+      agent_subject_type: "public",
+    });
+
+    expect(status).toBe(201);
+    expect(JSON.parse(client?.metadata ?? "{}")).not.toHaveProperty(
+      "agent_subject_type"
+    );
+  });
+
   it("leaves RP-initiated logout off for clients without post-logout redirects", async () => {
     const { status, client } = await register({
       client_name: "Demo RP",

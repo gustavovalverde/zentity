@@ -49,7 +49,7 @@ import {
   twoFactor,
 } from "better-auth/plugins";
 import { organization } from "better-auth/plugins/organization";
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, isNull } from "drizzle-orm";
 import { decodeJwt, jwtVerify } from "jose";
 import { PHASE_PRODUCTION_BUILD } from "next/constants";
 
@@ -148,6 +148,7 @@ import {
 import {
   findPairwiseClient,
   keepsSector,
+  pairwiseRedirectUriProblem,
   rememberAccessTokenIssuance,
   resolveSubForClientId,
   resolveUserIdFromSub,
@@ -716,15 +717,60 @@ function inferNativeApplicationType(body: Record<string, unknown>) {
   }
 }
 
+function invalidClientMetadata(description: string): APIError {
+  return new APIError("BAD_REQUEST", {
+    error: "invalid_client_metadata",
+    error_description: description,
+  });
+}
+
+// Anyone may register, so a client never chooses public subjects, which would
+// name every user by the same id at every client.
 async function beforeDcrRegister(ctx: HookCtx) {
   await validateDcrRegistration(ctx.body);
   if (!ctx.body) {
     return;
   }
   inferNativeApplicationType(ctx.body);
-  if (!ctx.body.subject_type) {
-    ctx.body.subject_type = "pairwise";
+  if (ctx.body.subject_type === "public") {
+    throw invalidClientMetadata(
+      'subject_type "public" is not supported; clients receive pairwise subject identifiers'
+    );
   }
+  ctx.body.subject_type ??= "pairwise";
+}
+
+// `/oauth2/create-client` takes no `subject_type` and would register a public
+// client (upstream ask U24). Its redirect URIs must satisfy the provider's
+// pairwise rules, and the after-hook makes the new client pairwise.
+function beforeCreateClientRequirePairwiseRedirects(ctx: HookCtx) {
+  const redirectUris: unknown = ctx.body?.redirect_uris;
+  if (!Array.isArray(redirectUris)) {
+    return;
+  }
+  const problem = pairwiseRedirectUriProblem(
+    redirectUris.filter((uri): uri is string => typeof uri === "string")
+  );
+  if (problem) {
+    throw invalidClientMetadata(problem);
+  }
+}
+
+async function afterCreateClientMakePairwise(ctx: HookCtx) {
+  const created = await readReturnedResponseBody(
+    (ctx.context as { returned?: unknown }).returned
+  );
+  const clientId = created?.client_id;
+  if (typeof clientId !== "string") {
+    return;
+  }
+  await db
+    .update(oauthClients)
+    .set({ subjectType: "pairwise" })
+    .where(
+      and(eq(oauthClients.clientId, clientId), isNull(oauthClients.subjectType))
+    )
+    .run();
 }
 
 // The provider recomputes a client's sector when its redirect URIs change but
@@ -1887,6 +1933,9 @@ export const auth = betterAuth({
       if (ctx.path === "/oauth2/register") {
         return beforeDcrRegister(ctx);
       }
+      if (ctx.path === "/oauth2/create-client") {
+        return beforeCreateClientRequirePairwiseRedirects(ctx);
+      }
       if (
         ctx.path === "/oauth2/update-client" ||
         ctx.path === "/admin/oauth2/update-client"
@@ -1985,6 +2034,9 @@ export const auth = betterAuth({
       }
       if (ctx.path === "/oauth2/introspect") {
         return afterIntrospectKeepJwtSubject(ctx);
+      }
+      if (ctx.path === "/oauth2/create-client") {
+        await afterCreateClientMakePairwise(ctx);
       }
       return;
     }),

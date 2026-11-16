@@ -966,7 +966,7 @@ Agent display metadata (`model`, `runtime`, `version`) is informational and self
 
 ### 13.4 Pairwise Opt-Out
 
-RPs that require stable agent identifiers (for example, for regulatory audit trails) are given them through an agent-specific signal distinct from VEIL's user-facing `subject_type`. In Zentity this is the `agent_subject_type` client metadata member, which an administrator sets on the agent client. The default is pairwise.
+RPs that require stable agent identifiers (for example, for regulatory audit trails) are given them through an agent-specific signal distinct from VEIL's user-facing `subject_type`. In Zentity this is the `agent_subject_type` client metadata member, which an administrator sets on the agent client; dynamic registration does not store it. The default is pairwise.
 
 ---
 

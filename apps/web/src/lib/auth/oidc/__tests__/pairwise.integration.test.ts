@@ -462,6 +462,103 @@ describe("pairwise subject resolution (integration)", () => {
     });
   });
 
+  // T3 leftover: `/oauth2/create-client` takes no subject_type, so its clients
+  // named every user by the user id.
+  describe("managed client creation", () => {
+    const AUTH_BASE = "http://localhost:3000/api/auth";
+
+    async function createClient(redirectUris: string[]) {
+      const token = await createTestSession(userId);
+      const signature = await makeSignature(token, env.BETTER_AUTH_SECRET);
+      const response = await auth.handler(
+        new Request(`${AUTH_BASE}/oauth2/create-client`, {
+          method: "POST",
+          headers: {
+            cookie: `better-auth.session_token=${token}.${signature}`,
+            "content-type": "application/json",
+            origin: "http://localhost:3000",
+          },
+          body: JSON.stringify({
+            client_name: "Managed Client",
+            redirect_uris: redirectUris,
+            token_endpoint_auth_method: "none",
+            grant_types: ["authorization_code"],
+            response_types: ["code"],
+          }),
+        })
+      );
+      return {
+        status: response.status,
+        body: (await response.json()) as Record<string, unknown>,
+      };
+    }
+
+    it("gives the client a pairwise subject", async () => {
+      const { status, body } = await createClient([
+        "https://managed-rp.example/callback",
+      ]);
+      const clientId = body.client_id as string;
+
+      expect(status).toBe(201);
+      const row = await db
+        .select({
+          subjectType: oauthClients.subjectType,
+          sectorIdentifier: oauthClients.sectorIdentifier,
+        })
+        .from(oauthClients)
+        .where(eq(oauthClients.clientId, clientId))
+        .get();
+      expect(row).toEqual({
+        subjectType: "pairwise",
+        sectorIdentifier: "managed-rp.example",
+      });
+      expect(await idTokenSubFor(clientId)).toBe(
+        await makeSignature(`managed-rp.example.${userId}`, env.PAIRWISE_SECRET)
+      );
+    });
+
+    it("refuses redirect URIs a pairwise client cannot use", async () => {
+      const { status, body } = await createClient([
+        "https://managed-rp.example/callback",
+        "https://other-rp.example/callback",
+      ]);
+
+      expect({ status, body }).toEqual({
+        status: 400,
+        body: {
+          error: "invalid_client_metadata",
+          error_description:
+            "pairwise clients with redirect_uris on different hosts require a sector_identifier_uri, which is not yet supported. All redirect_uris must share the same host.",
+        },
+      });
+    });
+
+    async function idTokenSubFor(clientId: string): Promise<string> {
+      const { authReqId } = await createTestCibaRequest({
+        clientId,
+        userId,
+        status: "approved",
+      });
+      await db
+        .update(oauthClients)
+        .set({
+          grantTypes: JSON.stringify(["authorization_code", CIBA_GRANT_TYPE]),
+          metadata: JSON.stringify({ backchannel_token_delivery_mode: "poll" }),
+        })
+        .where(eq(oauthClients.clientId, clientId))
+        .run();
+      const { status, json } = await postTokenWithDpop({
+        grant_type: CIBA_GRANT_TYPE,
+        auth_req_id: authReqId,
+        client_id: clientId,
+      });
+      if (status !== 200) {
+        throw new Error(`token request failed: ${JSON.stringify(json)}`);
+      }
+      return decodeJwt(json.id_token as string).sub as string;
+    }
+  });
+
   describe("end-session pairwise resolution", () => {
     it("session lookup uses raw userId after pairwise resolution", async () => {
       await createTestClient();

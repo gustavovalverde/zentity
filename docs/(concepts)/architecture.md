@@ -127,7 +127,7 @@ Zentity supports two usage modes that share the same core cryptography but diffe
 
 **ARCOM double anonymity** (pairwise flows)
 
-For DCR clients, Zentity defaults to pairwise subject identifiers (`subject_type: "pairwise"`), preventing cross-RP user correlation. In proof-only flows, additional ARCOM measures apply:
+Registered clients always get pairwise subject identifiers (`subject_type: "pairwise"`; registration refuses `"public"`), preventing cross-RP user correlation. In proof-only flows, additional ARCOM measures apply:
 
 - Consent records deleted after authorization code issuance (transient linkage)
 - Access token DB records deleted after JWT issuance

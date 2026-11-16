@@ -91,7 +91,7 @@ Rationale:
 
 #### 4. No client-readable artifact carries the real user id
 
-Pairwise subjects stop relying parties from correlating one user across clients. Every artifact a client can read therefore carries that client's subject identifier: its pairwise subject for a pairwise client, the user id for a public client.
+Pairwise subjects stop relying parties from correlating one user across clients. Every artifact a client can read therefore carries that client's subject identifier: its pairwise subject for a pairwise client, the user id for a public client. Registration cannot choose a public subject: dynamic registration refuses `subject_type: "public"`, and `/oauth2/create-client` clients are pairwise; only an administrator creates a public client.
 
 * `id_token`, `userinfo`, introspection, and proof-of-human responses project the client's subject.
 * Access tokens for endpoints Zentity serves (the app origin, the auth issuer, and every resource under it, including `userinfo`) are opaque reference tokens that Zentity resolves server-side. Zentity drops Zentity-hosted `resource` indicators from user token requests so the OAuth provider issues opaque tokens. Token exchange mints opaque tokens for the app only, never a JWT and never for another audience, with no actor or delegation claims; the only claim such a token stores is the agent bootstrap marker (token use), which introspection returns. A subject token that carries an actor, a CIBA approval, or `authorization_details` is refused, so an approval reaches only the audience the user approved.
@@ -192,3 +192,4 @@ What does not change by channel:
 * 2026-11-16: The OAuth provider writes the pairwise `sub` of JWT access tokens and the encrypted `ba_sub`, so UserInfo and introspection resolve a pairwise client's JWT. Zentity no longer rewrites the subject or maps it back through the pairwise subject index.
 * 2026-11-16: Rule 4: a JWT access token names at most one audience outside Zentity, and its `sub` is pairwise per client and audience (token sector `sector + " " + audience`), so the client's resource servers and its ID tokens see different subjects for one user.
 * 2026-11-16: Rule 5: per-RP anti-abuse handles (`sybil_nullifier`, `rp_unique_humanity_id`) appear only in opaque access tokens, never in a JWT for an outside audience.
+* 2026-11-16: Rule 4: dynamic registration refuses `subject_type: "public"`, and clients from `/oauth2/create-client` are pairwise.

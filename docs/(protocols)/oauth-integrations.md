@@ -462,7 +462,7 @@ Signing keys are managed by the Better Auth `jwt` plugin. Each algorithm's key i
 
 ### Client registration
 
-Relying parties and agents register via RFC 7591 Dynamic Client Registration. CIBA clients register as public clients (`token_endpoint_auth_method: "none"`). The user-facing `subject_type` defaults to `"pairwise"` for DCR clients. The one confidential client Zentity operates itself, the MCP HTTP server's, is provisioned through the provider's administration APIs instead: `pnpm --filter @zentity/web mcp:provision` creates or updates it (token exchange and CIBA grants, `client_secret_basic`, `skip_consent`, a pairwise subject, and a link to `MCP_PUBLIC_URL`) and prints `MCP_CLIENT_ID` and, when new or rotated with `--rotate-secret`, `MCP_CLIENT_SECRET`. The provider's administration APIs act only for a signed-in user and change only clients that user owns, so the script creates a credential-less owner account with each client, under the reserved `zentity.invalid` domain that sign-up refuses, and signs it in only for each run. It never reuses an existing account as an owner, and it refuses an `MCP_CLIENT_ID` whose client it did not create.
+Relying parties and agents register via RFC 7591 Dynamic Client Registration. CIBA clients register as public clients (`token_endpoint_auth_method: "none"`). Every registered client gets pairwise subjects: dynamic registration sets `subject_type: "pairwise"` when it is absent and refuses `"public"` with `invalid_client_metadata`, and a client created through `/oauth2/create-client`, which takes no `subject_type`, is made pairwise after creation, with its redirect URIs held to the same pairwise rules. The one confidential client Zentity operates itself, the MCP HTTP server's, is provisioned through the provider's administration APIs instead: `pnpm --filter @zentity/web mcp:provision` creates or updates it (token exchange and CIBA grants, `client_secret_basic`, `skip_consent`, a pairwise subject, and a link to `MCP_PUBLIC_URL`) and prints `MCP_CLIENT_ID` and, when new or rotated with `--rotate-secret`, `MCP_CLIENT_SECRET`. The provider's administration APIs act only for a signed-in user and change only clients that user owns, so the script creates a credential-less owner account with each client, under the reserved `zentity.invalid` domain that sign-up refuses, and signs it in only for each run. It never reuses an existing account as an owner, and it refuses an `MCP_CLIENT_ID` whose client it did not create.
 
 ```json
 {
@@ -474,7 +474,7 @@ Relying parties and agents register via RFC 7591 Dynamic Client Registration. CI
 }
 ```
 
-Optional metadata fields: `optionalScopes` (scopes selectable but not required at consent), `backchannel_client_notification_endpoint` (CIBA ping mode callback URL), `backchannel_logout_uri` (OIDC Back-Channel Logout endpoint), `subject_type` (`"pairwise"` default for the human `sub`, `"public"` available), and `agent_subject_type` (`"pairwise"` default for `act.sub`/`agent.id`, `"public"` available independently of the user setting). Clients an administrator marks `first_party` and `skip_consent` can use the Authorization Challenge Endpoint: headless authentication without redirects, and step-up `auth_session` tokens on authorization failure. Registration cannot set either field.
+Optional metadata fields: `optionalScopes` (scopes selectable but not required at consent), `backchannel_client_notification_endpoint` (CIBA ping mode callback URL), `backchannel_logout_uri` (OIDC Back-Channel Logout endpoint), and `subject_type` (only `"pairwise"`, also the default; `"public"` is refused). `agent_subject_type`, which makes `act.sub` the raw session id, is not a registration field: an administrator sets it in a client's metadata, independently of the user setting. Clients an administrator marks `first_party` and `skip_consent` can use the Authorization Challenge Endpoint: headless authentication without redirects, and step-up `auth_session` tokens on authorization failure. Registration cannot set either field.
 
 **`software_statement` validation:** If a `software_statement` is present in the DCR request, it must be a syntactically valid JWT (three base64url-encoded parts with a parseable JSON payload). Malformed statements return HTTP 400. The JSON payload is parsed with duplicate-key rejection before the issuer is read. The signature is not verified (no trusted SSA issuers configured), but strict structural validation prevents garbage data or parser-ambiguous issuer metadata from being accepted.
 
@@ -822,7 +822,7 @@ The privacy guarantees cluster by what they prevent: cross-RP user correlation (
 
 ### Pairwise subject identifiers
 
-All DCR clients use `subject_type: "pairwise"`. Each (user, client) pair gets a unique opaque `sub`:
+All registered clients use `subject_type: "pairwise"`; only an administrator can create a public client. Each (user, client) pair gets a unique opaque `sub`:
 
 ```text
 sub = Base64(HMAC-SHA256(PAIRWISE_SECRET, sectorId + "." + userId))
@@ -852,7 +852,7 @@ A metadata-document client never gets a host sector, because one host can serve 
 
 What registration does and does not validate: neither dynamic registration nor a metadata document proves control of a redirect host. A dynamically registered client's host sector is still safe for two reasons:
 
-- Dynamic registration defaults to pairwise before the provider checks the set, so the provider refuses pairwise clients whose redirect URIs span several hosts or use a custom scheme with a host. The authorization code is only ever delivered to the sector's host.
+- Dynamic registration makes every client pairwise before the provider checks the set, so the provider refuses clients whose redirect URIs span several hosts or use a custom scheme with a host; `/oauth2/create-client` applies the same refusal. The authorization code is only ever delivered to the sector's host.
 - CIBA names the user only by the subject the client already received (`login_hint`), so a CIBA request reveals nothing the client did not hold.
 
 CIBA Core 1.0 §4 derives a pairwise poll or ping client's sector from `jwks_uri` or `sector_identifier_uri` and requires a valid `jwks_uri`. Zentity's agents are DPoP clients without `jwks_uri`, and the two properties above replace that check. This is a recorded deviation. `sector_identifier_uri` is not supported.

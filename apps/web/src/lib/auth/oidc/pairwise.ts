@@ -79,6 +79,31 @@ export function keepsSector(
   }
 }
 
+/**
+ * Why the provider would refuse these redirect URIs for a pairwise client,
+ * with its own wording, or null when it would accept them. Mirrors the checks
+ * it runs only when a registration names `subject_type: "pairwise"`.
+ */
+export function pairwiseRedirectUriProblem(
+  redirectUris: readonly string[]
+): string | null {
+  const urls = redirectUris.flatMap((uri) =>
+    URL.canParse(uri) ? [new URL(uri)] : []
+  );
+  if (
+    urls.some(
+      (url) =>
+        url.protocol !== "http:" && url.protocol !== "https:" && url.host !== ""
+    )
+  ) {
+    return "pairwise clients cannot use custom-scheme redirect URIs that include a host";
+  }
+  if (new Set(urls.map((url) => url.host)).size > 1) {
+    return "pairwise clients with redirect_uris on different hosts require a sector_identifier_uri, which is not yet supported. All redirect_uris must share the same host.";
+  }
+  return null;
+}
+
 export async function computePairwiseSub(
   subjectId: string,
   sector: string,
