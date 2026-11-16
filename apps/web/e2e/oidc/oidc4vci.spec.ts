@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { decodeJwt } from "jose";
 
 const TRAILING_SLASHES_REGEX = /\/+$/;
 
@@ -79,6 +80,9 @@ test.describe("OIDC4VCI issuer", () => {
       }>;
     };
 
+    // The built-in wallet is pairwise too.
+    expect(decodeJwt(tokens.access_token).sub).not.toBe(userId);
+
     const credentialIdentifier =
       tokens.authorization_details?.[0]?.credential_identifiers?.[0];
     const { proofJwt, holderJwk } = await createProofJwt(
@@ -104,41 +108,61 @@ test.describe("OIDC4VCI issuer", () => {
     const jwks = await fetchIssuerJwks(request);
     await verifyIssuedCredential({
       credential: credential ?? "",
-      userId,
       holderJwk,
       jwks,
       expectedVct: oidcConfig.identityVct,
     });
   });
 
-  // A registered wallet is pairwise, and the OIDC4VCI plugin cannot resolve a
-  // pairwise subject to a user (U25 in
-  // docs/adr/platform/0002-better-auth-patches.md).
-  test("refuses a credential offer for a registered wallet", async ({
-    request,
-  }) => {
+  test("issues a credential to a registered wallet", async ({ request }) => {
     const { cookieHeader, userId } = await createIssuerSession(request);
+    // Registered through `/oauth2/create-client`, so pairwise.
     const clientId = await createWalletClient(request, cookieHeader);
-
-    const res = await request.post(
-      `${oidcConfig.authBaseUrl}/oidc4vci/credential-offer`,
-      {
-        data: {
-          client_id: clientId,
-          userId,
-          credential_configuration_id:
-            oidcConfig.identityCredentialConfigurationId,
-        },
-        headers: { Cookie: cookieHeader, ...originHeaders },
-      }
-    );
-
-    expect(res.status()).toBe(400);
-    expect(await res.json()).toEqual({
-      error: "invalid_client",
-      error_description:
-        "credentials are issued only to wallet clients with public subjects, and this client is pairwise",
+    const dpopBinding = await createDpopBinding();
+    const { preAuthorizedCode } = await createCredentialOffer(request, {
+      cookieHeader,
+      clientId,
+      userId,
+      credentialConfigurationId: oidcConfig.identityCredentialConfigurationId,
     });
+
+    const tokenRes = await exchangePreAuthorizedCode(request, {
+      preAuthorizedCode,
+      clientId,
+      dpopBinding,
+    });
+    expect(tokenRes.status()).toBe(200);
+    const tokens = (await tokenRes.json()) as { access_token: string };
+    const accessToken = decodeJwt(tokens.access_token);
+    expect(accessToken.sub).not.toBe(userId);
+    expect(accessToken.ba_sub).toEqual(expect.any(String));
+
+    const { proofJwt, holderJwk } = await createProofJwt(
+      await fetchCNonce(request)
+    );
+    const credentialRes = await issueCredential(request, {
+      accessToken: tokens.access_token,
+      credentialConfigurationId: oidcConfig.identityCredentialConfigurationId,
+      proofJwt,
+      dpopBinding,
+    });
+    expect(credentialRes.status()).toBe(200);
+    const credential = extractIssuedCredential(
+      (await credentialRes.json()) as Parameters<
+        typeof extractIssuedCredential
+      >[0]
+    );
+    if (!credential) {
+      throw new Error("missing credential in issuance response");
+    }
+    await verifyIssuedCredential({
+      credential,
+      holderJwk,
+      jwks: await fetchIssuerJwks(request),
+      expectedVct: oidcConfig.identityVct,
+    });
+    expect(credential).not.toContain(userId);
+    expect(credential).not.toContain(String(accessToken.sub));
   });
 
   test("rejects Draft 11 format-based credential requests", async ({

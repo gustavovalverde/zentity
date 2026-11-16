@@ -664,7 +664,6 @@ describe("identity revocation cascade", () => {
         statusListId: "list-1",
         statusListIndex: 0,
         status: 0,
-        credential: "{}",
       })
       .run();
 
@@ -730,7 +729,6 @@ describe("identity revocation cascade", () => {
         statusListId: "list-1",
         statusListIndex: 0,
         status: 0,
-        credential: "{}",
       })
       .run();
 

@@ -4,6 +4,7 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import {
   AlertTriangle,
   CheckCircle,
+  ChevronDown,
   Clock,
   Code,
   Copy,
@@ -13,7 +14,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { QRCodeSVG } from "qrcode.react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useId, useState } from "react";
 import { toast } from "sonner";
 
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -27,6 +28,11 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
 import {
   Dialog,
   DialogContent,
@@ -42,6 +48,13 @@ import {
   EmptyMedia,
   EmptyTitle,
 } from "@/components/ui/empty";
+import {
+  Field,
+  FieldDescription,
+  FieldError,
+  FieldLabel,
+} from "@/components/ui/field";
+import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
 import { asyncHandler } from "@/lib/async-handler";
@@ -70,6 +83,15 @@ interface CredentialOfferState {
   expiresIn: number;
   offer: Record<string, unknown>;
   offerUri: string;
+  walletClientId: string | null;
+}
+
+function isBadRequest(error: unknown): error is Error {
+  return (
+    error instanceof Error &&
+    "data" in error &&
+    (error.data as { code?: string } | undefined)?.code === "BAD_REQUEST"
+  );
 }
 
 export function CredentialsSection() {
@@ -77,6 +99,12 @@ export function CredentialsSection() {
     null
   );
   const [countdown, setCountdown] = useState(0);
+  const [walletPickerOpen, setWalletPickerOpen] = useState(false);
+  const [walletClientId, setWalletClientId] = useState("");
+  const [walletClientIdError, setWalletClientIdError] = useState<string | null>(
+    null
+  );
+  const walletClientIdInputId = useId();
 
   const trpc = useTRPC();
   const statusQuery = useQuery(trpc.credentials.status.queryOptions());
@@ -105,22 +133,39 @@ export function CredentialsSection() {
     return () => clearInterval(interval);
   }, [offerDialog]);
 
+  const handleWalletPickerOpenChange = useCallback((open: boolean) => {
+    setWalletPickerOpen(open);
+    if (!open) {
+      setWalletClientId("");
+      setWalletClientIdError(null);
+    }
+  }, []);
+
   const handleGetCredential = useCallback(async () => {
+    const targetClientId = walletPickerOpen ? walletClientId.trim() : "";
+    setWalletClientIdError(null);
     try {
-      const result = await createOfferMutation.mutateAsync({});
+      const result = await createOfferMutation.mutateAsync(
+        targetClientId ? { walletClientId: targetClientId } : {}
+      );
 
       setOfferDialog({
         offerUri: result.offerUri,
         offer: result.offer,
         expiresIn: result.expiresIn,
+        walletClientId: targetClientId || null,
       });
     } catch (error) {
+      if (targetClientId && isBadRequest(error)) {
+        setWalletClientIdError(error.message);
+        return;
+      }
       toast.error("Failed to create credential offer", {
         description:
           error instanceof Error ? error.message : "Please try again",
       });
     }
-  }, [createOfferMutation]);
+  }, [createOfferMutation, walletClientId, walletPickerOpen]);
 
   const handleCopyUri = useCallback(async () => {
     if (!offerDialog?.offerUri) {
@@ -258,6 +303,49 @@ export function CredentialsSection() {
               time you present it.
             </AlertDescription>
           </Alert>
+
+          <Collapsible
+            onOpenChange={handleWalletPickerOpenChange}
+            open={walletPickerOpen}
+          >
+            <CollapsibleTrigger asChild>
+              <Button
+                className="group h-auto p-0 text-muted-foreground"
+                size="sm"
+                type="button"
+                variant="link"
+              >
+                Use a registered wallet
+                <ChevronDown className="ml-1 h-4 w-4 transition-transform group-data-[state=open]:rotate-180" />
+              </Button>
+            </CollapsibleTrigger>
+            <CollapsibleContent className="pt-3">
+              <Field data-invalid={Boolean(walletClientIdError)}>
+                <FieldLabel htmlFor={walletClientIdInputId}>
+                  Wallet client ID
+                </FieldLabel>
+                <Input
+                  aria-invalid={Boolean(walletClientIdError)}
+                  autoCapitalize="none"
+                  autoComplete="off"
+                  id={walletClientIdInputId}
+                  onChange={(event) => {
+                    setWalletClientId(event.target.value);
+                    setWalletClientIdError(null);
+                  }}
+                  spellCheck={false}
+                  value={walletClientId}
+                />
+                <FieldDescription>
+                  A wallet with a different client ID can&apos;t accept the
+                  offer.
+                </FieldDescription>
+                {walletClientIdError ? (
+                  <FieldError>{walletClientIdError}</FieldError>
+                ) : null}
+              </Field>
+            </CollapsibleContent>
+          </Collapsible>
         </CardContent>
         <CardFooter>
           <Button
@@ -287,8 +375,19 @@ export function CredentialsSection() {
               Scan with Your Wallet
             </DialogTitle>
             <DialogDescription>
-              Scan this QR code with a compatible identity wallet to receive
-              your credential.
+              {offerDialog?.walletClientId ? (
+                <>
+                  Scan this QR code with the wallet registered as{" "}
+                  <code className="break-all">
+                    {offerDialog.walletClientId}
+                  </code>{" "}
+                  to receive your credential.
+                </>
+              ) : (
+                "Scan this QR code with a compatible identity wallet to receive your credential."
+              )}{" "}
+              Keep the code and link private until your wallet accepts the
+              offer.
             </DialogDescription>
           </DialogHeader>
 

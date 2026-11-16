@@ -96,6 +96,7 @@ import {
 } from "@/lib/auth/oidc/ciba";
 import { clientMetadataExtension } from "@/lib/auth/oidc/client-metadata";
 import {
+  buildCredentialClaims,
   buildProofClaims,
   computeConsentHmac,
   computeConsentReferenceId,
@@ -182,10 +183,7 @@ import {
 import { resolveSybilNullifier } from "@/lib/auth/oidc/sybil";
 import { tokenExchangePlugin } from "@/lib/auth/oidc/token-exchange";
 import { recordRevokedAccessToken } from "@/lib/auth/oidc/token-revocation";
-import {
-  authorizeWalletCredentialOffer,
-  refusePairwiseCredentialToken,
-} from "@/lib/auth/oidc/wallet-dcr";
+import { BUILT_IN_WALLET_CLIENT_ID } from "@/lib/auth/oidc/wallet-dcr";
 import {
   discoveryMetadataExtension,
   getAuthIssuer,
@@ -229,7 +227,6 @@ import {
 import {
   oidc4vciIssuedCredentials,
   oidc4vciOffers,
-  oidc4vciStatusLists,
 } from "@/lib/db/schema/oidc-credentials";
 import {
   invitations,
@@ -269,7 +266,6 @@ const betterAuthSchema = {
   jwks,
   oidc4vciOffer: oidc4vciOffers,
   oidc4vciIssuedCredential: oidc4vciIssuedCredentials,
-  oidc4vciStatusList: oidc4vciStatusLists,
   haipVpSession: haipVpSessions,
   cibaRequest: cibaRequests,
   firstPartyAuthSession: firstPartyAuthSessions,
@@ -2434,15 +2430,12 @@ export const auth = betterAuth({
     exactDisclosureClaimsPlugin(),
     verifiedClaimsPlugin(),
     oidc4vci({
-      defaultWalletClientId: "zentity-wallet",
+      defaultWalletClientId: BUILT_IN_WALLET_CLIENT_ID,
       credentialIssuer: authIssuer,
       issuerBaseURL: authIssuer,
       credentialAudience: oidc4vciCredentialAudience,
-      accessTokenJwksUrl: joinAuthIssuerPath(authIssuer, "oauth2/jwks"),
       authorizationServer: authIssuer,
       credentialConfigurations: oidc4vciCredentialConfigurations,
-      authorizeCredentialOffer: authorizeWalletCredentialOffer,
-      accessTokenValidator: refusePairwiseCredentialToken,
       // The credential endpoints require DPoP-bound tokens and ES256 proofs
       // through the haip plugin's defaults.
       ...(trustedWalletIssuers
@@ -2458,7 +2451,7 @@ export const auth = betterAuth({
         ? { resolveCredentialHeaders: createX5cHeaders(x5cChain) }
         : {}),
       resolveClaims: async ({ user }: { user: { id: string } }) =>
-        buildProofClaims(user.id),
+        buildCredentialClaims(user.id),
       ...(oidc4vciDeferredIssuance
         ? { deferredIssuance: oidc4vciDeferredIssuance }
         : {}),

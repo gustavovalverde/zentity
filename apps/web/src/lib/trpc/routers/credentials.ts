@@ -10,26 +10,23 @@ import "server-only";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 
-import { env } from "@/env";
+import { auth } from "@/lib/auth/auth-config";
 import {
   buildProofClaims,
   PROOF_DISCLOSURE_KEYS,
 } from "@/lib/auth/oidc/disclosure/claims";
+import {
+  canRedeemCredentialOffers,
+  ensureWalletClientExists,
+} from "@/lib/auth/oidc/wallet-dcr";
 import { getComplianceStatus } from "@/lib/identity/verification/read-model";
 
 import { protectedProcedure, router } from "../server";
 
 const DEFAULT_CREDENTIAL_CONFIG_ID = "identity_verification";
 
-/** Wallet client ID for dashboard-initiated issuance (must match OIDC4VCI plugin's defaultWalletClientId) */
-const WALLET_CLIENT_ID = "zentity-wallet";
-
 /** Credential offer expiration in seconds (5 minutes) */
 const OFFER_EXPIRES_IN_SECONDS = 300;
-
-function getAuthBaseUrl(): string {
-  return `${env.NEXT_PUBLIC_APP_URL}/api/auth`;
-}
 
 export const credentialsRouter = router({
   /**
@@ -59,11 +56,18 @@ export const credentialsRouter = router({
 
   /**
    * Create a credential offer for the authenticated user.
-   * Returns an OIDC4VCI credential offer URI for wallet scanning.
+   * Returns an OIDC4VCI credential offer URI for wallet scanning. The offer
+   * is bound to one wallet client: the built-in one, or a registered wallet
+   * the user names.
    */
   createOffer: protectedProcedure
-    .input(z.object({}).optional())
-    .mutation(async ({ ctx }) => {
+    .input(
+      z
+        .object({ walletClientId: z.string().trim().min(1).max(255) })
+        .partial()
+        .optional()
+    )
+    .mutation(async ({ ctx, input }) => {
       // Verify user has completed identity verification
       const status = await getComplianceStatus(ctx.userId);
       if (!status.identity.verified) {
@@ -74,30 +78,35 @@ export const credentialsRouter = router({
         });
       }
 
-      const authBaseUrl = getAuthBaseUrl();
-      const appUrl = env.NEXT_PUBLIC_APP_URL;
+      const requestedClientId = input?.walletClientId;
+      if (
+        requestedClientId &&
+        !(await canRedeemCredentialOffers(requestedClientId))
+      ) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "No wallet with this client ID can receive credentials.",
+        });
+      }
+      const walletClientId =
+        requestedClientId ?? (await ensureWalletClientExists());
 
-      const offerResponse = await fetch(
-        `${authBaseUrl}/oidc4vci/credential-offer`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Cookie: ctx.req.headers.get("cookie") || "",
-            Origin: ctx.req.headers.get("origin") || appUrl,
-          },
-          body: JSON.stringify({
-            client_id: WALLET_CLIENT_ID,
-            userId: ctx.userId,
+      let responseData: {
+        credential_offer?: Record<string, unknown>;
+        credential_offer_uri?: string;
+      };
+      try {
+        responseData = await auth.api.createCredentialOffer({
+          headers: ctx.req.headers,
+          body: {
+            client_id: walletClientId,
             credential_configuration_id: DEFAULT_CREDENTIAL_CONFIG_ID,
-          }),
-        }
-      );
-
-      if (!offerResponse.ok) {
-        const errorText = await offerResponse.text();
+            expires_in: OFFER_EXPIRES_IN_SECONDS,
+          },
+        });
+      } catch (error) {
         ctx.log.error(
-          { status: offerResponse.status, error: errorText },
+          { error: error instanceof Error ? error.message : String(error) },
           "Failed to create credential offer"
         );
         throw new TRPCError({
@@ -105,11 +114,6 @@ export const credentialsRouter = router({
           message: "Failed to create credential offer. Please try again.",
         });
       }
-
-      const responseData = (await offerResponse.json()) as {
-        credential_offer?: Record<string, unknown>;
-        credential_offer_uri?: string;
-      };
 
       if (!responseData.credential_offer) {
         throw new TRPCError({

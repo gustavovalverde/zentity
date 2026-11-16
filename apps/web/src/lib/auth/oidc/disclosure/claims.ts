@@ -4,6 +4,8 @@
  *
  * - buildProofClaims / buildOidcVerifiedClaims: pull verification state into
  *   OIDC claim objects for id_token and userinfo.
+ * - buildCredentialClaims: the same proof claims for an OID4VCI credential,
+ *   with day-rounded timestamps.
  * - parseClaimsParameter / filterClaimsByRequest: parse and apply the OIDC
  *   Core `claims` request parameter to selectively disclose per endpoint.
  * - computeConsentHmac: HMAC-SHA256 over a consent record to detect scope
@@ -118,6 +120,46 @@ export async function buildProofClaims(
     claims.attestation_expires_at = model.bundle.attestationExpiresAt;
   }
 
+  return claims;
+}
+
+const CREDENTIAL_TIMESTAMP_CLAIMS = [
+  "verification_time",
+  "attestation_expires_at",
+] as const;
+
+function startOfUtcDay(timestamp: string): string | undefined {
+  const date = new Date(timestamp);
+  if (Number.isNaN(date.getTime())) {
+    return undefined;
+  }
+  date.setUTCHours(0, 0, 0, 0);
+  return date.toISOString();
+}
+
+/**
+ * The proof claims of an OID4VCI credential. Its timestamps are rounded down
+ * to the start of the UTC day (OID4VCI 1.0 §15.4.1), which hides the user
+ * among everyone verified that day. They still match in every credential of
+ * one user, so they still link those credentials; batch issuance or leaving
+ * the claims out would remove that link.
+ */
+export async function buildCredentialClaims(
+  userId: string
+): Promise<Record<string, unknown>> {
+  const claims = await buildProofClaims(userId);
+  for (const name of CREDENTIAL_TIMESTAMP_CLAIMS) {
+    const value = claims[name];
+    if (typeof value !== "string") {
+      continue;
+    }
+    const rounded = startOfUtcDay(value);
+    if (rounded) {
+      claims[name] = rounded;
+    } else {
+      delete claims[name];
+    }
+  }
   return claims;
 }
 

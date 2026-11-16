@@ -113,7 +113,7 @@ sequenceDiagram
 4. Wallet exchanges code for access token.
 5. Wallet requests a fresh `c_nonce` from the nonce endpoint.
 6. Wallet requests credential with a holder binding proof (`proofs.jwt`) that carries the nonce.
-7. Server validates proof, generates SD-JWT VC, and returns it as `{ "credentials": [{ "credential": "..." }] }`.
+7. Server validates proof, generates SD-JWT VC, and returns it as `{ "credentials": [{ "credential": "..." }] }`. The credential carries no `sub`; it is bound to the holder through `cnf.jwk`.
 
 ### Credential type
 
@@ -165,7 +165,7 @@ sequenceDiagram
 | `sybil_nullifier` | ◐ | Bundle-owned seed + clientId HMAC | Per-RP pseudonymous nullifier derived from `nullifierSeed` on the account snapshot, gated by `proof:sybil` |
 | `policy_version` | ✅ | Server-computed | Policy version used for verification |
 | `issuer_id` | ✅ | Static | Zentity issuer identifier |
-| `verification_time` | ✅ | Server-computed | ISO 8601 timestamp |
+| `verification_time` | ✅ | Server-computed | ISO 8601 timestamp; credentials round it down to the start of the UTC day |
 | Full name | — | — | Never included |
 | Date of birth | — | — | Never included |
 | Document number | — | — | Never included |

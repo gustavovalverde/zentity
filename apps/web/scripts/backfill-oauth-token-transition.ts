@@ -3,8 +3,9 @@
 /**
  * One-time transition for the move to the OAuth provider's JWT revocation,
  * per-token `accessTokenClaims`, the first-party-apps plugin, the CIBA
- * approval record, and its token and Proof-of-Human columns. Every step is
- * idempotent, and the script applies them in one transaction.
+ * approval record, its token and Proof-of-Human columns, and OIDC4VCI
+ * credentials without a subject. Every step is idempotent, and the script
+ * applies them in one transaction.
  *
  * 1. Moves the timestamp defaults that #298 and #338 changed from
  *    `datetime('now')` to an ISO 8601 timestamp, and recreates the two partial
@@ -61,6 +62,19 @@
  * 11. Deletes the `pairwise_subject` rows of type `agent_session`. Agent
  *    actor subjects are no longer indexed, and the schema no longer allows
  *    the type.
+ * 12. Lets `oidc4vci_issued_credential.credential` be null. The new release
+ *    records issued credentials without the SD-JWT, and the previous release
+ *    writes it until step e drops the column.
+ * 13. Creates the unique index on the status list entry of
+ *    `oidc4vci_issued_credential` with the DDL `pnpm db:push` would emit. The
+ *    new release draws status list indices at random and relies on it to keep
+ *    two credentials off one entry. While both releases serve, an index the
+ *    new release draws can make a credential request of the previous release
+ *    fail once.
+ * 14. Revokes, through the status list, every credential a previous release
+ *    issued: those rows store the SD-JWT, and those credentials carry the
+ *    user id as `sub`. Users request a new credential from the dashboard.
+ *    Skipped once `pnpm db:push` has dropped the column.
  *
  * Rollout order. Production moves to this release in one deploy of the web
  * service, the MCP server, and demo-rp. Merging a pull request deploys
@@ -93,7 +107,8 @@
  *   e. Run `pnpm db:push` once. It drops `auth_challenge_session`,
  *      `oauth_access_token.exchange_claims`, the `reason`, `actor_sub`, and
  *      `audience` columns of `revoked_token`, the approval columns and
- *      `pairwise_act_sub` of `ciba_request`, and `agent_token_snapshot`,
+ *      `pairwise_act_sub` of `ciba_request`, `agent_token_snapshot`,
+ *      `oidc4vci_issued_credential.credential`, and `oidc4vci_status_list`,
  *      which the previous release reads or writes, so it must not run before
  *      step d. When they hold rows, it asks to confirm the data loss;
  *      `--force` confirms it without a terminal. drizzle-kit exits 0 even
@@ -243,6 +258,14 @@ const CIBA_APPROVAL_DDL = [
   "CREATE INDEX IF NOT EXISTS `ciba_approval_agent_session_id_idx` ON `ciba_approval` (`agent_session_id`)",
 ];
 
+// `drizzle-kit export` output for this index in oidc-credentials.ts, with IF
+// NOT EXISTS added.
+const OIDC4VCI_STATUS_ENTRY_INDEX_DDL =
+  "CREATE UNIQUE INDEX IF NOT EXISTS `oidc4vci_issued_credential_status_entry_unique` ON `oidc4vci_issued_credential` (`status_list_id`,`status_list_index`)";
+
+const OIDC4VCI_CREDENTIAL_NULLABLE_DDL =
+  'ALTER TABLE `oidc4vci_issued_credential` ALTER COLUMN "credential" TO "credential" text';
+
 const AGENT_CAPABILITY_GRANTABLE_DDL =
   "ALTER TABLE `agent_capability` ADD `grantable` integer DEFAULT false NOT NULL";
 
@@ -332,6 +355,17 @@ async function hasColumn(table: string, column: string): Promise<boolean> {
   return result.rows.length > 0;
 }
 
+async function isNotNullColumn(
+  table: string,
+  column: string
+): Promise<boolean> {
+  const result = await client.execute({
+    sql: 'SELECT 1 FROM pragma_table_info(?) WHERE name = ? AND "notnull" = 1',
+    args: [table, column],
+  });
+  return result.rows.length > 0;
+}
+
 /** The `ALTER COLUMN` statements for the ISO defaults not yet moved. */
 async function isoTimestampDefaultStatements(): Promise<string[]> {
   const result = await client.execute(
@@ -359,6 +393,13 @@ async function main(): Promise<void> {
     "oauth_access_token",
     "exchange_claims"
   );
+  const revokeStoredCredentials = await hasColumn(
+    "oidc4vci_issued_credential",
+    "credential"
+  );
+  const allowNullCredential =
+    revokeStoredCredentials &&
+    (await isNotNullColumn("oidc4vci_issued_credential", "credential"));
 
   const addAccessTokenAuthContext = !(await hasColumn(
     "oauth_access_token",
@@ -390,6 +431,8 @@ async function main(): Promise<void> {
     ...(createCibaApprovalTable ? [createCibaApprovalTable] : []),
     ...addedColumns,
     ...cibaApprovalIndexes,
+    ...(allowNullCredential ? [OIDC4VCI_CREDENTIAL_NULLABLE_DDL] : []),
+    OIDC4VCI_STATUS_ENTRY_INDEX_DDL,
   ];
 
   const statements: InStatement[] = [
@@ -428,6 +471,14 @@ async function main(): Promise<void> {
   ];
   const sectorStatements = await clientSectorStatements();
   statements.push(...sectorStatements);
+  if (revokeStoredCredentials) {
+    statements.push({
+      sql: `UPDATE oidc4vci_issued_credential
+        SET status = 1, revoked_at = :now
+        WHERE status = 0 AND credential IS NOT NULL`,
+      args: { now },
+    });
+  }
   if (copyExchangeClaims) {
     statements.push({
       sql: `UPDATE oauth_access_token
@@ -444,6 +495,10 @@ async function main(): Promise<void> {
   const sectorsStored = results
     .slice(schema.length + 3, schema.length + 3 + sectorStatements.length)
     .reduce((total, result) => total + result.rowsAffected, 0);
+  const afterSectors = schema.length + 3 + sectorStatements.length;
+  const revokedCredentials = revokeStoredCredentials
+    ? results[afterSectors]
+    : undefined;
   const copied = copyExchangeClaims ? results.at(-1) : undefined;
   console.log(`timestamp defaults moved: ${timestampDefaults.length}`);
   console.log(
@@ -462,6 +517,18 @@ async function main(): Promise<void> {
   console.log(`revocation markers added: ${markers?.rowsAffected ?? 0}`);
   console.log(`access_token_claims decoded: ${decoded?.rowsAffected ?? 0}`);
   console.log(`client sectors stored: ${sectorsStored}`);
+  let credentialColumn = "dropped";
+  if (allowNullCredential) {
+    credentialColumn = "made nullable";
+  } else if (revokeStoredCredentials) {
+    credentialColumn = "already nullable";
+  }
+  console.log(`oidc4vci_issued_credential.credential: ${credentialColumn}`);
+  console.log(
+    revokeStoredCredentials
+      ? `stored credentials revoked: ${revokedCredentials?.rowsAffected ?? 0}`
+      : "stored credentials revoked: skipped (column already dropped)"
+  );
   console.log(
     copyExchangeClaims
       ? `exchange_claims copied: ${copied?.rowsAffected ?? 0}`
