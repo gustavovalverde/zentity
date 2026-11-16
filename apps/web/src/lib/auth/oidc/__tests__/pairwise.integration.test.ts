@@ -9,6 +9,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { POST as registerClient } from "@/app/api/auth/oauth2/register/route";
 import { env } from "@/env";
+import { auth } from "@/lib/auth/auth-config";
 import { db } from "@/lib/db/connection";
 import { deleteIncompleteSignup } from "@/lib/db/queries/auth";
 import { sessions } from "@/lib/db/schema/auth";
@@ -345,6 +346,118 @@ describe("pairwise subject resolution (integration)", () => {
             "pairwise clients with redirect_uris on different hosts require a sector_identifier_uri, which is not yet supported. All redirect_uris must share the same host.",
         },
       });
+    });
+  });
+
+  describe("pairwise sector on client update", () => {
+    const AUTH_BASE = "http://localhost:3000/api/auth";
+
+    async function ownerCookie(ownerId: string): Promise<string> {
+      const token = await createTestSession(ownerId);
+      const signature = await makeSignature(token, env.BETTER_AUTH_SECRET);
+      return `better-auth.session_token=${token}.${signature}`;
+    }
+
+    function postAuth(path: string, cookie: string, body: unknown) {
+      return auth.handler(
+        new Request(`${AUTH_BASE}${path}`, {
+          method: "POST",
+          headers: {
+            cookie,
+            "content-type": "application/json",
+            origin: "http://localhost:3000",
+          },
+          body: JSON.stringify(body),
+        })
+      );
+    }
+
+    async function registerOwned(cookie: string, redirectUri: string) {
+      const response = await postAuth("/oauth2/register", cookie, {
+        client_name: "Owned Client",
+        redirect_uris: [redirectUri],
+        token_endpoint_auth_method: "none",
+        grant_types: ["authorization_code"],
+        response_types: ["code"],
+      });
+      const body = (await response.json()) as Record<string, unknown>;
+      if (response.status !== 200 && response.status !== 201) {
+        throw new Error(`registration failed: ${JSON.stringify(body)}`);
+      }
+      return body.client_id as string;
+    }
+
+    async function storedSector(clientId: string) {
+      const row = await db
+        .select({ sectorIdentifier: oauthClients.sectorIdentifier })
+        .from(oauthClients)
+        .where(eq(oauthClients.clientId, clientId))
+        .get();
+      return row?.sectorIdentifier;
+    }
+
+    const SECTOR_REFUSAL = {
+      error: "invalid_client_metadata",
+      error_description:
+        "redirect_uris must keep the client's pairwise sector; register a new client for another host",
+    };
+
+    let attackerCookie: string;
+    let rpClientId: string;
+    let evilClientId: string;
+
+    beforeEach(async () => {
+      rpClientId = await registerOwned(
+        await ownerCookie(await createTestUser()),
+        "https://rp.example/cb"
+      );
+      attackerCookie = await ownerCookie(await createTestUser());
+      evilClientId = await registerOwned(
+        attackerCookie,
+        "https://evil.example/cb"
+      );
+    });
+
+    it("refuses an owner's redirect update into another relying party's sector", async () => {
+      const response = await postAuth("/oauth2/update-client", attackerCookie, {
+        client_id: evilClientId,
+        update: { redirect_uris: ["https://rp.example/cb"] },
+      });
+
+      expect(response.status).toBe(400);
+      expect(await response.json()).toEqual(SECTOR_REFUSAL);
+      expect(await storedSector(evilClientId)).toBe("evil.example");
+      expect(await resolveSubForClientId(userId, evilClientId)).not.toBe(
+        await resolveSubForClientId(userId, rpClientId)
+      );
+    });
+
+    it("refuses the admin update path the same way", async () => {
+      await expect(
+        auth.api.adminUpdateOAuthClient({
+          body: {
+            client_id: evilClientId,
+            update: { redirect_uris: ["https://rp.example/cb"] },
+          },
+          headers: new Headers({ cookie: attackerCookie }),
+        })
+      ).rejects.toMatchObject({ body: SECTOR_REFUSAL });
+      expect(await storedSector(evilClientId)).toBe("evil.example");
+    });
+
+    it("accepts a redirect update that keeps the sector", async () => {
+      const response = await postAuth("/oauth2/update-client", attackerCookie, {
+        client_id: evilClientId,
+        update: {
+          redirect_uris: [
+            "https://evil.example/callback",
+            "https://evil.example/cb",
+          ],
+        },
+      });
+
+      expect(response.status).toBe(200);
+      expect(await storedSector(evilClientId)).toBe("evil.example");
     });
   });
 

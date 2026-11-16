@@ -147,6 +147,8 @@ import {
   validateResourceUri,
 } from "@/lib/auth/oidc/oauth-request";
 import {
+  findPairwiseClient,
+  keepsSector,
   resolveSubForClientId,
   resolveUserIdFromSub,
 } from "@/lib/auth/oidc/pairwise";
@@ -697,6 +699,30 @@ async function beforeDcrRegister(ctx: HookCtx) {
   if (!ctx.body.subject_type) {
     ctx.body.subject_type = "pairwise";
   }
+}
+
+// The provider recomputes a client's sector when its redirect URIs change but
+// keeps the client's tokens and grants, which would then resolve to the new
+// sector's subjects. A pairwise client could so move into another relying
+// party's sector and read that party's subject for each of its users.
+async function beforeUpdateClientKeepSector(ctx: HookCtx) {
+  const clientId = ctx.body?.client_id;
+  const redirectUris = ctx.body?.update?.redirect_uris;
+  if (typeof clientId !== "string" || !Array.isArray(redirectUris)) {
+    return;
+  }
+  const client = await findPairwiseClient(clientId);
+  if (
+    client?.subjectType !== "pairwise" ||
+    keepsSector(clientId, client, redirectUris)
+  ) {
+    return;
+  }
+  throw new APIError("BAD_REQUEST", {
+    error: "invalid_client_metadata",
+    error_description:
+      "redirect_uris must keep the client's pairwise sector; register a new client for another host",
+  });
 }
 
 // Magic-link verification deletes every account row of a user whose email is
@@ -1894,6 +1920,12 @@ export const auth = betterAuth({
     before: createAuthMiddleware(async (ctx) => {
       if (ctx.path === "/oauth2/register") {
         return beforeDcrRegister(ctx);
+      }
+      if (
+        ctx.path === "/oauth2/update-client" ||
+        ctx.path === "/admin/oauth2/update-client"
+      ) {
+        return beforeUpdateClientKeepSector(ctx);
       }
       if (ctx.path === "/magic-link/verify") {
         return beforeMagicLinkProtectCredentials(ctx);

@@ -38,6 +38,42 @@ export function clientSector(client: SectorClient): string {
   return new URL(first).host;
 }
 
+// Mirrors the provider's `deriveSectorIdentifier`, which it does not export
+// (upstream ask U15).
+function deriveSectorIdentifier(
+  clientId: string,
+  redirectUris: readonly string[]
+): string {
+  const urls = redirectUris.map((uri) => new URL(uri));
+  const first = urls[0];
+  return first && urls.every((url) => url.protocol === "https:")
+    ? first.host
+    : `client/${clientId}`;
+}
+
+/**
+ * Whether replacing a client's redirect URIs keeps its sector. The provider
+ * recomputes a stored sector from the new set, and a row without one keeps
+ * deriving it from the first redirect host.
+ */
+export function keepsSector(
+  clientId: string,
+  client: SectorClient,
+  redirectUris: string[]
+): boolean {
+  try {
+    const next = clientSector({
+      redirectUris,
+      sectorIdentifier: client.sectorIdentifier
+        ? deriveSectorIdentifier(clientId, redirectUris)
+        : null,
+    });
+    return next === clientSector(client);
+  } catch {
+    return false;
+  }
+}
+
 export async function computePairwiseSub(
   subjectId: string,
   sector: string,
