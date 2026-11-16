@@ -27,10 +27,9 @@ const REQUESTED_CAPABILITIES = [
 ];
 
 /**
- * Exchanges the login token, which was granted the bootstrap scopes at
- * sign-in, for the bootstrap token the registration endpoints require. The
- * session token does not carry those scopes, so it cannot be exchanged for
- * them.
+ * Exchanges the stored login token, which was granted the bootstrap scopes at
+ * sign-in, for the bootstrap token the registration endpoints require. Those
+ * endpoints refuse the login token itself.
  */
 export async function prepareBootstrapRegistrationAuth(
   auth: OAuthSessionContext

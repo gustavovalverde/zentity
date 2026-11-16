@@ -4,10 +4,12 @@ const {
   mockAuthenticateWithLoopbackBrowser,
   mockCreateFirstPartyAuth,
   mockExchangeToken,
+  mockFetchUserInfo,
 } = vi.hoisted(() => ({
   mockAuthenticateWithLoopbackBrowser: vi.fn(),
   mockCreateFirstPartyAuth: vi.fn(),
   mockExchangeToken: vi.fn(),
+  mockFetchUserInfo: vi.fn(),
 }));
 
 vi.mock("../fpa/index", async () => {
@@ -23,6 +25,8 @@ vi.mock("../fpa/index", async () => {
 vi.mock("./loopback-browser", () => ({
   authenticateWithLoopbackBrowser: mockAuthenticateWithLoopbackBrowser,
 }));
+
+vi.mock("../rp/userinfo", () => ({ fetchUserInfo: mockFetchUserInfo }));
 
 import { TokenExpiredError, TokenRefreshError } from "../fpa/index";
 import {
@@ -55,6 +59,8 @@ describe("createInstalledClientAuth", () => {
     mockCreateFirstPartyAuth.mockReset();
     mockAuthenticateWithLoopbackBrowser.mockReset();
     mockExchangeToken.mockReset();
+    mockFetchUserInfo.mockReset();
+    mockFetchUserInfo.mockResolvedValue({ sub: "userinfo-sub" });
 
     for (const mockFn of Object.values(mockFirstPartyAuth)) {
       if ("mockReset" in mockFn) {
@@ -69,6 +75,7 @@ describe("createInstalledClientAuth", () => {
       pushed_authorization_request_endpoint:
         "http://localhost:3000/api/auth/oauth2/par",
       token_endpoint: "http://localhost:3000/api/auth/oauth2/token",
+      userinfo_endpoint: "http://localhost:3000/api/auth/oauth2/userinfo",
     });
     mockFirstPartyAuth.ensureClientRegistration.mockResolvedValue("client-1");
     mockFirstPartyAuth.getOrCreateDpopClient.mockResolvedValue({
@@ -84,15 +91,9 @@ describe("createInstalledClientAuth", () => {
         publicJwk: { crv: "P-256", kty: "EC" },
       },
       loginHint: "user@example.com",
+      scopes: ["openid", "agent:host.register"],
     });
     mockFirstPartyAuth.getAccessToken.mockResolvedValue("login-access-token");
-    mockFirstPartyAuth.exchangeToken.mockResolvedValue({
-      accessToken: "app-access-token",
-      accountSub: "user-123",
-      expiresIn: 3600,
-      scope: "openid",
-      tokenType: "DPoP",
-    });
     mockFirstPartyAuth.generatePkce.mockResolvedValue({
       codeVerifier: "verifier",
       codeChallenge: "challenge",
@@ -100,7 +101,8 @@ describe("createInstalledClientAuth", () => {
     });
   });
 
-  it("reuses the stored login token and exchanges it for the configured audience", async () => {
+  // R13: the installed client no longer exchanges its own login.
+  it("uses the stored login token as the session and names the account from UserInfo", async () => {
     const auth = createInstalledClientAuth({
       clientRegistrationRequest: { client_name: "Example CLI" },
       issuerUrl: "http://localhost:3000",
@@ -110,7 +112,6 @@ describe("createInstalledClientAuth", () => {
         load: vi.fn(),
         save: vi.fn(),
       },
-      tokenExchangeAudience: "http://localhost:3000",
     });
 
     const oauth = await auth.ensureOAuthSession();
@@ -119,39 +120,18 @@ describe("createInstalledClientAuth", () => {
       clientId: "client-1",
       resource: "http://localhost:3000",
     });
-    expect(mockFirstPartyAuth.exchangeToken).toHaveBeenCalledWith({
-      audience: "http://localhost:3000",
-      clientId: "client-1",
-      subjectToken: "login-access-token",
-    });
+    expect(mockFetchUserInfo).toHaveBeenCalledWith(
+      expect.objectContaining({
+        accessToken: "login-access-token",
+        userInfoUrl: "http://localhost:3000/api/auth/oauth2/userinfo",
+      })
+    );
+    expect(mockFirstPartyAuth.exchangeToken).not.toHaveBeenCalled();
     expect(oauth).toMatchObject({
-      accessToken: "app-access-token",
-      accountSub: "user-123",
+      accessToken: "login-access-token",
+      accountSub: "userinfo-sub",
       clientId: "client-1",
-      scopes: ["openid"],
-    });
-  });
-
-  it("limits the session token to the configured exchange scope", async () => {
-    const auth = createInstalledClientAuth({
-      clientRegistrationRequest: { client_name: "Example CLI" },
-      issuerUrl: "http://localhost:3000",
-      loginScope: "openid offline_access agent:host.register",
-      storage: {
-        load: vi.fn(),
-        save: vi.fn(),
-      },
-      tokenExchangeAudience: "http://localhost:3000",
-      tokenExchangeScope: "openid",
-    });
-
-    await auth.ensureOAuthSession();
-
-    expect(mockFirstPartyAuth.exchangeToken).toHaveBeenCalledWith({
-      audience: "http://localhost:3000",
-      clientId: "client-1",
-      scope: "openid",
-      subjectToken: "login-access-token",
+      scopes: ["openid", "agent:host.register"],
     });
   });
 
@@ -171,8 +151,6 @@ describe("createInstalledClientAuth", () => {
         load: vi.fn(),
         save: vi.fn(),
       },
-      tokenExchangeAudience: "http://localhost:3000",
-      tokenExchangeScope: "openid",
     });
 
     const token = await auth.exchangeLoginToken({
@@ -216,7 +194,6 @@ describe("createInstalledClientAuth", () => {
         load: vi.fn(),
         save: vi.fn(),
       },
-      tokenExchangeAudience: "http://localhost:3000",
     });
 
     await auth.ensureOAuthSession();
@@ -231,11 +208,7 @@ describe("createInstalledClientAuth", () => {
         timeoutMs: 30_000,
       })
     );
-    expect(mockFirstPartyAuth.exchangeToken).toHaveBeenCalledWith({
-      audience: "http://localhost:3000",
-      clientId: "client-1",
-      subjectToken: "browser-access-token",
-    });
+    expect(mockFirstPartyAuth.exchangeToken).not.toHaveBeenCalled();
   });
 
   it("falls back to the browser when cached token refresh fails with a non-expiry error", async () => {
@@ -257,25 +230,16 @@ describe("createInstalledClientAuth", () => {
         load: vi.fn(),
         save: vi.fn(),
       },
-      tokenExchangeAudience: "http://localhost:3000",
     });
 
     const oauth = await auth.ensureOAuthSession();
 
     expect(mockAuthenticateWithLoopbackBrowser).toHaveBeenCalledTimes(1);
-    expect(oauth.accessToken).toBe("app-access-token");
+    expect(oauth.accessToken).toBe("browser-access-token");
   });
 
-  it("falls back to the browser when the cached session token exchange fails", async () => {
-    mockFirstPartyAuth.exchangeToken
-      .mockRejectedValueOnce(new Error("Token exchange failed: 500"))
-      .mockResolvedValueOnce({
-        accessToken: "browser-app-access-token",
-        accountSub: "user-123",
-        expiresIn: 3600,
-        scope: "openid",
-        tokenType: "DPoP",
-      });
+  it("falls back to the browser when UserInfo refuses the stored login token", async () => {
+    mockFetchUserInfo.mockResolvedValueOnce(null);
     mockAuthenticateWithLoopbackBrowser.mockResolvedValue({
       accessToken: "browser-access-token",
       expiresAt: Date.now() + 3_600_000,
@@ -291,23 +255,16 @@ describe("createInstalledClientAuth", () => {
         load: vi.fn(),
         save: vi.fn(),
       },
-      tokenExchangeAudience: "http://localhost:3000",
     });
 
     const oauth = await auth.ensureOAuthSession();
 
     expect(mockAuthenticateWithLoopbackBrowser).toHaveBeenCalledTimes(1);
-    expect(mockFirstPartyAuth.exchangeToken).toHaveBeenNthCalledWith(1, {
-      audience: "http://localhost:3000",
-      clientId: "client-1",
-      subjectToken: "login-access-token",
-    });
-    expect(mockFirstPartyAuth.exchangeToken).toHaveBeenNthCalledWith(2, {
-      audience: "http://localhost:3000",
-      clientId: "client-1",
-      subjectToken: "browser-access-token",
-    });
-    expect(oauth.accessToken).toBe("browser-app-access-token");
+    expect(mockFetchUserInfo).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({ accessToken: "browser-access-token" })
+    );
+    expect(oauth.accessToken).toBe("browser-access-token");
   });
 
   it("re-registers the OAuth client when browser auth reports invalid_client", async () => {
@@ -338,7 +295,6 @@ describe("createInstalledClientAuth", () => {
         load: vi.fn(),
         save: vi.fn(),
       },
-      tokenExchangeAudience: "http://localhost:3000",
     });
 
     const oauth = await auth.ensureOAuthSession();

@@ -1,9 +1,10 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 
 import { createClient } from "@libsql/client";
 import { createDpopClient, type DpopClient } from "@zentity/sdk/rp";
 
-const CIBA_GRANT_TYPE = "urn:openid:params:grant-type:ciba";
+const PROBE_REDIRECT_URI = "https://example.com/callback";
+const PROBE_SCOPE = "openid proof:identity identity.name";
 const JSON_RPC_ACCEPT = "application/json, text/event-stream";
 const TRAILING_SLASHES = /\/+$/;
 
@@ -91,18 +92,51 @@ function getAuthorizationServerMetadataUrl(authServer: string): string {
   ).toString();
 }
 
+function sha256Base64Url(value: string): string {
+  return createHash("sha256").update(value).digest("base64url");
+}
+
+interface ProbeState {
+  authContextId: string;
+  clientId: string;
+  code: string;
+  codeVerifier: string;
+  sessionId: string;
+  userId: string;
+}
+
+/**
+ * Seeds a remote host that signed a user in for the MCP resource: a public
+ * client, a session, and an authorization code to redeem for the host's
+ * MCP-audience token. The MCP server exchanges that token as its own
+ * confidential client (`MCP_CLIENT_ID`).
+ */
 async function seedProbeState(
-  clientId: string,
-  authReqId: string,
-  userId: string,
+  state: ProbeState,
   mcpPublicUrl: string
 ): Promise<void> {
   const database = createDatabaseClient();
-  const timestamp = new Date().toISOString();
+  const now = Date.now();
+  const timestamp = new Date(now).toISOString();
+  const query = {
+    client_id: state.clientId,
+    code_challenge: sha256Base64Url(state.codeVerifier),
+    code_challenge_method: "S256",
+    redirect_uri: PROBE_REDIRECT_URI,
+    resource: mcpPublicUrl,
+    response_type: "code",
+    scope: PROBE_SCOPE,
+  };
 
   await database.batch([
     {
-      args: [userId, `probe-${userId}@example.com`, 1, timestamp, timestamp],
+      args: [
+        state.userId,
+        `probe-${state.userId}@example.com`,
+        1,
+        timestamp,
+        timestamp,
+      ],
       sql: `
         insert into user (id, email, emailVerified, createdAt, updatedAt)
         values (?, ?, ?, ?, ?)
@@ -110,11 +144,46 @@ async function seedProbeState(
     },
     {
       args: [
+        state.authContextId,
+        state.userId,
+        "better_auth",
+        "passkey",
+        JSON.stringify(["pop", "user"]),
+        "strong",
+        now,
+        now,
+      ],
+      sql: `
+        insert into authentication_context (
+          id, user_id, source_kind, login_method, amr, auth_strength,
+          authenticated_at, created_at
+        ) values (?, ?, ?, ?, ?, ?, ?, ?)
+      `,
+    },
+    {
+      args: [
+        state.sessionId,
         randomUUID(),
-        clientId,
+        state.userId,
+        state.authContextId,
+        now + 3_600_000,
+        now,
+        now,
+      ],
+      sql: `
+        insert into session (
+          id, token, userId, authContextId, expiresAt, createdAt, updatedAt
+        ) values (?, ?, ?, ?, ?, ?, ?)
+      `,
+    },
+    {
+      args: [
+        randomUUID(),
+        state.clientId,
         "Live MCP Probe",
-        JSON.stringify(["https://example.com/callback"]),
-        JSON.stringify([CIBA_GRANT_TYPE]),
+        JSON.stringify([PROBE_REDIRECT_URI]),
+        JSON.stringify(["authorization_code"]),
+        JSON.stringify(["code"]),
         "none",
         "pairwise",
       ],
@@ -125,63 +194,108 @@ async function seedProbeState(
           name,
           redirect_uris,
           grant_types,
+          response_types,
           token_endpoint_auth_method,
           subject_type
-        ) values (?, ?, ?, ?, ?, ?, ?)
+        ) values (?, ?, ?, ?, ?, ?, ?, ?)
       `,
     },
     {
       args: [
         randomUUID(),
-        authReqId,
-        clientId,
-        userId,
-        "openid",
-        mcpPublicUrl,
-        "approved",
-        "poll",
-        5,
-        Date.now() + 300_000,
+        sha256Base64Url(state.code),
+        JSON.stringify({
+          authContextId: state.authContextId,
+          authTime: now,
+          query,
+          referenceId: randomUUID(),
+          sessionId: state.sessionId,
+          type: "authorization_code",
+          userId: state.userId,
+        }),
+        now + 300_000,
+        now,
+        now,
       ],
       sql: `
-        insert into ciba_request (
-          id,
-          auth_req_id,
-          client_id,
-          user_id,
-          scope,
-          resource,
-          status,
-          delivery_mode,
-          polling_interval,
-          expires_at
-        ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        insert into verification (
+          id, identifier, value, expiresAt, createdAt, updatedAt
+        ) values (?, ?, ?, ?, ?, ?)
       `,
     },
   ]);
 }
 
-async function cleanupProbeState(
-  clientId: string,
-  authReqId: string,
-  userId: string
-): Promise<void> {
+async function cleanupProbeState(state: ProbeState): Promise<void> {
   const database = createDatabaseClient();
 
   await database.batch([
     {
-      args: [authReqId],
-      sql: "delete from ciba_request where auth_req_id = ?",
+      args: [sha256Base64Url(state.code)],
+      sql: "delete from verification where identifier = ?",
     },
     {
-      args: [clientId],
+      args: [state.userId],
+      sql: "delete from ciba_request where user_id = ?",
+    },
+    {
+      args: [state.userId],
+      sql: "delete from oauth_access_token where user_id = ?",
+    },
+    {
+      args: [state.userId],
+      sql: "delete from oauth_refresh_token where user_id = ?",
+    },
+    {
+      args: [state.clientId],
       sql: "delete from oauth_client where client_id = ?",
     },
     {
-      args: [userId],
+      args: [state.sessionId],
+      sql: "delete from session where id = ?",
+    },
+    {
+      args: [state.authContextId],
+      sql: "delete from authentication_context where id = ?",
+    },
+    {
+      args: [state.userId],
       sql: "delete from user where id = ?",
     },
   ]);
+}
+
+async function callTool(
+  mcpEndpoint: string,
+  accessToken: string,
+  dpop: DpopClient,
+  id: number,
+  name: string,
+  args: Record<string, unknown> = {}
+) {
+  const response = await callMcp(mcpEndpoint, accessToken, dpop, {
+    id,
+    jsonrpc: "2.0",
+    method: "tools/call",
+    params: { arguments: args, name },
+  });
+  const body = await response.text();
+  console.log(
+    JSON.stringify(
+      {
+        body,
+        stage: name,
+        status: response.status,
+        wwwAuthenticate: response.headers.get("www-authenticate"),
+      },
+      null,
+      2
+    )
+  );
+  return {
+    json: JSON.parse(body) as JsonRpcToolResponse,
+    response,
+  };
 }
 
 async function main(): Promise<void> {
@@ -213,18 +327,26 @@ async function main(): Promise<void> {
     throw new Error("Authorization server metadata missing token_endpoint");
   }
 
-  const clientId = `live-mcp-probe-${randomUUID()}`;
-  const authReqId = randomUUID();
-  const userId = randomUUID();
+  const state: ProbeState = {
+    authContextId: randomUUID(),
+    clientId: `live-mcp-probe-${randomUUID()}`,
+    code: randomUUID(),
+    codeVerifier: `${randomUUID()}${randomUUID()}`,
+    sessionId: randomUUID(),
+    userId: randomUUID(),
+  };
   const dpop = await createDpopClient();
 
   try {
-    await seedProbeState(clientId, authReqId, userId, mcpPublicUrl);
+    await seedProbeState(state, mcpPublicUrl);
 
     const tokenResult = await postToken(dpop, authMetadata.token_endpoint, {
-      auth_req_id: authReqId,
-      client_id: clientId,
-      grant_type: CIBA_GRANT_TYPE,
+      client_id: state.clientId,
+      code: state.code,
+      code_verifier: state.codeVerifier,
+      grant_type: "authorization_code",
+      redirect_uri: PROBE_REDIRECT_URI,
+      resource: mcpPublicUrl,
     });
 
     console.log(
@@ -244,7 +366,7 @@ async function main(): Promise<void> {
       typeof tokenResult.json.access_token !== "string"
     ) {
       throw new Error(
-        `Token exchange failed: ${JSON.stringify(tokenResult.json, null, 2)}`
+        `Token request failed: ${JSON.stringify(tokenResult.json, null, 2)}`
       );
     }
 
@@ -280,43 +402,36 @@ async function main(): Promise<void> {
       );
     }
 
-    const whoamiResponse = await callMcp(mcpEndpoint, accessToken, dpop, {
-      id: 2,
-      jsonrpc: "2.0",
-      method: "tools/call",
-      params: {
-        arguments: {},
-        name: "whoami",
-      },
-    });
-    const whoamiBody = await whoamiResponse.text();
-    const whoamiJson = JSON.parse(whoamiBody) as JsonRpcToolResponse;
-    const wwwAuthenticate = whoamiResponse.headers.get("www-authenticate");
-
-    console.log(
-      JSON.stringify(
-        {
-          body: whoamiBody,
-          stage: "whoami",
-          status: whoamiResponse.status,
-          wwwAuthenticate,
-        },
-        null,
-        2
-      )
-    );
-
+    const whoami = await callTool(mcpEndpoint, accessToken, dpop, 2, "whoami");
     if (
-      whoamiResponse.status !== 200 ||
-      whoamiJson.result?.structuredContent?.email !== null ||
-      wwwAuthenticate !== null
+      whoami.response.status !== 200 ||
+      whoami.json.result?.structuredContent?.email !== null ||
+      whoami.response.headers.get("www-authenticate") !== null
     ) {
       throw new Error(
-        `Expected whoami to succeed without email disclosure, got ${whoamiResponse.status} ${whoamiBody}`
+        "Expected whoami to succeed without email disclosure through the exchanged token"
+      );
+    }
+
+    // my_profile asks the user through CIBA, which the MCP server starts as
+    // its confidential client; the tool answers with the approval URL.
+    const profile = await callTool(
+      mcpEndpoint,
+      accessToken,
+      dpop,
+      3,
+      "my_profile",
+      { fields: ["name"] }
+    );
+    if (
+      profile.json.result?.structuredContent?.status !== "needs_user_action"
+    ) {
+      throw new Error(
+        "Expected my_profile to start a CIBA approval for the MCP client"
       );
     }
   } finally {
-    await cleanupProbeState(clientId, authReqId, userId);
+    await cleanupProbeState(state);
   }
 }
 

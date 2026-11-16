@@ -337,7 +337,7 @@ export async function persistTokenSnapshot(input: {
   );
 }
 
-export async function findStoredTokenSnapshotByJti(
+async function findStoredTokenSnapshotByJti(
   tokenJti: string
 ): Promise<StoredTokenSnapshot | null> {
   const row = await db

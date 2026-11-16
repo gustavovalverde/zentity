@@ -3,7 +3,7 @@ import { serve } from "@hono/node-server";
 import { createMcpHandler } from "@modelcontextprotocol/server";
 import { exchangeToken } from "@zentity/sdk/fpa";
 import { deriveAppAudience, normalizeUrl } from "@zentity/sdk/node";
-import { createDpopClientFromKeyPair, type DpopClient } from "@zentity/sdk/rp";
+import { createDpopClient, type DpopClient } from "@zentity/sdk/rp";
 import {
   createInMemoryDpopReplayStore,
   DPOP_SIGNING_ALGORITHMS,
@@ -11,11 +11,8 @@ import {
 } from "better-auth/oauth2";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
-import { config } from "../config.js";
-import {
-  discoverMcpOAuth,
-  ensureMcpOAuthClientCredentials,
-} from "../oauth-client.js";
+import { config, requireHttpClientCredentials } from "../config.js";
+import { discoverMcpOAuth } from "../oauth-client.js";
 import {
   type AuthContext,
   type OAuthSessionContext,
@@ -32,6 +29,7 @@ const SCOPES_SUPPORTED = [
 
 interface HttpServerCredentials {
   clientId: string;
+  clientSecret: string;
   dpopClient: DpopClient;
   dpopKey: OAuthSessionContext["dpopKey"];
 }
@@ -53,6 +51,7 @@ async function exchangeForZentity(
     subjectToken: callerToken,
     audience: deriveAppAudience(authorizationServer.issuer),
     clientId: credentials.clientId,
+    clientSecret: credentials.clientSecret,
     dpopClient: credentials.dpopClient,
     ...(authorizationServer.userInfoEndpoint
       ? { userInfoEndpoint: authorizationServer.userInfoEndpoint }
@@ -63,6 +62,7 @@ async function exchangeForZentity(
       accessToken: exchanged.accessToken,
       accountSub: exchanged.accountSub ?? "",
       clientId: credentials.clientId,
+      clientSecret: credentials.clientSecret,
       dpopClient: credentials.dpopClient,
       dpopKey: credentials.dpopKey,
       scopes: exchanged.scope?.split(" ").filter(Boolean) ?? [],
@@ -169,18 +169,20 @@ export function createApp(
 }
 
 export async function startHttp(): Promise<void> {
-  const [{ clientId, dpopKey }, discovery] = await Promise.all([
-    ensureMcpOAuthClientCredentials(),
-    discoverMcpOAuth(),
-  ]);
+  const { clientId, clientSecret } = requireHttpClientCredentials(process.env);
+  const discovery = await discoverMcpOAuth();
   if (!discovery.jwks_uri) {
     throw new Error("Authorization server discovery has no jwks_uri");
   }
+  // Exchanged tokens are bound to this key and live at most an hour, so a
+  // key per process is enough.
+  const dpopClient = await createDpopClient();
   const app = createApp(
     {
       clientId,
-      dpopClient: await createDpopClientFromKeyPair(dpopKey),
-      dpopKey,
+      clientSecret,
+      dpopClient,
+      dpopKey: dpopClient.keyPair,
     },
     {
       issuer: discovery.issuer,

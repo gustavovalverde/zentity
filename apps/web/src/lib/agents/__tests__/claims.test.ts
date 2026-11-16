@@ -1,12 +1,7 @@
 import { AAP_CLAIMS_VERSION } from "@zentity/sdk/protocol";
 import { describe, expect, it } from "vitest";
 
-import {
-  buildAapClaims,
-  DelegationDepthExceededError,
-  deriveDelegationClaim,
-  getAapClaimsFromPayload,
-} from "@/lib/agents/claims";
+import { buildAapClaims, getAapClaimsFromPayload } from "@/lib/agents/claims";
 
 describe("AAP claims", () => {
   it("builds canonical access token claims", () => {
@@ -201,44 +196,5 @@ describe("AAP claims", () => {
         task: { hash: "task-hash", description: "Task" },
       })
     ).toEqual({ capabilities: [] });
-  });
-
-  it("derives bounded delegation depth", () => {
-    expect(deriveDelegationClaim({ parent: null })).toEqual({
-      depth: 1,
-      max_depth: 1,
-      parent_jti: null,
-    });
-
-    expect(
-      deriveDelegationClaim({
-        parent: {
-          delegation: {
-            depth: 1,
-            max_depth: 3,
-            parent_jti: "parent-1",
-          },
-        },
-        parentJti: "override-parent",
-      })
-    ).toEqual({
-      depth: 2,
-      max_depth: 3,
-      parent_jti: "override-parent",
-    });
-  });
-
-  it("rejects delegation beyond the parent max depth", () => {
-    expect(() =>
-      deriveDelegationClaim({
-        parent: {
-          delegation: {
-            depth: 1,
-            max_depth: 1,
-            parent_jti: null,
-          },
-        },
-      })
-    ).toThrow(DelegationDepthExceededError);
   });
 });

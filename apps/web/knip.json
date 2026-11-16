@@ -7,7 +7,8 @@
     "e2e/run-global-setup.ts",
     "e2e/automation/*.ts",
     "e2e/wallet-setup/*.ts",
-    "scripts/*.ts"
+    "scripts/*.ts",
+    "src/lib/auth/oidc/mcp-client.ts!"
   ],
   "project": [
     "**/*.{js,mjs,cjs,jsx,ts,tsx,mts,cts}!",

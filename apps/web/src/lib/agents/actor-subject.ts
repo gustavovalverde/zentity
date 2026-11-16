@@ -6,13 +6,9 @@ import {
   computePairwiseSub,
   type SectorClient,
 } from "@/lib/auth/oidc/pairwise";
-import {
-  resolvePairwiseSubjectId,
-  upsertPairwiseSubjectIndex,
-} from "@/lib/auth/oidc/pairwise-subject-index";
+import { upsertPairwiseSubjectIndex } from "@/lib/auth/oidc/pairwise-subject-index";
 import { parseStoredStringArray } from "@/lib/db/adapter-compat";
 import { db } from "@/lib/db/connection";
-import { agentSessions } from "@/lib/db/schema/agent";
 import { oauthClients } from "@/lib/db/schema/oauth-provider";
 
 interface ClientPairwiseConfig extends SectorClient {
@@ -83,30 +79,4 @@ export async function resolveAgentSubForClient(
     subjectType: "agent_session",
   });
   return sub;
-}
-
-export async function resolveAgentSessionIdFromPairwiseSub(
-  pairwiseSub: string,
-  clientId: string
-): Promise<string | null> {
-  const client = await getClientPairwiseConfig(clientId);
-  if (!client) {
-    return null;
-  }
-
-  if (getAgentSubjectType(client) === "public") {
-    const session = await db
-      .select({ id: agentSessions.id })
-      .from(agentSessions)
-      .where(eq(agentSessions.id, pairwiseSub))
-      .limit(1)
-      .get();
-    return session?.id ?? null;
-  }
-
-  return await resolvePairwiseSubjectId({
-    sector: clientSector(client),
-    sub: pairwiseSub,
-    subjectType: "agent_session",
-  });
 }

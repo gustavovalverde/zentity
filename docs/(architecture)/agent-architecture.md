@@ -1,6 +1,6 @@
 ---
 title: Agent Architecture
-description: Durable host identity, ephemeral agent sessions, capability grants, CIBA approval, and purchase token exchange
+description: Durable host identity, ephemeral agent sessions, capability grants, CIBA approval, and token exchange
 ---
 
 Zentity's agent architecture separates durable host identity from ephemeral session state so that agents can act on behalf of humans without accumulating long-term PII or globally trackable identifiers. This document maps the principal hierarchy, capability containment, approval routing, and token anatomy from registration through delegation, with the trust tier (unverified vs. attested) as the axis of variation.
@@ -93,8 +93,8 @@ flowchart TD
 
 Registration happens in two steps because the two identities prove different things.
 
-1. The MCP authenticates via OAuth and receives a pairwise user login token. The login requests `agent:host.register`, `agent:session.register`, and `agent:session.revoke` along with the MCP's session scopes, and the consent screen shows the three agent scopes as one line.
-2. The MCP exchanges that login token via RFC 8693 for a short-lived DPoP-bound bootstrap token carrying the three agent scopes. Token exchange issues only scopes the login token was granted. The MCP's session token comes from a separate exchange limited to `openid`, `email`, and `proof:identity`, so it cannot be exchanged for the agent scopes.
+1. The MCP authenticates via OAuth and receives a pairwise user login token that carries the agent bootstrap scopes, `agent:host.register`, `agent:session.register`, and `agent:session.revoke`, among its login scopes. The consent screen shows the three agent scopes as one line.
+2. The MCP exchanges its own login token via RFC 8693 for a DPoP-bound bootstrap token that holds only those scopes. The exchange cannot add a scope the login does not hold, and the bootstrap routes refuse the login token itself.
 3. The MCP ensures its durable host exists by calling `POST /api/auth/agent/host/register` with the bootstrap token.
 4. The MCP signs a short-lived host JWT proving possession of the host private key.
 5. The MCP starts a fresh process keypair and calls `POST /api/auth/agent/register` with the bootstrap token.
@@ -108,10 +108,10 @@ sequenceDiagram
   participant AS as Zentity AS
 
   MCP->>Browser: Open OAuth login
-  Browser->>AS: Authorize client with session and agent bootstrap scopes
+  Browser->>AS: Authorize client with login and bootstrap scopes
   AS-->>MCP: Pairwise user login token
 
-  MCP->>AS: RFC 8693 exchange of the login token for bootstrap scopes
+  MCP->>AS: RFC 8693 token exchange narrowed to the bootstrap scopes
   AS-->>MCP: DPoP-bound bootstrap token
 
   Note over MCP: Load or create durable host key
@@ -127,6 +127,7 @@ sequenceDiagram
 
 This host/session split answers the core lifecycle question up front: continuity belongs to the host, not to the runtime process.
 The bootstrap token is intentionally narrow and short-lived; it exists only to authorize host/session bootstrap and revocation, not to replace the login token everywhere else.
+Credentials an MCP stdio process stored before its login carried the bootstrap scopes cannot register an agent. The process detects this (the stored scopes lack a bootstrap scope, or the exchange answers `invalid_scope` or `invalid_request`), clears the stored tokens, and signs in again once.
 
 ---
 
@@ -507,47 +508,23 @@ Key points:
 - `authorization_details` preserves what was approved.
 - `cnf.jkt` sender-constrains the token when DPoP is in play.
 
-### Claim narrowing on token exchange
+### Token exchange never carries agent claims
 
-RFC 8693 token exchange has a single output in the agent flow: an access token re-bound to the target audience. Only the client the subject token was issued to, or the protected resource it was issued for, may perform the exchange.
+An agent-backed token never crosses an audience. Token exchange refuses every subject that has `act` or that a CIBA approval issued (the `ciba_approval` record keys the refusal even if a token lacked `act`), and every subject that carries `authorization_details`. The CIBA token is therefore the only token that carries an approval's details and agent claims.
 
-The exchanged token keeps the AAP profile of the subject token (`agent`, `task`, `capabilities`, `oversight`, `audit`) and adds `delegation` to project the chain. `act.sub` is the agent session's pairwise identifier for the exchanging client. The exchange does not carry the subject token's `authorization_details`.
-
-An exchanged JWT names the user by the internal user id in `sub`, not by a pairwise identifier. Audiences outside Zentity that receive exchanged JWTs for the same user therefore see the same `sub`.
+What token exchange does issue is an opaque, DPoP-bound access token for Zentity's own APIs, with no `act` and no agent claims: the agent bootstrap token, from an installed agent's own login token, and the MCP HTTP server's token, from a remote host's MCP-audience token. The response uses the standard RFC 8693 access-token form:
 
 ```json
 {
-  "iss": "https://app.zentity.xyz/api/auth",
-  "aud": "https://mcp.example.com",
-  "sub": "internal_user_id",
-  "act": {
-    "sub": "agent_pairwise_sub_for_client"
-  },
-  "delegation": {
-    "depth": 1,
-    "max_depth": 1,
-    "parent_jti": "subject_token_jti"
-  },
-  "cnf": {
-    "jkt": "dpop_key_thumbprint"
-  },
-  "iat": 1759996400,
-  "exp": 1760000000
-}
-```
-
-The token response uses the standard RFC 8693 access-token form:
-
-```json
-{
-  "access_token": "<token>",
+  "access_token": "<opaque token>",
   "issued_token_type": "urn:ietf:params:oauth:token-type:access_token",
   "token_type": "DPoP",
-  "expires_in": 3600
+  "expires_in": 3600,
+  "scope": "agent:host.register agent:session.register agent:session.revoke"
 }
 ```
 
-The exchange is also the privilege-reduction step: scopes are a subset of the subject token's, and lifetime is capped by the subject token's remaining lifetime. A DPoP-bound subject token's exchange stays bound to the same key, except when the protected resource performs it and binds its own key.
+The exchange is also a privilege reduction: scopes are a subset of the subject token's and of the exchanging client's registration, lifetime is capped by the subject token's remaining lifetime, and there is no refresh token. A self-exchange stays bound to the subject token's key. The MCP HTTP server, a confidential client linked to the MCP resource, binds its own key. See [Token Exchange](<../(protocols)/oauth-integrations.md#token-exchange-rfc-8693>) for the full refusal list.
 
 ### Host and runtime proofs
 
@@ -590,7 +567,6 @@ The derivation starts from the session ID rather than the host ID because the ru
 Current pairwise actor identifiers appear in:
 
 - `agent.id` and `act.sub` inside access tokens
-- `act.sub` inside tokens issued by token exchange to non-agent audiences
 - the introspection response AAP `agent.id` for the calling machine client
 - the CIBA request snapshot stored on the server
 
@@ -649,14 +625,7 @@ The delegated access token carries:
 - `act.sub` for the acting agent session
 - AAP `agent`, `task`, `capabilities`, `oversight`, and `audit`
 
-Token exchange to a non-agent audience outside Zentity returns a JWT with these claims:
-
-- `aud` set to the target audience
-- `sub` set to the internal user id
-- `act.sub` set to the agent session's pairwise identifier for the exchanging client
-- `cnf.jkt` binding the DPoP key that signed the exchange request
-
-The JWT does not carry the subject token's `authorization_details`. For an audience Zentity serves, token exchange returns an opaque token.
+Token exchange refuses agent-backed and CIBA tokens as subjects, so none of these claims reach another audience through it.
 
 The full binding chain is:
 
@@ -763,7 +732,7 @@ The implementation is easiest to understand when traced from the MCP server outw
 
 On startup, the stdio transport:
 
-1. runs OAuth authentication
+1. runs OAuth authentication, with the agent bootstrap scopes among the login scopes
 2. stores OAuth state separately from runtime identity
 3. ensures the durable host is registered
 4. registers a fresh agent session for the current process
@@ -790,7 +759,11 @@ When a tool needs user approval:
 3. it starts a CIBA request
 4. it polls until approval, denial, or timeout
 
-When the tool needs the delegated token rebound to another audience, the client the CIBA access token was issued to can exchange it through RFC 8693 token exchange. So can the protected resource the token was issued for, as registered in its `zentity_protected_resource` client metadata. No other client can. The exchange rebinds the audience and narrows the scopes. The exchanged token carries the user's `sub` for the exchanging client, the agent's `act.sub` derived for that client, the AAP `task`, `oversight`, `audit`, and `capabilities` sections, a new `delegation` entry that points at the source token, and `cnf.jkt`. It does not carry the source token's `authorization_details`.
+The CIBA access token is the result. Zentity never exchanges it for another audience: the token carries the approval's details and agent claims, and an exchange would drop them or move them to a party the user did not approve.
+
+### HTTP transport
+
+The HTTP transport serves remote MCP hosts. It authenticates to Zentity as a confidential client, `MCP_CLIENT_ID` and `MCP_CLIENT_SECRET`, which `pnpm --filter @zentity/web mcp:provision` creates and links to `MCP_PUBLIC_URL`; the transport refuses to start without them. For each request, it exchanges the remote host's MCP-audience token for an opaque Zentity token bound to its own per-process DPoP key, reads its pairwise subject from UserInfo with that token, and runs CIBA for `my_profile` and `purchase` with `client_secret_basic`.
 
 ### Session expiry
 
@@ -808,7 +781,7 @@ The MCP model is built around four operating rules:
 1. browser sessions do not authenticate machine protocol routes
 2. host continuity and runtime continuity are separate concepts
 3. free-form `agent_claims` are gone from the core CIBA path
-4. downstream RP-bound tokens are issued through token exchange, not standalone POST routes
+4. an approval yields one CIBA token, and token exchange never rebinds it for another audience
 
 Those rules keep the MCP flow mostly ordinary OAuth while keeping the custom runtime layer small and explicit.
 
@@ -853,7 +826,7 @@ OAuth 2.1, PKCE (RFC 7636), PAR (RFC 9126), and DPoP (RFC 9449) form the transpo
 
 Removing any one of these specs does not change the agent model, only the security properties of the channel. PKCE prevents authorization code interception, PAR moves authorization parameters from the front channel to the back channel, and DPoP sender-constrains tokens so a stolen token is useless without the holder's proof-of-possession key.
 
-DPoP is the one transport spec that crosses into agent territory. When token exchange mints a downstream token from a DPoP-bound CIBA access token, the exchange request must carry a proof signed with the source token's key, and the issued token stays bound to that key. A client that does not hold that key cannot exchange the token. The one exception is the protected resource the token was issued for: it never holds the caller's key, so it proves its own key and the issued token is bound to that key instead. The security property is transport-level, but its effect is agent containment: even a leaked CIBA token or exchanged token is useless without the bound proof-of-possession key.
+DPoP is the one transport spec that crosses into agent territory. Every token exchange requires a DPoP proof. A client exchanging its own token must prove that token's key, and the issued token stays bound to it, so a client that does not hold the key cannot exchange the token. The MCP HTTP server, which never holds a remote host's key, proves its own key and the issued token is bound to that key instead. The security property is transport-level, but its effect is agent containment: even a leaked CIBA token or exchanged token is useless without the bound proof-of-possession key.
 
 ### Structured intent
 
@@ -885,23 +858,21 @@ The runtime proof is bound to a specific consent request rather than floating as
 
 Once consent is obtained, the question shifts from "does the human approve?" to "how does the approved action reach the right party with the right identifiers?" Four specs shape the answer.
 
-**Token exchange** (RFC 8693) rebinds the CIBA access token for a different audience. Without it, the agent would present the same token to every relying party, leaking cross-party correlation. Token exchange performs scope attenuation (narrowing what the downstream RP can see) and audience rebinding (setting `aud` to the target and recomputing the agent's pairwise `act.sub` for the exchanging client). The exchanged JWT's `sub` stays the internal user id. The exchanged token keeps the subject token's AAP sections and `cnf.jkt`, but not its `authorization_details`. The current deployment does not advertise general delegation-chain support, so multi-hop chain portability is not part of the published contract.
-
-Token exchange also issues the agent bootstrap token used for host/session registration. That bootstrap token is DPoP-bound and carries only the narrow agent scopes needed for bootstrap and revocation; it is intentionally separate from the login token and from downstream RP-bound tokens.
+**Token exchange** (RFC 8693) issues opaque tokens for Zentity's own APIs only: the agent bootstrap token, which is DPoP-bound and carries only the narrow agent scopes needed for bootstrap and revocation, and the MCP HTTP server's token. It refuses agent-backed, CIBA, and `authorization_details`-bearing subjects, so it never rebinds an approval for another audience. Discovery publishes `delegation_chains: false`.
 
 **Token introspection** (RFC 7662) provides the verification channel. A downstream RP that receives an agent-presented token can query whether it is still active, who the actor is, and what trust level it carries. Introspection re-evaluates session lifecycle at query time, so an agent session that expired between token issuance and introspection reports `active: false` even if the JWT itself has not expired. This makes the lifecycle model operational rather than theoretical.
 
-**Pairwise subject identifiers** (OIDC Core) extend to both `act.sub` and the AAP `agent.id`, applying the same derivation that prevents RP-to-RP user correlation to agent correlation. A merchant that receives an exchanged token cannot correlate the acting agent with the same agent's activity at a different merchant.
+**Pairwise subject identifiers** (OIDC Core) extend to both `act.sub` and the AAP `agent.id`, applying the same derivation that prevents RP-to-RP user correlation to agent correlation.
 
-**The Agent Authorization Profile** (AAP draft) provides the JWT claim vocabulary: `agent`, `task`, `capabilities`, `oversight`, `delegation`, and `audit`. Verified agent-backed CIBA tokens emit `agent`, `task`, `capabilities`, `oversight`, and `audit`. Exchanged access tokens additionally emit `delegation`. Discovery still advertises `delegation_chains: false`, so the current implementation supports single-server token lineage rather than general multi-hop delegation protocols.
+**The Agent Authorization Profile** (AAP draft) provides the JWT claim vocabulary: `agent`, `task`, `capabilities`, `oversight`, `delegation`, and `audit`. Verified agent-backed CIBA tokens emit `agent`, `task`, `capabilities`, `oversight`, and `audit`. No exchanged token carries them, and discovery advertises `delegation_chains: false`.
 
 ### Where the specs meet
 
 Two convergence points tie the five concerns together rather than letting them exist as parallel tracks.
 
-The `assertionVerified` flag on the CIBA request row is the first. It is set when the `Agent-Assertion` from the control plane passes verification inside the consent channel. If verification fails, four downstream effects cascade: the AAP profile builder returns nothing (no agent claims enter the token), introspection returns `active: false` for agent consumers, token exchange cannot rebind for non-agent audiences (no `act.sub` to resolve), and the token reverts to a standard CIBA token without agent semantics.
+The `assertionVerified` flag on the CIBA request row is the first. It is set when the `Agent-Assertion` from the control plane passes verification inside the consent channel. If verification fails, three downstream effects cascade: the AAP profile builder returns nothing (no agent claims enter the token), introspection returns `active: false` for agent consumers, and the token reverts to a standard CIBA token without agent semantics.
 
-The `authorization_details` payload is the second. It enters at the structured intent layer, drives capability matching in the consent channel, and survives into the CIBA access token and its token response, where the CIBA plugin issues the details it stored at bc-authorize. Token exchange does not copy it into the exchanged token. The same structured data flows across these specs without transformation, which is evidence that the specs compose cleanly rather than fighting over data representation.
+The `authorization_details` payload is the second. It enters at the structured intent layer, drives capability matching in the consent channel, and survives into the CIBA access token and its token response, where the CIBA plugin issues the details it stored at bc-authorize. Token exchange refuses a subject that carries it. The same structured data flows across these specs without transformation, which is evidence that the specs compose cleanly rather than fighting over data representation.
 
 ### Standards map
 
@@ -916,10 +887,10 @@ The `authorization_details` payload is the second. It enters at the structured i
 | Host and agent JWTs | Control plane | [Agent Auth Protocol v1.0-draft](https://agent-auth-protocol.com/specification/v1.0-draft) | Signed proofs for registration and CIBA runtime binding |
 | Vendor attestation | Control plane | [draft-ietf-oauth-attestation-based-client-auth-08](https://datatracker.ietf.org/doc/html/draft-ietf-oauth-attestation-based-client-auth-08) | Optional host attestation against trusted JWKS |
 | A2A agent card | Control plane | [A2A Protocol v0.3.0](https://a2a-protocol.org/v0.3.0/specification/) | Agent skills and security scheme for inter-agent discovery |
-| Token exchange | Token semantics | [RFC 8693](https://datatracker.ietf.org/doc/html/rfc8693) | Audience rebinding with claim narrowing for downstream RPs |
+| Token exchange | Token semantics | [RFC 8693](https://datatracker.ietf.org/doc/html/rfc8693) | Agent bootstrap and the MCP HTTP server's opaque token for the app |
 | Token introspection | Token semantics | [RFC 7662](https://datatracker.ietf.org/doc/html/rfc7662) | Runtime session status for downstream RPs |
 | Pairwise subject identifiers | Token semantics | [OIDC Core 1.0](https://openid.net/specs/openid-connect-core-1_0-18.html) | Privacy for both `sub` and `act.sub` across RPs |
 | Agent authorization claims | Token semantics | [AAP draft](https://datatracker.ietf.org/doc/draft-aap-oauth-profile/) | JWT claim vocabulary for delegation, task, and capabilities |
 | `Agent-Assertion` on CIBA | Zentity-specific | [Agent Architecture](agent-architecture.md) | Runtime proof through CIBA rather than the protocol's standard execution shape |
 | Host policy / session grant split | Zentity-specific | Agent schema | Durable host defaults and session-scoped grants as separate records |
-| Claim narrowing on token exchange | PACT | Token exchange handler | Drops agent control-plane claims when issuing for non-agent audiences (PACT §8) |
+| Delegated subjects refused at token exchange | PACT | Token exchange handler | Refuses agent-backed, CIBA, and `authorization_details` subjects (PACT §8) |

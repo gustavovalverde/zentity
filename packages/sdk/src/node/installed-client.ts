@@ -8,6 +8,7 @@ import {
   type StoredFirstPartyAuthState,
 } from "../fpa/index";
 import type { DpopKeyPair } from "../rp/dpop-client";
+import { fetchUserInfo } from "../rp/userinfo";
 import { authenticateWithLoopbackBrowser } from "./loopback-browser";
 import { normalizeUrl } from "./oauth-client-metadata";
 
@@ -37,13 +38,6 @@ export interface CreateInstalledClientAuthOptions {
   loginScope: string;
   openUrl?: (url: string) => MaybePromise<void>;
   storage: FirstPartyAuthStorage;
-  tokenExchangeAudience: string;
-  /**
-   * The session token's scopes, a subset of `loginScope`. Without it the
-   * session token keeps the login's scopes except `offline_access` and the
-   * agent bootstrap scopes.
-   */
-  tokenExchangeScope?: string;
 }
 
 export interface InstalledClientAuth {
@@ -66,17 +60,12 @@ export interface InstalledClientAuth {
   refreshOAuthSession(): Promise<InstalledOAuthSession>;
 }
 
-function readScopes(scope: string | undefined): string[] {
-  return typeof scope === "string" ? scope.split(" ").filter(Boolean) : [];
-}
-
 function isInvalidClientError(error: unknown): boolean {
   const message = error instanceof Error ? error.message : String(error);
   return (
     message.includes("invalid_client") || message.includes("client not found")
   );
 }
-
 
 function requireDpopKey(
   authState: StoredFirstPartyAuthState | undefined
@@ -135,28 +124,31 @@ export function createInstalledClientAuth(
     return readClientCredentials(auth, clientId);
   }
 
-  async function exchangeInstalledSession(
+  /** The session is the login itself; UserInfo names the account. */
+  async function installedSession(
     loginAccessToken: string,
     clientCredentials: InstalledClientCredentials
   ): Promise<InstalledOAuthSession> {
-    const tokenSet = await auth.exchangeToken({
-      audience: options.tokenExchangeAudience,
-      clientId: clientCredentials.clientId,
-      ...(options.tokenExchangeScope
-        ? { scope: options.tokenExchangeScope }
-        : {}),
-      subjectToken: loginAccessToken,
+    const discovery = await auth.discover();
+    if (!discovery.userinfo_endpoint) {
+      throw new Error("Authorization server advertises no userinfo_endpoint");
+    }
+    const userInfo = await fetchUserInfo({
+      accessToken: loginAccessToken,
+      dpopClient: await auth.getOrCreateDpopClient(),
+      unwrapResponseEnvelope: false,
+      userInfoUrl: discovery.userinfo_endpoint,
     });
-    if (!tokenSet.accountSub) {
-      throw new Error("Exchanged access token carries no subject");
+    if (typeof userInfo?.sub !== "string" || !userInfo.sub) {
+      throw new Error("UserInfo returned no subject for the signed-in user");
     }
 
     return {
-      accessToken: tokenSet.accessToken,
-      accountSub: tokenSet.accountSub,
+      accessToken: loginAccessToken,
+      accountSub: userInfo.sub,
       clientId: clientCredentials.clientId,
       dpopKey: clientCredentials.dpopKey,
-      scopes: readScopes(tokenSet.scope),
+      scopes: (await auth.loadState())?.scopes ?? [],
     };
   }
 
@@ -199,10 +191,7 @@ export function createInstalledClientAuth(
       const loginAccessToken = await getLoginAccessToken(
         clientCredentials.clientId
       );
-      return await exchangeInstalledSession(
-        loginAccessToken,
-        clientCredentials
-      );
+      return await installedSession(loginAccessToken, clientCredentials);
     } catch (error) {
       if (!forceClientRegistration && isInvalidClientError(error)) {
         await auth.clearClientRegistration();
@@ -212,7 +201,7 @@ export function createInstalledClientAuth(
 
     try {
       const browserToken = await authenticateInBrowser(clientCredentials);
-      return await exchangeInstalledSession(
+      return await installedSession(
         browserToken.accessToken,
         clientCredentials
       );
@@ -264,7 +253,7 @@ export function createInstalledClientAuth(
       const loginAccessToken = await getLoginAccessToken(
         clientCredentials.clientId
       );
-      return exchangeInstalledSession(loginAccessToken, clientCredentials);
+      return installedSession(loginAccessToken, clientCredentials);
     },
   } satisfies InstalledClientAuth);
 }

@@ -1,36 +1,15 @@
-import type { Client } from "@libsql/client";
-
 import crypto from "node:crypto";
 
-import { eq } from "drizzle-orm";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { and, eq } from "drizzle-orm";
+import { beforeEach, describe, expect, it } from "vitest";
 
-import {
-  resolveAgentSessionIdFromPairwiseSub,
-  resolveAgentSubForClient,
-} from "@/lib/agents/actor-subject";
+import { resolveAgentSubForClient } from "@/lib/agents/actor-subject";
 import { revokeSessionForActor } from "@/lib/agents/management";
 import { resolveSubForClient } from "@/lib/auth/oidc/pairwise";
 import { db } from "@/lib/db/connection";
 import { agentHosts, agentSessions } from "@/lib/db/schema/agent";
 import { oauthClients, pairwiseSubjects } from "@/lib/db/schema/oauth-provider";
 import { createTestUser, resetDatabase } from "@/test-utils/db-test-utils";
-
-function getDbClient() {
-  return db as typeof db & { $client: Pick<Client, "execute"> };
-}
-
-async function countDatabaseQueries(run: () => Promise<void>): Promise<number> {
-  const client = getDbClient();
-  const executeSpy = vi.spyOn(client.$client, "execute");
-
-  try {
-    await run();
-    return executeSpy.mock.calls.length;
-  } finally {
-    executeSpy.mockRestore();
-  }
-}
 
 async function createClient(input: {
   clientId: string;
@@ -90,6 +69,21 @@ async function createAgentSession(userId: string, clientId: string) {
   return session.id;
 }
 
+/** The agent session the pairwise index maps `sub` to, in any sector. */
+async function indexedAgentSession(sub: string) {
+  const row = await db
+    .select({ subjectId: pairwiseSubjects.subjectId })
+    .from(pairwiseSubjects)
+    .where(
+      and(
+        eq(pairwiseSubjects.sub, sub),
+        eq(pairwiseSubjects.subjectType, "agent_session")
+      )
+    )
+    .get();
+  return row?.subjectId ?? null;
+}
+
 describe("pairwise agent identifiers", () => {
   let userId: string;
 
@@ -116,9 +110,6 @@ describe("pairwise agent identifiers", () => {
 
     expect(userSub).not.toBe(userId);
     expect(agentSub).toBe(sessionId);
-    expect(await resolveAgentSessionIdFromPairwiseSub(agentSub, clientId)).toBe(
-      sessionId
-    );
   });
 
   it("supports public users with pairwise agent identifiers", async () => {
@@ -139,9 +130,7 @@ describe("pairwise agent identifiers", () => {
 
     expect(userSub).toBe(userId);
     expect(agentSub).not.toBe(sessionId);
-    expect(await resolveAgentSessionIdFromPairwiseSub(agentSub, clientId)).toBe(
-      sessionId
-    );
+    expect(await indexedAgentSession(agentSub)).toBe(sessionId);
   });
 
   it("defaults agent identifiers to pairwise even when human subjects are public", async () => {
@@ -152,39 +141,7 @@ describe("pairwise agent identifiers", () => {
     const agentSub = await resolveAgentSubForClient(sessionId, clientId);
 
     expect(agentSub).not.toBe(sessionId);
-    expect(await resolveAgentSessionIdFromPairwiseSub(agentSub, clientId)).toBe(
-      sessionId
-    );
-  });
-
-  it("uses a constant query count once pairwise agent rows are indexed", async () => {
-    const clientId = "pairwise-agent-indexed";
-    await createClient({
-      clientId,
-      metadata: { agent_subject_type: "pairwise" },
-      subjectType: "public",
-    });
-    const sessionId = await createAgentSession(userId, clientId);
-
-    const indexedSub = await resolveAgentSubForClient(sessionId, clientId);
-
-    const queryCountWithOneSession = await countDatabaseQueries(async () => {
-      await expect(
-        resolveAgentSessionIdFromPairwiseSub(indexedSub, clientId)
-      ).resolves.toBe(sessionId);
-    });
-
-    for (let index = 0; index < 20; index += 1) {
-      await createAgentSession(userId, clientId);
-    }
-
-    const queryCountWithManySessions = await countDatabaseQueries(async () => {
-      await expect(
-        resolveAgentSessionIdFromPairwiseSub(indexedSub, clientId)
-      ).resolves.toBe(sessionId);
-    });
-
-    expect(queryCountWithManySessions).toBe(queryCountWithOneSession);
+    expect(await indexedAgentSession(agentSub)).toBe(sessionId);
   });
 
   it("removes indexed pairwise agent rows when a session is revoked", async () => {
@@ -213,8 +170,6 @@ describe("pairwise agent identifiers", () => {
       .all();
     expect(indexedAfter).toHaveLength(0);
 
-    await expect(
-      resolveAgentSessionIdFromPairwiseSub(pairwiseSub, clientId)
-    ).resolves.toBeNull();
+    expect(await indexedAgentSession(pairwiseSub)).toBeNull();
   });
 });

@@ -37,7 +37,6 @@ describe("POST /api/auth/oauth2/register", () => {
           rp_validity_notice_uri: `${RP_ORIGIN}/api/auth/validity`,
           scope: "openid email offline_access",
           token_endpoint_auth_method: "none",
-          zentity_protected_resource: "http://localhost:3300",
         }),
       })
     );
@@ -59,7 +58,6 @@ describe("POST /api/auth/oauth2/register", () => {
     });
     expect(JSON.parse(client?.metadata ?? "{}")).toEqual({
       rp_validity_notice_uri: `${RP_ORIGIN}/api/auth/validity`,
-      zentity_protected_resource: "http://localhost:3300",
     });
   });
 
@@ -199,16 +197,17 @@ describe("POST /api/auth/oauth2/register", () => {
     expect(client).toBeUndefined();
   });
 
-  it("rejects a zentity_protected_resource that is not an absolute http URI", async () => {
-    const { status, payload, client } = await register({
+  // A client can no longer name itself a protected resource: the field is
+  // ignored like any other undeclared field, so it confers no exchange rights.
+  it("ignores a self-declared zentity_protected_resource", async () => {
+    const { status, client } = await register({
       client_name: "Agent",
       redirect_uris: [`${RP_ORIGIN}/callback`],
-      zentity_protected_resource: "urn:example:resource",
+      zentity_protected_resource: "http://localhost:3300",
     });
 
-    expect(status).toBe(400);
-    expect(payload.error).toBe("invalid_client_metadata");
-    expect(client).toBeUndefined();
+    expect(status).toBe(201);
+    expect(client?.metadata).toBeNull();
   });
 
   it("ignores registration fields no extension declares", async () => {

@@ -135,13 +135,17 @@ interface TokenResult {
  */
 export async function postTokenWithDpop(
   body: Record<string, string>,
-  keyPair?: DpopKeyPair
+  keyPair?: DpopKeyPair,
+  headers: Record<string, string> = {}
 ): Promise<TokenResult> {
   const dpopKeyPair = keyPair ?? (await createTestDpopKeyPair());
   const client = await createAuthHandlerDpopClient(dpopKeyPair);
   const response = await client.fetch(TOKEN_URL, {
     method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    headers: {
+      "Content-Type": "application/x-www-form-urlencoded",
+      ...headers,
+    },
     body: new URLSearchParams(body).toString(),
     fetch: authHandlerFetch,
   });

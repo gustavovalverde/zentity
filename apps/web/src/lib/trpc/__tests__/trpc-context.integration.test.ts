@@ -1,8 +1,10 @@
 import { CIBA_GRANT_TYPE } from "@better-auth/ciba";
 import { eq } from "drizzle-orm";
+import { calculateJwkThumbprint } from "jose";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { GET as trpcGet } from "@/app/api/trpc/[trpc]/route";
+import { AUTHENTICATION_CONTEXT_CLAIM } from "@/lib/auth/auth-context";
 import { mintOpaqueAccessToken } from "@/lib/auth/oidc/haip/opaque-access-token";
 import { TOKEN_EXCHANGE_GRANT_TYPE } from "@/lib/auth/oidc/token-exchange";
 import { db } from "@/lib/db/connection";
@@ -151,12 +153,23 @@ describe("tRPC context", () => {
       expect(context.authContext?.id).toBe(authContextId);
     });
 
+    // Token exchange refuses a CIBA token as a delegated token, so the subject
+    // is a login token stored with the same authentication and no session.
     it("keeps its subject token's authentication through token exchange", async () => {
+      const subjectToken = await mintOpaqueAccessToken({
+        accessTokenClaims: { [AUTHENTICATION_CONTEXT_CLAIM]: authContextId },
+        clientId: AGENT_CLIENT_ID,
+        dpopJkt: await calculateJwkThumbprint(keyPair.jwk),
+        expiresAt: new Date(Date.now() + 3_600_000),
+        referenceId: crypto.randomUUID(),
+        scopes: ["openid"],
+        userId,
+      });
       const exchanged = await postTokenWithDpop(
         {
           grant_type: TOKEN_EXCHANGE_GRANT_TYPE,
           client_id: AGENT_CLIENT_ID,
-          subject_token: cibaToken,
+          subject_token: subjectToken,
           subject_token_type: "urn:ietf:params:oauth:token-type:access_token",
           audience: APP_URL,
         },

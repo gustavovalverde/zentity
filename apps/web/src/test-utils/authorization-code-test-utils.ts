@@ -12,7 +12,6 @@ function sha256Base64Url(value: string): string {
 
 interface AuthorizationCodeInput {
   clientId: string;
-  dpopKeyPair?: DpopKeyPair;
   redirectUri: string;
   resource?: string;
   scope?: string;
@@ -22,12 +21,10 @@ interface AuthorizationCodeInput {
 }
 
 /**
- * Stores an authorization code as the provider does after consent and redeems
- * it at the token endpoint with PKCE and DPoP.
+ * Stores an authorization code as the provider does after consent, and
+ * returns the token request parameters that redeem it.
  */
-export async function redeemTestAuthorizationCode(
-  input: AuthorizationCodeInput
-) {
+export async function seedTestAuthorizationCode(input: AuthorizationCodeInput) {
   const session = input.session ?? (await createTestSession(input.userId));
   const codeVerifier = `pkce-verifier-${crypto.randomUUID()}`;
   const code = `auth-code-${crypto.randomUUID()}`;
@@ -62,8 +59,9 @@ export async function redeemTestAuthorizationCode(
     })
     .run();
 
-  const result = await postTokenWithDpop(
-    {
+  return {
+    session,
+    tokenRequest: {
       grant_type: "authorization_code",
       client_id: input.clientId,
       code,
@@ -71,7 +69,14 @@ export async function redeemTestAuthorizationCode(
       redirect_uri: input.redirectUri,
       ...(input.resource ? { resource: input.resource } : {}),
     },
-    input.dpopKeyPair
-  );
+  };
+}
+
+/** Seeds an authorization code and redeems it with PKCE and DPoP. */
+export async function redeemTestAuthorizationCode(
+  input: AuthorizationCodeInput & { dpopKeyPair?: DpopKeyPair }
+) {
+  const { session, tokenRequest } = await seedTestAuthorizationCode(input);
+  const result = await postTokenWithDpop(tokenRequest, input.dpopKeyPair);
   return { ...result, session };
 }

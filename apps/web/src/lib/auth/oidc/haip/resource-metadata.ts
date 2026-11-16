@@ -63,7 +63,7 @@ export function getProtectedResourceAudiences(
 }
 
 /** Whether a resource indicator or audience names the agent wallet. */
-export function isWalletAudience(value: unknown): boolean {
+function isWalletAudience(value: unknown): boolean {
   return (
     typeof value === "string" &&
     Boolean(env.WALLET_AUDIENCE) &&
@@ -94,7 +94,7 @@ const zentityOrigins = [
  * access tokens for these endpoints are opaque reference tokens (ADR
  * privacy/0015).
  */
-export function isZentityHostedResource(resource: string): boolean {
+function isZentityHostedResource(resource: string): boolean {
   const normalized = normalizeResource(resource);
   return zentityOrigins.some(
     (origin) => normalized === origin || normalized.startsWith(`${origin}/`)

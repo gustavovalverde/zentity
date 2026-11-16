@@ -1,6 +1,9 @@
 import { decodeJwt } from "jose";
 import type { DpopClient } from "../rp/dpop-client";
-import { requestTokenEndpoint } from "../rp/token-request";
+import {
+  type ClientAuthentication,
+  requestTokenEndpoint,
+} from "../rp/token-request";
 import { fetchUserInfo } from "../rp/userinfo";
 
 export interface ExchangeAuthorizationCodeOptions {
@@ -21,6 +24,8 @@ export interface ExchangeAuthorizationCodeOptions {
 export interface ExchangeTokenOptions {
   audience: string;
   clientId: string;
+  /** For a confidential client: sent as `client_secret_basic`. */
+  clientSecret?: string;
   dpopClient: DpopClient;
   scope?: string;
   subjectToken: string;
@@ -81,12 +86,14 @@ function decodeJwtClaim(
 async function requestToken(
   dpopClient: DpopClient,
   tokenEndpoint: string,
-  body: URLSearchParams
+  body: URLSearchParams,
+  client?: ClientAuthentication
 ): Promise<TokenResponse> {
   const { response, body: responseBody } = await requestTokenEndpoint(
     dpopClient,
     tokenEndpoint,
-    body
+    body,
+    client
   );
 
   if (!response.ok) {
@@ -202,7 +209,6 @@ export async function exchangeToken(
 ): Promise<ExchangeTokenResult> {
   const body = new URLSearchParams({
     grant_type: "urn:ietf:params:oauth:grant-type:token-exchange",
-    client_id: options.clientId,
     audience: options.audience,
     subject_token: options.subjectToken,
     subject_token_type: "urn:ietf:params:oauth:token-type:access_token",
@@ -211,7 +217,17 @@ export async function exchangeToken(
     body.set("scope", options.scope);
   }
 
-  const data = await requestToken(options.dpopClient, options.tokenEndpoint, body);
+  const data = await requestToken(
+    options.dpopClient,
+    options.tokenEndpoint,
+    body,
+    {
+      clientId: options.clientId,
+      ...(options.clientSecret === undefined
+        ? {}
+        : { clientSecret: options.clientSecret }),
+    }
+  );
   const accountSub =
     decodeJwtClaim(data.access_token, "sub") ??
     (options.userInfoEndpoint

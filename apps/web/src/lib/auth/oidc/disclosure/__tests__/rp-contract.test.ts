@@ -49,7 +49,6 @@ const DEMO_RP_ROUTE_SCENARIO_IMPORT_RE = /from\s+"@\/scenarios\/([^"]+)"/g;
 const SCENARIO_ID_RE = /id:\s*"([^"]+)"/;
 const STRING_ARRAY_ITEM_RE = /"([^"\n]+)"/g;
 const LOGIN_SCOPES_RE = /INSTALLED_AGENT_LOGIN_SCOPES\s*=\s*\[([^\]]*)\]/s;
-const SESSION_SCOPES_RE = /INSTALLED_AGENT_SESSION_SCOPES\s*=\s*\[([^\]]*)\]/s;
 const CIBA_SCOPES_RE = /INSTALLED_AGENT_CIBA_SCOPES\s*=\s*\[([^\]]*)\]/s;
 
 async function readSource(relativePath: string): Promise<string> {
@@ -334,14 +333,11 @@ describe("cross-channel contract — MCP semantic alignment", () => {
   it("installed-agent login scopes contain no identity.* scopes (vault-gated PII is CIBA-only)", async () => {
     const source = await readSource(`${MCP_ROOT}/oauth-client.ts`);
 
-    // The login scopes spread the session scopes, so check both literals.
     const loginMatch = source.match(LOGIN_SCOPES_RE);
-    const sessionMatch = source.match(SESSION_SCOPES_RE);
     expect(loginMatch?.[1]).toBeDefined();
-    expect(sessionMatch?.[1]).toBeDefined();
-    const loginScopes = [loginMatch?.[1], sessionMatch?.[1]].flatMap(
-      (fragment) => (fragment ? extractStringArray(fragment) : [])
-    );
+    const loginScopes = loginMatch?.[1]
+      ? extractStringArray(loginMatch[1])
+      : [];
     expect(loginScopes).toContain("openid");
 
     for (const scope of loginScopes) {

@@ -2,11 +2,7 @@ import type { OAuthProviderExtension } from "@better-auth/oauth-provider";
 
 import { APIError } from "better-auth";
 
-import { validateResourceUri } from "@/lib/auth/oidc/oauth-request";
 import { validateOutboundUrl } from "@/lib/http/url-safety";
-
-/** The protected resource an agent client's exchanged tokens target. */
-export const PROTECTED_RESOURCE_METADATA_FIELD = "zentity_protected_resource";
 
 /** Where Zentity pushes validity notices; registering it opts the client in. */
 export const RP_VALIDITY_NOTICE_URI_FIELD = "rp_validity_notice_uri";
@@ -40,7 +36,7 @@ function assertOutboundUrl(field: string, value: unknown): void {
  */
 export const clientMetadataExtension: OAuthProviderExtension = {
   clientMetadata: {
-    fields: [PROTECTED_RESOURCE_METADATA_FIELD, RP_VALIDITY_NOTICE_URI_FIELD],
+    fields: [RP_VALIDITY_NOTICE_URI_FIELD],
     validate: ({ metadata }) => {
       // Both URLs are fetched by Zentity's server, so neither may reach an
       // internal address.
@@ -52,17 +48,6 @@ export const clientMetadataExtension: OAuthProviderExtension = {
         CIBA_NOTIFICATION_ENDPOINT_FIELD,
         metadata[CIBA_NOTIFICATION_ENDPOINT_FIELD]
       );
-
-      const protectedResource = metadata[PROTECTED_RESOURCE_METADATA_FIELD];
-      if (protectedResource === undefined) {
-        return;
-      }
-      const result = validateResourceUri(protectedResource);
-      if (!result.valid) {
-        invalidClientMetadata(
-          `${PROTECTED_RESOURCE_METADATA_FIELD}: ${result.error}`
-        );
-      }
     },
   },
 };

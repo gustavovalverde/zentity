@@ -60,7 +60,6 @@ describe("requireBootstrapAccessToken", () => {
   ) {
     return mintOpaqueAccessToken({
       accessTokenClaims: { zentity_token_use: "agent_bootstrap" },
-      act: { sub: CLIENT_ID },
       clientId: CLIENT_ID,
       dpopJkt: await calculateJwkThumbprint(keyPair.jwk),
       expiresAt: new Date(Date.now() + 60_000),
@@ -139,5 +138,29 @@ describe("requireBootstrapAccessToken", () => {
     );
 
     expect(result.ok).toBe(false);
+  });
+
+  // R21: the login scopes MCP stdio now requests do not open the bootstrap
+  // routes; only the exchanged bootstrap token does.
+  it("refuses a login token that holds agent:host.register at host registration", async () => {
+    const { id: authContextId } = await createAuthenticationContext({
+      authenticatedAt: new Date(),
+      loginMethod: "passkey",
+      sourceKind: "better_auth",
+      userId,
+    });
+    const loginToken = await mintBootstrapToken({
+      accessTokenClaims: { [AUTHENTICATION_CONTEXT_CLAIM]: authContextId },
+      scopes: ["openid", ...SCOPES],
+    });
+    const { POST } = await import("@/app/api/auth/agent/host/register/route");
+
+    const response = await POST(await bootstrapRequest(loginToken, keyPair));
+
+    expect(response.status).toBe(401);
+    await expect(response.json()).resolves.toMatchObject({
+      error: "invalid_token",
+      error_description: "bootstrap access token required",
+    });
   });
 });

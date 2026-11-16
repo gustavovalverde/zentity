@@ -37,15 +37,15 @@ const AUTH_HARNESS_PORT = await vi.hoisted(async () => {
 });
 
 import { auth } from "@/lib/auth/auth-config";
+import {
+  type McpClientCredentials,
+  provisionMcpClient,
+} from "@/lib/auth/oidc/mcp-client";
 import { db } from "@/lib/db/connection";
 import { oauthClients } from "@/lib/db/schema/oauth-provider";
-import {
-  createTestCibaRequest,
-  createTestUser,
-  resetDatabase,
-} from "@/test-utils/db-test-utils";
+import { seedTestAuthorizationCode } from "@/test-utils/authorization-code-test-utils";
+import { createTestUser, resetDatabase } from "@/test-utils/db-test-utils";
 
-const CIBA_GRANT_TYPE = "urn:openid:params:grant-type:ciba";
 const MCP_PORT = 3300;
 const MCP_PUBLIC_URL = `http://localhost:${MCP_PORT}`;
 const REMOTE_CLIENT_ID = "mcp-http-test-client";
@@ -158,6 +158,20 @@ async function startAuthHarness(): Promise<{
       return writeWebResponse(res, await GET());
     }
 
+    if (url.pathname.startsWith("/api/trpc/")) {
+      const body = await readRequestBody(req);
+      const { GET, POST } = await import("@/app/api/trpc/[trpc]/route");
+      const request = new Request(url.toString(), {
+        headers: nodeHeadersToHeaders(req),
+        method: req.method ?? "GET",
+        ...(body && req.method !== "GET" ? { body: new Uint8Array(body) } : {}),
+      });
+      return writeWebResponse(
+        res,
+        await (req.method === "POST" ? POST : GET)(request)
+      );
+    }
+
     if (url.pathname.startsWith("/api/auth/")) {
       const body = await readRequestBody(req);
       const requestInit: RequestInit = {
@@ -257,7 +271,10 @@ function nonceChallenge(response: Response) {
   };
 }
 
-function startMcpSubprocess(authBaseUrl: string): ChildProcess {
+function startMcpSubprocess(
+  authBaseUrl: string,
+  client: McpClientCredentials
+): ChildProcess {
   const tsxBin = resolve(
     import.meta.dirname,
     "../../../../node_modules/.bin/tsx"
@@ -278,6 +295,8 @@ function startMcpSubprocess(authBaseUrl: string): ChildProcess {
         MCP_PUBLIC_URL,
         MCP_ALLOWED_ORIGINS: "*",
         MCP_DPOP_NONCE_SECRET,
+        MCP_CLIENT_ID: client.clientId,
+        MCP_CLIENT_SECRET: client.clientSecret,
       },
       stdio: ["ignore", "pipe", "pipe"],
     }
@@ -338,39 +357,40 @@ describe("remote MCP HTTP auth integration", () => {
     authHarness = undefined;
   });
 
-  it("serves initialize and whoami statelessly for an MCP-audienced token", async () => {
+  it("serves initialize and the read tools statelessly for an MCP-audienced token", async () => {
     authHarness = await startAuthHarness();
 
-    const userId = await createTestUser();
+    const userId = await createTestUser({ email: "mcp-http@example.com" });
+    // The confidential client MCP HTTP exchanges remote hosts' tokens as.
+    const mcpClient = await provisionMcpClient({});
 
+    const redirectUri = "https://mcp-http.test/callback";
     await db
       .insert(oauthClients)
       .values({
         clientId: REMOTE_CLIENT_ID,
-        grantTypes: JSON.stringify(["authorization_code", CIBA_GRANT_TYPE]),
+        grantTypes: JSON.stringify(["authorization_code", "refresh_token"]),
         name: "Remote MCP Test Client",
-        redirectUris: JSON.stringify(["https://mcp-http.test/callback"]),
+        redirectUris: JSON.stringify([redirectUri]),
+        responseTypes: JSON.stringify(["code"]),
         subjectType: "pairwise",
         tokenEndpointAuthMethod: "none",
       })
       .run();
 
-    const { authReqId } = await createTestCibaRequest({
+    // A remote host signed the user in for the MCP server's resource.
+    const { tokenRequest } = await seedTestAuthorizationCode({
       clientId: REMOTE_CLIENT_ID,
+      redirectUri,
       userId,
-      status: "approved",
-      resources: JSON.stringify([MCP_PUBLIC_URL]),
+      scope: "openid email compliance:read proof:identity",
+      resource: MCP_PUBLIC_URL,
     });
-
     const dpop = await createDpopClient();
     const tokenResult = await postToken(
       dpop,
       `${authHarness.baseUrl}/api/auth/oauth2/token`,
-      {
-        grant_type: CIBA_GRANT_TYPE,
-        auth_req_id: authReqId,
-        client_id: REMOTE_CLIENT_ID,
-      }
+      tokenRequest
     );
 
     expect(tokenResult.status).toBe(200);
@@ -379,7 +399,7 @@ describe("remote MCP HTTP auth integration", () => {
     const accessToken = tokenResult.json.access_token as string;
     expect(typeof accessToken).toBe("string");
 
-    mcpProcess = startMcpSubprocess(authHarness.baseUrl);
+    mcpProcess = startMcpSubprocess(authHarness.baseUrl, mcpClient);
     const mcpOutput: Buffer[] = [];
     mcpProcess.stdout?.on("data", (chunk: Buffer) => mcpOutput.push(chunk));
     mcpProcess.stderr?.on("data", (chunk: Buffer) => mcpOutput.push(chunk));
@@ -476,14 +496,41 @@ describe("remote MCP HTTP auth integration", () => {
     expect(whoamiData).toEqual(
       expect.objectContaining({
         result: expect.objectContaining({
+          // The exchanged token keeps the remote host's email scope.
           structuredContent: expect.objectContaining({
-            email: null,
+            email: "mcp-http@example.com",
             profileToolHint: "my_profile",
+            tier: 0,
             vaultFieldsAvailable: ["name", "address", "birthdate"],
           }),
         }),
       })
     );
+
+    // R28: the proof and compliance tools read Zentity with the token the
+    // MCP server exchanged as its confidential client.
+    for (const [id, name, expected] of [
+      [3, "my_proofs", { verified: false, checks: expect.any(Array) }],
+      [4, "check_compliance", { attested: false, networks: expect.any(Array) }],
+    ] as const) {
+      const toolResponse = await callMcp(dpop, accessToken, mcpUrl, {
+        jsonrpc: "2.0",
+        method: "tools/call",
+        id,
+        params: { name, arguments: {} },
+      });
+      const toolData = parseJsonRpcResponse(
+        toolResponse.headers.get("content-type"),
+        await toolResponse.text()
+      ) as { result?: { isError?: boolean; structuredContent?: unknown } };
+      expect({ name, isError: toolData.result?.isError ?? false }).toEqual({
+        name,
+        isError: false,
+      });
+      expect(toolData.result?.structuredContent).toEqual(
+        expect.objectContaining(expected)
+      );
+    }
 
     // Nonces from Zentity's origin, from another secret, or past their
     // lifetime are refused with a fresh one.

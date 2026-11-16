@@ -2,7 +2,13 @@ import crypto from "node:crypto";
 
 import { encodeEd25519DidKeyFromJwk } from "@zentity/sdk/protocol";
 import { eq } from "drizzle-orm";
-import { decodeJwt, exportJWK, generateKeyPair, SignJWT } from "jose";
+import {
+  calculateJwkThumbprint,
+  decodeJwt,
+  exportJWK,
+  generateKeyPair,
+  SignJWT,
+} from "jose";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.hoisted(() => {
@@ -101,6 +107,7 @@ async function issueBootstrapToken(
   authContextId: string
 ): Promise<{ dpopKeyPair: DpopKeyPair; token: string }> {
   const loginToken = `login-${crypto.randomUUID()}`;
+  const dpopKeyPair = await createTestDpopKeyPair();
   await db
     .insert(oauthAccessTokens)
     .values({
@@ -108,6 +115,9 @@ async function issueBootstrapToken(
         [AUTHENTICATION_CONTEXT_CLAIM]: authContextId,
       }),
       clientId: CLIENT_ID,
+      confirmation: JSON.stringify({
+        jkt: await calculateJwkThumbprint(dpopKeyPair.jwk, "sha256"),
+      }),
       expiresAt: new Date(Date.now() + 3_600_000),
       scopes: JSON.stringify(["openid", ...BOOTSTRAP_SCOPE.split(" ")]),
       token: hashOpaqueAccessToken(loginToken),
@@ -115,7 +125,6 @@ async function issueBootstrapToken(
     })
     .run();
 
-  const dpopKeyPair = await createTestDpopKeyPair();
   const { json, status } = await postTokenWithDpop(
     {
       audience: APP_URL,

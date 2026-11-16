@@ -95,7 +95,7 @@ export async function resolveSubForClientId(
  * Reverse direction with pre-fetched client config.
  * Use when the caller already has client data (avoids a redundant query).
  */
-export async function resolveUserIdFromSubForClient(
+async function resolveUserIdFromSubForClient(
   sub: string,
   client: PairwiseClient
 ): Promise<string | null> {

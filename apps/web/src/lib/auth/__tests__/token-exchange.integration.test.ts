@@ -1,15 +1,15 @@
 import crypto from "node:crypto";
 
-import {
-  calculateJwkThumbprint,
-  decodeJwt,
-  exportJWK,
-  generateKeyPair,
-  SignJWT,
-} from "jose";
-import { beforeEach, describe, expect, it } from "vitest";
+import { eq } from "drizzle-orm";
+import { exportJWK, generateKeyPair, SignJWT } from "jose";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { GET as listRevocations } from "@/app/api/auth/oauth2/revoked/route";
+const WALLET_AUDIENCE = vi.hoisted(() => {
+  process.env.WALLET_AUDIENCE = "urn:zentity:wallet:token-exchange-test";
+  return process.env.WALLET_AUDIENCE;
+});
+
+import { POST as registerClient } from "@/app/api/auth/oauth2/register/route";
 import { env } from "@/env";
 import { auth } from "@/lib/auth/auth-config";
 import {
@@ -17,20 +17,24 @@ import {
   createAuthenticationContext,
 } from "@/lib/auth/auth-context";
 import { encryptPrivateKey } from "@/lib/auth/oidc/jwt-signer";
-import {
-  computePairwiseSub,
-  resolveSubForClient,
-} from "@/lib/auth/oidc/pairwise";
+import { resolveSubForClientId } from "@/lib/auth/oidc/pairwise";
+import { introspectZentityAccessToken } from "@/lib/auth/oidc/resource-principal";
 import { TOKEN_EXCHANGE_GRANT_TYPE } from "@/lib/auth/oidc/token-exchange";
 import { getAuthIssuer } from "@/lib/auth/oidc/well-known";
 import { db } from "@/lib/db/connection";
+import { agentTokenSnapshots } from "@/lib/db/schema/agent";
+import { sessions } from "@/lib/db/schema/auth";
 import {
   jwks as jwksTable,
   oauthAccessTokens,
+  oauthClientResources,
   oauthClients,
+  oauthRefreshTokens,
 } from "@/lib/db/schema/oauth-provider";
-import { getReleaseId } from "@/lib/observability/release";
+import { redeemTestAuthorizationCode } from "@/test-utils/authorization-code-test-utils";
 import {
+  createTestCibaRequest,
+  createTestSession,
   createTestUser,
   findStoredOpaqueAccessToken,
   resetDatabase,
@@ -44,40 +48,161 @@ import {
 
 const ACCESS_TOKEN_TYPE = "urn:ietf:params:oauth:token-type:access_token";
 const ID_TOKEN_TYPE = "urn:ietf:params:oauth:token-type:id_token";
-const TEST_CLIENT_ID = "exchange-test-agent";
-const TOKEN_URL = "http://localhost:3000/api/auth/oauth2/token";
+const CIBA_GRANT_TYPE = "urn:openid:params:grant-type:ciba";
+const AUTH_URL = "http://localhost:3000/api/auth";
 const authIssuer = getAuthIssuer();
-const APP_AUDIENCE = "http://localhost:3000";
-const CREDENTIAL_AUDIENCE = `${authIssuer}/oidc4vci/credential`;
+const APP_AUDIENCE = env.NEXT_PUBLIC_APP_URL.replace(/\/+$/, "");
 const MCP_AUDIENCE = env.MCP_PUBLIC_URL;
-const USERINFO_URL = `${authIssuer}/oauth2/userinfo`;
-const INTROSPECT_URL = `${authIssuer}/oauth2/introspect`;
-const JWT_SHAPE = /^eyJ[^.]*\.[^.]*\.[^.]*$/;
+const LOOPBACK_REDIRECT = "http://127.0.0.1/callback";
+const BOOTSTRAP_SCOPE =
+  "agent:host.register agent:session.register agent:session.revoke";
 
-let testKeyPair: Awaited<ReturnType<typeof generateKeyPair>>;
-let hasTestKeyPair = false;
-let testKid: string;
-let defaultAuthContextId: string;
+// The installed agent: a public loopback client that signs the user in and
+// exchanges its own login token.
+const AGENT_ID = "exchange-agent";
+// A remote MCP host: a public client whose tokens are audienced to MCP.
+const REMOTE_HOST_ID = "exchange-remote-host";
+// The MCP HTTP server: a confidential client linked to the MCP resource.
+const MCP_ID = "exchange-mcp-server";
+const MCP_SECRET = "exchange-mcp-secret";
+const MCP_SCOPES = [
+  "openid",
+  "email",
+  "compliance:read",
+  "proof:identity",
+  "identity.name",
+  "identity.dob",
+  "identity.address",
+  "proof:age",
+  "proof:nationality",
+  "poh",
+];
+
+const invalidRequest = (description: string) => ({
+  error: "invalid_request",
+  error_description: description,
+});
+const INVALID_SUBJECT = invalidRequest("subject_token is invalid");
+const DELEGATED_SUBJECT = invalidRequest(
+  "subject_token must not be a delegated token"
+);
+const INVALID_TARGET = {
+  error: "invalid_target",
+  error_description: "each resource or audience must be a registered resource",
+};
+
+function hashToken(token: string): string {
+  return crypto.createHash("sha256").update(token).digest("base64url");
+}
+
+function basicAuth(clientId: string, secret: string) {
+  const encoded = Buffer.from(
+    `${encodeURIComponent(clientId)}:${encodeURIComponent(secret)}`
+  ).toString("base64");
+  return { authorization: `Basic ${encoded}` };
+}
+
+async function insertClient(
+  clientId: string,
+  values: Partial<typeof oauthClients.$inferInsert> = {}
+) {
+  await db
+    .insert(oauthClients)
+    .values({
+      clientId,
+      name: clientId,
+      redirectUris: JSON.stringify([LOOPBACK_REDIRECT]),
+      grantTypes: JSON.stringify([
+        "authorization_code",
+        "refresh_token",
+        TOKEN_EXCHANGE_GRANT_TYPE,
+        CIBA_GRANT_TYPE,
+      ]),
+      responseTypes: JSON.stringify(["code"]),
+      tokenEndpointAuthMethod: "none",
+      subjectType: "pairwise",
+      sectorIdentifier: `client/${clientId}`,
+      metadata: JSON.stringify({ backchannel_token_delivery_mode: "poll" }),
+      ...values,
+    })
+    .run();
+}
+
+/** A confidential resource server for MCP, as `mcp:provision` creates it. */
+async function insertResourceServer(
+  clientId: string,
+  options: { linked: boolean; skipConsent: boolean }
+) {
+  await insertClient(clientId, {
+    clientSecret: hashToken(MCP_SECRET),
+    tokenEndpointAuthMethod: "client_secret_basic",
+    redirectUris: JSON.stringify([]),
+    responseTypes: JSON.stringify([]),
+    grantTypes: JSON.stringify([TOKEN_EXCHANGE_GRANT_TYPE, CIBA_GRANT_TYPE]),
+    scopes: JSON.stringify(MCP_SCOPES),
+    skipConsent: options.skipConsent,
+  });
+  if (options.linked) {
+    await db
+      .insert(oauthClientResources)
+      .values({
+        id: crypto.randomUUID(),
+        clientId,
+        resourceId: MCP_AUDIENCE,
+      })
+      .run();
+  }
+}
+
+/** An exchange by the agent, or by the client `options.headers` authenticates. */
+function exchange(
+  body: Record<string, string>,
+  options: { headers?: Record<string, string>; keyPair?: DpopKeyPair } = {}
+) {
+  return postTokenWithDpop(
+    {
+      grant_type: TOKEN_EXCHANGE_GRANT_TYPE,
+      subject_token_type: ACCESS_TOKEN_TYPE,
+      audience: APP_AUDIENCE,
+      ...(options.headers ? {} : { client_id: AGENT_ID }),
+      ...body,
+    },
+    options.keyPair,
+    options.headers
+  );
+}
+
+function exchangeAsMcp(
+  subjectToken: string,
+  body: Record<string, string> = {},
+  clientId = MCP_ID
+) {
+  return exchange(
+    { subject_token: subjectToken, ...body },
+    { headers: basicAuth(clientId, MCP_SECRET) }
+  );
+}
+
+let signingKey: Awaited<ReturnType<typeof generateKeyPair>> | undefined;
+const signingKid = crypto.randomUUID();
 
 // One key for the whole file: the provider caches the JWKS and refetches it
 // for an unknown kid at most every 30 seconds, as for real key rotation.
 async function ensureSigningKey() {
-  if (!hasTestKeyPair) {
-    testKeyPair = await generateKeyPair("EdDSA", {
+  if (!signingKey) {
+    signingKey = await generateKeyPair("EdDSA", {
       crv: "Ed25519",
       extractable: true,
     });
-    testKid = crypto.randomUUID();
-    hasTestKeyPair = true;
   }
-  const publicJwk = await exportJWK(testKeyPair.publicKey);
-  const privateJwk = await exportJWK(testKeyPair.privateKey);
   await db
     .insert(jwksTable)
     .values({
-      id: testKid,
-      publicKey: JSON.stringify(publicJwk),
-      privateKey: encryptPrivateKey(JSON.stringify(privateJwk)),
+      id: signingKid,
+      publicKey: JSON.stringify(await exportJWK(signingKey.publicKey)),
+      privateKey: encryptPrivateKey(
+        JSON.stringify(await exportJWK(signingKey.privateKey))
+      ),
       alg: "EdDSA",
       crv: "Ed25519",
     })
@@ -85,104 +210,69 @@ async function ensureSigningKey() {
     .run();
 }
 
-async function createTestClient(
-  clientId = TEST_CLIENT_ID,
-  metadata?: Record<string, unknown>,
-  scopes?: string[]
-) {
+/** A JWT access token with claims the provider's own flows do not produce. */
+async function signAccessToken(claims: Record<string, unknown>) {
+  await ensureSigningKey();
+  const now = Math.floor(Date.now() / 1000);
+  return new SignJWT({
+    iss: authIssuer,
+    aud: MCP_AUDIENCE,
+    azp: AGENT_ID,
+    client_id: AGENT_ID,
+    scope: "openid",
+    iat: now,
+    exp: now + 3600,
+    jti: crypto.randomUUID(),
+    ...claims,
+  })
+    .setProtectedHeader({ alg: "EdDSA", typ: "at+jwt", kid: signingKid })
+    .sign(signingKey?.privateKey as CryptoKey);
+}
+
+/** An opaque login token as the provider stores it, bound to `dpopKeyPair`. */
+async function insertOpaqueToken(input: {
+  accessTokenClaims?: Record<string, unknown>;
+  authContextId?: string | null;
+  clientId?: string;
+  dpopKeyPair?: DpopKeyPair;
+  expiresAt?: Date;
+  referenceId?: string;
+  scopes: string;
+  sessionId?: string | null;
+  userId: string;
+}) {
+  const token = `opaque-${crypto.randomUUID()}`;
+  const accessTokenClaims = {
+    ...input.accessTokenClaims,
+    ...(input.authContextId
+      ? { [AUTHENTICATION_CONTEXT_CLAIM]: input.authContextId }
+      : {}),
+  };
   await db
-    .insert(oauthClients)
+    .insert(oauthAccessTokens)
     .values({
-      clientId,
-      name: "Exchange Test Agent",
-      redirectUris: JSON.stringify(["http://localhost/callback"]),
-      grantTypes: JSON.stringify([TOKEN_EXCHANGE_GRANT_TYPE]),
-      ...(metadata ? { metadata: JSON.stringify(metadata) } : {}),
-      ...(scopes ? { scopes: JSON.stringify(scopes) } : {}),
-      tokenEndpointAuthMethod: "none",
+      token: hashToken(token),
+      clientId: input.clientId ?? AGENT_ID,
+      userId: input.userId,
+      sessionId: input.sessionId ?? null,
+      referenceId: input.referenceId ?? crypto.randomUUID(),
+      scopes: JSON.stringify(input.scopes.split(" ")),
+      expiresAt: input.expiresAt ?? new Date(Date.now() + 3_600_000),
+      confirmation: input.dpopKeyPair
+        ? JSON.stringify({ jkt: await jwkThumbprint(input.dpopKeyPair) })
+        : null,
+      accessTokenClaims:
+        Object.keys(accessTokenClaims).length > 0
+          ? JSON.stringify(accessTokenClaims)
+          : null,
     })
     .run();
+  return token;
 }
 
-function parseTokenResponse(text: string): Record<string, unknown> {
-  const parsedBody = JSON.parse(text) as Record<string, unknown>;
-  return "response" in parsedBody
-    ? (parsedBody.response as Record<string, unknown>)
-    : parsedBody;
-}
-
-async function postTokenWithoutDpop(body: Record<string, string>) {
-  const response = await auth.handler(
-    new Request(TOKEN_URL, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/x-www-form-urlencoded",
-      },
-      body: new URLSearchParams(body),
-    })
-  );
-
-  const bodyText = await response.text();
-  const json = bodyText ? parseTokenResponse(bodyText) : {};
-  return { status: response.status, json };
-}
-
-function mintAccessToken(
-  sub: string,
-  opts: {
-    aap?: Record<string, unknown>;
-    scope?: string;
-    act?: Record<string, unknown>;
-    authContextId?: string;
-    authorizationDetails?: unknown;
-    azp?: string;
-    aud?: string | string[];
-    dpopJkt?: string;
-    exp?: number;
-  } = {}
-): Promise<string> {
-  const payload: Record<string, unknown> = {
-    iss: authIssuer,
-    sub,
-    aud: opts.aud ?? authIssuer,
-    jti: crypto.randomUUID(),
-    scope: opts.scope ?? "openid",
-    azp: opts.azp ?? TEST_CLIENT_ID,
-    iat: Math.floor(Date.now() / 1000),
-    exp: opts.exp ?? Math.floor(Date.now() / 1000) + 3600,
-    [AUTHENTICATION_CONTEXT_CLAIM]: opts.authContextId ?? defaultAuthContextId,
-    ...(opts.aap ?? {}),
-    ...(opts.dpopJkt ? { cnf: { jkt: opts.dpopJkt } } : {}),
-  };
-  if (opts.act) {
-    payload.act = opts.act;
-  }
-  if (opts.authorizationDetails) {
-    payload.authorization_details = opts.authorizationDetails;
-  }
-  return new SignJWT(payload)
-    .setProtectedHeader({ alg: "EdDSA", typ: "at+jwt", kid: testKid })
-    .sign(testKeyPair.privateKey);
-}
-
-async function exchangedClaims(
-  token: string
-): Promise<Record<string, unknown>> {
-  if (token.startsWith("eyJ")) {
-    return decodeJwt(token);
-  }
-  const row = await findStoredOpaqueAccessToken(token);
-  if (!row) {
-    throw new Error("Exchanged opaque token is not stored");
-  }
-  return {
-    ...row.accessTokenClaims,
-    sub: row.userId,
-    scope: row.scopes.join(" "),
-    jti: row.referenceId,
-    ...(row.act ? { act: row.act } : {}),
-    ...(row.dpopJkt ? { cnf: { jkt: row.dpopJkt } } : {}),
-  };
+async function jwkThumbprint(keyPair: DpopKeyPair): Promise<string> {
+  const { calculateJwkThumbprint } = await import("jose");
+  return calculateJwkThumbprint(keyPair.jwk, "sha256");
 }
 
 describe("Token Exchange (RFC 8693)", () => {
@@ -191,1372 +281,807 @@ describe("Token Exchange (RFC 8693)", () => {
   beforeEach(async () => {
     await resetDatabase();
     userId = await createTestUser();
-    defaultAuthContextId = (
-      await createAuthenticationContext({
+    await insertClient(AGENT_ID, {
+      scopes: JSON.stringify([
+        "openid",
+        "email",
+        "compliance:read",
+        "offline_access",
+        ...BOOTSTRAP_SCOPE.split(" "),
+      ]),
+    });
+    await insertClient(REMOTE_HOST_ID);
+    await insertResourceServer(MCP_ID, { linked: true, skipConsent: true });
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  /** The agent's own DPoP-bound, session-bound login token. */
+  async function agentLogin(scope = `openid ${BOOTSTRAP_SCOPE}`) {
+    const { status, json, dpopKeyPair, session } =
+      await redeemTestAuthorizationCode({
+        clientId: AGENT_ID,
+        redirectUri: LOOPBACK_REDIRECT,
         userId,
-        loginMethod: "passkey",
-        authenticatedAt: new Date(),
-        sourceKind: "token_exchange",
-      })
-    ).id;
-    await ensureSigningKey();
-    await createTestClient();
-  });
-
-  describe("access token → access token", () => {
-    it("exchanges with scope attenuation", async () => {
-      const subjectToken = await mintAccessToken(userId, {
-        scope: "openid identity.name identity.dob",
+        scope,
       });
-
-      const { status, json } = await postTokenWithDpop({
-        grant_type: TOKEN_EXCHANGE_GRANT_TYPE,
-        client_id: TEST_CLIENT_ID,
-        subject_token: subjectToken,
-        subject_token_type: ACCESS_TOKEN_TYPE,
-        scope: "openid identity.name",
-      });
-
-      expect(status).toBe(200);
-      expect(json.issued_token_type).toBe(ACCESS_TOKEN_TYPE);
-      expect(json.token_type).toBe("DPoP");
-      expect(json.scope).toBe("openid identity.name");
-
-      const payload = await exchangedClaims(json.access_token as string);
-      expect(payload.scope).toBe("openid identity.name");
-      expect(payload.act).toEqual({
-        sub: TEST_CLIENT_ID,
-        sub_profile: "service",
-      });
-    });
-
-    it("preserves JWT access-token DPoP binding on exchange", async () => {
-      const dpopKeyPair = await createTestDpopKeyPair();
-      const dpopJkt = await calculateJwkThumbprint(dpopKeyPair.jwk);
-      const subjectToken = await mintAccessToken(userId, {
-        dpopJkt,
-        scope: "openid identity.name",
-      });
-
-      const { status, json } = await postTokenWithDpop(
-        {
-          grant_type: TOKEN_EXCHANGE_GRANT_TYPE,
-          client_id: TEST_CLIENT_ID,
-          subject_token: subjectToken,
-          subject_token_type: ACCESS_TOKEN_TYPE,
-          scope: "openid",
-        },
-        dpopKeyPair
-      );
-
-      expect(status).toBe(200);
-      const payload = await exchangedClaims(json.access_token as string);
-      expect(payload.cnf).toEqual({ jkt: dpopJkt });
-    });
-
-    it("rejects JWT access-token subject when DPoP key differs", async () => {
-      const subjectKeyPair = await createTestDpopKeyPair();
-      const attackerKeyPair = await createTestDpopKeyPair();
-      const subjectToken = await mintAccessToken(userId, {
-        dpopJkt: await calculateJwkThumbprint(subjectKeyPair.jwk),
-        scope: "openid identity.name",
-      });
-
-      const { status, json } = await postTokenWithDpop(
-        {
-          grant_type: TOKEN_EXCHANGE_GRANT_TYPE,
-          client_id: TEST_CLIENT_ID,
-          subject_token: subjectToken,
-          subject_token_type: ACCESS_TOKEN_TYPE,
-          scope: "openid",
-        },
-        attackerKeyPair
-      );
-
-      expect(status).toBe(400);
-      expect(json.error).toBe("invalid_dpop_proof");
-    });
-
-    it("rejects JWT access-token subject when DPoP proof is missing", async () => {
-      const dpopKeyPair = await createTestDpopKeyPair();
-      const subjectToken = await mintAccessToken(userId, {
-        dpopJkt: await calculateJwkThumbprint(dpopKeyPair.jwk),
-        scope: "openid identity.name",
-      });
-
-      const { status, json } = await postTokenWithoutDpop({
-        grant_type: TOKEN_EXCHANGE_GRANT_TYPE,
-        client_id: TEST_CLIENT_ID,
-        subject_token: subjectToken,
-        subject_token_type: ACCESS_TOKEN_TYPE,
-        scope: "openid",
-      });
-
-      expect(status).toBe(400);
-      expect(json.error).toBe("invalid_dpop_proof");
-      expect(json.error_description).toBe("DPoP proof header is required");
-    });
-
-    it("allows a resource server to re-bind a DPoP-bound subject token", async () => {
-      const resourceServerClientId = "installed-resource-server";
-      await createTestClient(resourceServerClientId, {
-        zentity_protected_resource: APP_AUDIENCE,
-      });
-      // The subject token's issuing client must exist for it to be active.
-      await createTestClient("upstream-client");
-
-      const callerKeyPair = await createTestDpopKeyPair();
-      const resourceServerKeyPair = await createTestDpopKeyPair();
-      const subjectToken = await mintAccessToken(userId, {
-        aud: APP_AUDIENCE,
-        azp: "upstream-client",
-        dpopJkt: await calculateJwkThumbprint(callerKeyPair.jwk),
-        scope: "openid identity.name",
-      });
-      const resourceServerJkt = await calculateJwkThumbprint(
-        resourceServerKeyPair.jwk
-      );
-
-      const { status, json } = await postTokenWithDpop(
-        {
-          grant_type: TOKEN_EXCHANGE_GRANT_TYPE,
-          client_id: resourceServerClientId,
-          subject_token: subjectToken,
-          subject_token_type: ACCESS_TOKEN_TYPE,
-          scope: "openid",
-        },
-        resourceServerKeyPair
-      );
-
-      expect(status).toBe(200);
-      const payload = await exchangedClaims(json.access_token as string);
-      expect(payload.cnf).toEqual({ jkt: resourceServerJkt });
-      expect(payload.act).toEqual({
-        sub: resourceServerClientId,
-        sub_profile: "service",
-      });
-    });
-
-    it("rejects another client's token outside the resource server's audience", async () => {
-      const resourceServerClientId = "installed-resource-server";
-      await createTestClient(resourceServerClientId, {
-        zentity_protected_resource: APP_AUDIENCE,
-      });
-      await createTestClient("upstream-client");
-
-      const callerKeyPair = await createTestDpopKeyPair();
-      const resourceServerKeyPair = await createTestDpopKeyPair();
-      // A resource Zentity serves, but not the one this resource server protects.
-      const subjectToken = await mintAccessToken(userId, {
-        aud: MCP_AUDIENCE,
-        azp: "upstream-client",
-        dpopJkt: await calculateJwkThumbprint(callerKeyPair.jwk),
-        scope: "openid identity.name",
-      });
-
-      const { status, json } = await postTokenWithDpop(
-        {
-          grant_type: TOKEN_EXCHANGE_GRANT_TYPE,
-          client_id: resourceServerClientId,
-          subject_token: subjectToken,
-          subject_token_type: ACCESS_TOKEN_TYPE,
-          scope: "openid",
-        },
-        resourceServerKeyPair
-      );
-
-      expect(status).toBe(400);
-      expect(json.error).toBe("invalid_grant");
-    });
-
-    it("rejects resource-server DPoP re-binding without a proof", async () => {
-      const resourceServerClientId = "installed-resource-server";
-      await createTestClient(resourceServerClientId, {
-        zentity_protected_resource: APP_AUDIENCE,
-      });
-      await createTestClient("upstream-client");
-
-      const callerKeyPair = await createTestDpopKeyPair();
-      const subjectToken = await mintAccessToken(userId, {
-        aud: APP_AUDIENCE,
-        azp: "upstream-client",
-        dpopJkt: await calculateJwkThumbprint(callerKeyPair.jwk),
-        scope: "openid identity.name",
-      });
-
-      const { status, json } = await postTokenWithoutDpop({
-        grant_type: TOKEN_EXCHANGE_GRANT_TYPE,
-        client_id: resourceServerClientId,
-        subject_token: subjectToken,
-        subject_token_type: ACCESS_TOKEN_TYPE,
-        scope: "openid",
-      });
-
-      expect(status).toBe(400);
-      expect(json.error).toBe("invalid_dpop_proof");
-      expect(json.error_description).toBe("DPoP proof header is required");
-    });
-
-    it("rejects a resource server exchanging an opaque token issued for it", async () => {
-      const resourceServerClientId = "installed-resource-server";
-      await createTestClient(resourceServerClientId, {
-        zentity_protected_resource: APP_AUDIENCE,
-      });
-      await createTestClient("upstream-client");
-
-      // The provider reports this token's resources as its audience.
-      const subjectToken = crypto.randomBytes(32).toString("base64url");
-      await db
-        .insert(oauthAccessTokens)
-        .values({
-          accessTokenClaims: JSON.stringify({
-            [AUTHENTICATION_CONTEXT_CLAIM]: defaultAuthContextId,
-          }),
-          clientId: "upstream-client",
-          expiresAt: new Date(Date.now() + 3_600_000),
-          resources: JSON.stringify([APP_AUDIENCE]),
-          scopes: JSON.stringify(["openid"]),
-          token: crypto
-            .createHash("sha256")
-            .update(subjectToken)
-            .digest("base64url"),
-          userId,
-        })
-        .run();
-
-      const { status, json } = await postTokenWithDpop({
-        grant_type: TOKEN_EXCHANGE_GRANT_TYPE,
-        client_id: resourceServerClientId,
-        subject_token: subjectToken,
-        subject_token_type: ACCESS_TOKEN_TYPE,
-        scope: "openid",
-      });
-
-      expect(status).toBe(400);
-      expect(json.error).toBe("invalid_grant");
-      expect(json.error_description).toBe(
-        "Subject token was not issued to the requesting client or for its resource"
-      );
-    });
-
-    it("rejects an access token issued to another client", async () => {
-      await createTestClient("other-client");
-      const subjectToken = await mintAccessToken(userId, {
-        azp: "other-client",
-      });
-
-      const { status, json } = await postTokenWithDpop({
-        grant_type: TOKEN_EXCHANGE_GRANT_TYPE,
-        client_id: TEST_CLIENT_ID,
-        subject_token: subjectToken,
-        subject_token_type: ACCESS_TOKEN_TYPE,
-      });
-
-      expect(status).toBe(400);
-      expect(json.error).toBe("invalid_grant");
-    });
-
-    it("binds audience to resource parameter", async () => {
-      const subjectToken = await mintAccessToken(userId);
-
-      const { status, json } = await postTokenWithDpop({
-        grant_type: TOKEN_EXCHANGE_GRANT_TYPE,
-        client_id: TEST_CLIENT_ID,
-        subject_token: subjectToken,
-        subject_token_type: ACCESS_TOKEN_TYPE,
-        resource: MCP_AUDIENCE,
-      });
-
-      expect(status).toBe(200);
-      const payload = decodeJwt(json.access_token as string);
-      expect(payload.aud).toBe(MCP_AUDIENCE);
-    });
-
-    it("binds audience to audience parameter when resource is absent", async () => {
-      const subjectToken = await mintAccessToken(userId);
-
-      const { status, json } = await postTokenWithDpop({
-        grant_type: TOKEN_EXCHANGE_GRANT_TYPE,
-        client_id: TEST_CLIENT_ID,
-        subject_token: subjectToken,
-        subject_token_type: ACCESS_TOKEN_TYPE,
-        audience: MCP_AUDIENCE,
-      });
-
-      expect(status).toBe(200);
-      const payload = decodeJwt(json.access_token as string);
-      expect(payload.aud).toBe(MCP_AUDIENCE);
-    });
-
-    it("prefers resource over audience for aud binding", async () => {
-      const subjectToken = await mintAccessToken(userId);
-
-      const { status, json } = await postTokenWithDpop({
-        grant_type: TOKEN_EXCHANGE_GRANT_TYPE,
-        client_id: TEST_CLIENT_ID,
-        subject_token: subjectToken,
-        subject_token_type: ACCESS_TOKEN_TYPE,
-        resource: MCP_AUDIENCE,
-        audience: CREDENTIAL_AUDIENCE,
-      });
-
-      expect(status).toBe(200);
-      const payload = decodeJwt(json.access_token as string);
-      expect(payload.aud).toBe(MCP_AUDIENCE);
-    });
-
-    it("lets the client revoke an exchanged JWT access token", async () => {
-      const exchange = (subjectToken: string, keyPair?: DpopKeyPair) =>
-        postTokenWithDpop(
-          {
-            grant_type: TOKEN_EXCHANGE_GRANT_TYPE,
-            client_id: TEST_CLIENT_ID,
-            subject_token: subjectToken,
-            subject_token_type: ACCESS_TOKEN_TYPE,
-            resource: MCP_AUDIENCE,
-          },
-          keyPair
-        );
-      const { json, dpopKeyPair } = await exchange(
-        await mintAccessToken(userId)
-      );
-      const exchanged = json.access_token as string;
-      expect(exchanged).toMatch(JWT_SHAPE);
-      expect((await exchange(exchanged, dpopKeyPair)).status).toBe(200);
-
-      const revocation = await auth.handler(
-        new Request(`${authIssuer}/oauth2/revoke`, {
-          method: "POST",
-          headers: { "Content-Type": "application/x-www-form-urlencoded" },
-          body: new URLSearchParams({
-            token: exchanged,
-            client_id: TEST_CLIENT_ID,
-          }),
-        })
-      );
-      expect(revocation.status).toBe(200);
-
-      const refused = await exchange(exchanged, dpopKeyPair);
-      expect(refused.status).toBe(400);
-      expect(refused.json.error).toBe("invalid_grant");
-      const feed = await listRevocations(
-        new Request("http://localhost:3000/api/auth/oauth2/revoked?since=0", {
-          headers: env.INTERNAL_SERVICE_TOKEN
-            ? { authorization: `Bearer ${env.INTERNAL_SERVICE_TOKEN}` }
-            : {},
-        })
-      );
-      expect(
-        ((await feed.json()) as { revocations: { jti: string }[] }).revocations
-      ).toEqual([expect.objectContaining({ jti: decodeJwt(exchanged).jti })]);
-    });
-
-    it("issues opaque tokens for Zentity-hosted audiences", async () => {
-      const subjectToken = await mintAccessToken(userId);
-
-      for (const audience of [APP_AUDIENCE, authIssuer, CREDENTIAL_AUDIENCE]) {
-        const { status, json } = await postTokenWithDpop({
-          grant_type: TOKEN_EXCHANGE_GRANT_TYPE,
-          client_id: TEST_CLIENT_ID,
-          subject_token: subjectToken,
-          subject_token_type: ACCESS_TOKEN_TYPE,
-          audience,
-        });
-
-        expect(status).toBe(200);
-        expect(json.access_token).not.toMatch(JWT_SHAPE);
-        const row = await findStoredOpaqueAccessToken(
-          json.access_token as string
-        );
-        expect(row?.userId).toBe(userId);
-      }
-    });
-
-    it("rejects unregistered target audiences", async () => {
-      const subjectToken = await mintAccessToken(userId);
-
-      const { status, json } = await postTokenWithDpop({
-        grant_type: TOKEN_EXCHANGE_GRANT_TYPE,
-        client_id: TEST_CLIENT_ID,
-        subject_token: subjectToken,
-        subject_token_type: ACCESS_TOKEN_TYPE,
-        resource: "https://merchant.example.com/api",
-      });
-
-      expect(status).toBe(400);
-      expect(json.error).toBe("invalid_target");
-      expect(json.error_description).toBe(
-        "Token exchange target audience is not a registered protected resource"
-      );
-    });
-
-    it("inherits subject scopes when none requested", async () => {
-      const subjectToken = await mintAccessToken(userId, {
-        scope: "openid identity.name",
-      });
-
-      const { status, json } = await postTokenWithDpop({
-        grant_type: TOKEN_EXCHANGE_GRANT_TYPE,
-        client_id: TEST_CLIENT_ID,
-        subject_token: subjectToken,
-        subject_token_type: ACCESS_TOKEN_TYPE,
-      });
-
-      expect(status).toBe(200);
-      expect(json.scope).toBe("openid identity.name");
-    });
-
-    it("preserves AAP claims and adds delegation on exchanged tokens", async () => {
-      const subjectToken = await mintAccessToken(userId, {
-        scope: "openid",
-        aap: {
-          aap_claims_version: 1,
-          act: {
-            did: "did:key:z6Mkg3ShJxrz8J4kizVwR6cJQ2s9wZ5x1hQxQds2z7Q9b3Zs",
-            host_attestation: "attested",
-            host_id: "host-123",
-            session_id: "session-123",
-            sub: "pairwise-agent-subject",
-            type: "mcp-agent",
-          },
-          task: {
-            constraints: [{ field: "merchant", op: "eq", value: "Wine.com" }],
-            created_at: 1_700_000_000,
-            description: "purchase",
-            expires_at: 1_700_003_600,
-            hash: "task-hash-123",
-          },
-          capabilities: [
-            {
-              action: "purchase",
-              constraints: [{ field: "merchant", op: "eq", value: "Wine.com" }],
-            },
-          ],
-          oversight: {
-            approval_id: "grant-123",
-            approved_at: 1_700_000_000,
-            method: "session",
-          },
-          audit: {
-            context_id: "ctx-123",
-            release_id: "release-123",
-            request_id: "req-123",
-          },
-          agent_sub: "legacy-agent-subject",
-          zentity_context_id: "legacy-context-id",
-          zentity_release_id: "legacy-release-id",
-        },
-      });
-
-      const parentPayload = decodeJwt(subjectToken);
-
-      const { status, json } = await postTokenWithDpop({
-        grant_type: TOKEN_EXCHANGE_GRANT_TYPE,
-        client_id: TEST_CLIENT_ID,
-        subject_token: subjectToken,
-        subject_token_type: ACCESS_TOKEN_TYPE,
-      });
-
-      expect(status).toBe(200);
-      const payload = await exchangedClaims(json.access_token as string);
-
-      expect(payload.act).toEqual({
-        ...(parentPayload.act as object),
-        sub_profile: "service",
-      });
-      expect(payload.task).toEqual(parentPayload.task);
-      expect(payload.capabilities).toEqual(parentPayload.capabilities);
-      expect(payload.oversight).toEqual(parentPayload.oversight);
-      expect(payload.audit).toEqual(parentPayload.audit);
-      expect(payload.aap_claims_version).toBe(1);
-      expect(payload).not.toHaveProperty("agent_sub");
-      expect(payload).not.toHaveProperty("zentity_context_id");
-      expect(payload).not.toHaveProperty("zentity_release_id");
-      expect(payload.delegation).toEqual({
-        depth: 1,
-        max_depth: 1,
-        parent_jti: parentPayload.jti,
-      });
-    });
-
-    it("falls back to the build release id when the parent token has no audit claim", async () => {
-      const subjectToken = await mintAccessToken(userId, {
-        scope: "openid",
-        aap: {
-          aap_claims_version: 1,
-          act: {
-            host_attestation: "unverified",
-            session_id: "session-123",
-            sub: "pairwise-agent-subject",
-            type: "mcp-agent",
-          },
-        },
-      });
-
-      const { status, json } = await postTokenWithDpop({
-        grant_type: TOKEN_EXCHANGE_GRANT_TYPE,
-        client_id: TEST_CLIENT_ID,
-        subject_token: subjectToken,
-        subject_token_type: ACCESS_TOKEN_TYPE,
-      });
-
-      expect(status).toBe(200);
-      const payload = await exchangedClaims(json.access_token as string);
-      expect(
-        (payload.audit as { release_id?: string } | undefined)?.release_id
-      ).toBe(getReleaseId());
-    });
-
-    it("rejects second-hop delegation once max_depth is reached", async () => {
-      const subjectToken = await mintAccessToken(userId, {
-        scope: "openid",
-        aap: {
-          aap_claims_version: 1,
-          act: {
-            did: "did:key:z6Mkg3ShJxrz8J4kizVwR6cJQ2s9wZ5x1hQxQds2z7Q9b3Zs",
-            host_attestation: "attested",
-            host_id: "host-123",
-            session_id: "session-123",
-            sub: "pairwise-agent-subject",
-            type: "mcp-agent",
-          },
-          task: {
-            description: "purchase",
-            created_at: 1_700_000_000,
-            expires_at: 1_700_003_600,
-            hash: "task-hash-123",
-          },
-          oversight: {
-            approval_id: "grant-123",
-            approved_at: 1_700_000_000,
-            method: "session",
-          },
-          audit: {
-            context_id: "ctx-123",
-            release_id: "release-123",
-          },
-        },
-      });
-
-      const firstExchange = await postTokenWithDpop({
-        grant_type: TOKEN_EXCHANGE_GRANT_TYPE,
-        client_id: TEST_CLIENT_ID,
-        subject_token: subjectToken,
-        subject_token_type: ACCESS_TOKEN_TYPE,
-      });
-
-      expect(firstExchange.status).toBe(200);
-      const firstPayload = await exchangedClaims(
-        firstExchange.json.access_token as string
-      );
-      expect(firstPayload.delegation).toEqual({
-        depth: 1,
-        max_depth: 1,
-        parent_jti: expect.any(String),
-      });
-
-      const secondExchange = await postTokenWithDpop(
-        {
-          grant_type: TOKEN_EXCHANGE_GRANT_TYPE,
-          client_id: TEST_CLIENT_ID,
-          subject_token: firstExchange.json.access_token as string,
-          subject_token_type: ACCESS_TOKEN_TYPE,
-        },
-        firstExchange.dpopKeyPair
-      );
-
-      expect(secondExchange.status).toBe(400);
-      expect(secondExchange.json.error).toBe("invalid_grant");
-      expect(secondExchange.json.error_description).toBe(
-        "Subject token exceeded the maximum delegation depth"
-      );
-    });
-  });
-
-  describe("scope attenuation enforcement", () => {
-    it("rejects scope broadening on access token subjects", async () => {
-      const subjectToken = await mintAccessToken(userId, {
-        scope: "openid",
-      });
-
-      const { status, json } = await postTokenWithDpop({
-        grant_type: TOKEN_EXCHANGE_GRANT_TYPE,
-        client_id: TEST_CLIENT_ID,
-        subject_token: subjectToken,
-        subject_token_type: ACCESS_TOKEN_TYPE,
-        scope: "openid identity.name",
-      });
-
-      expect(status).toBe(400);
-      expect(json.error).toBe("invalid_scope");
-    });
-
-    it("rejects a requested scope the client did not register", async () => {
-      const clientId = "registered-scope-agent";
-      await createTestClient(clientId, undefined, ["openid"]);
-      const subjectToken = await mintAccessToken(userId, {
-        azp: clientId,
-        scope: "openid identity.name",
-      });
-
-      const { status, json } = await postTokenWithDpop({
-        grant_type: TOKEN_EXCHANGE_GRANT_TYPE,
-        client_id: clientId,
-        subject_token: subjectToken,
-        subject_token_type: ACCESS_TOKEN_TYPE,
-        scope: "openid identity.name",
-      });
-
-      expect(status).toBe(400);
-      expect(json).toMatchObject({
-        error: "invalid_scope",
-        error_description: "client does not allow scope identity.name",
-      });
-    });
-
-    it("inherits only the subject scopes the client registered", async () => {
-      const clientId = "registered-scope-agent";
-      await createTestClient(clientId, undefined, ["openid", "identity.name"]);
-      const subjectToken = await mintAccessToken(userId, {
-        azp: clientId,
-        scope: "openid identity.name identity.dob",
-      });
-
-      const { status, json } = await postTokenWithDpop({
-        grant_type: TOKEN_EXCHANGE_GRANT_TYPE,
-        client_id: clientId,
-        subject_token: subjectToken,
-        subject_token_type: ACCESS_TOKEN_TYPE,
-      });
-
-      expect(status).toBe(200);
-      expect(json.scope).toBe("openid identity.name");
-      const payload = await exchangedClaims(json.access_token as string);
-      expect(payload.scope).toBe("openid identity.name");
-    });
-
-    it("leaves offline_access off an inherited scope", async () => {
-      const subjectToken = await mintAccessToken(userId, {
-        scope: "openid offline_access identity.name",
-      });
-
-      const { status, json } = await postTokenWithDpop({
-        grant_type: TOKEN_EXCHANGE_GRANT_TYPE,
-        client_id: TEST_CLIENT_ID,
-        subject_token: subjectToken,
-        subject_token_type: ACCESS_TOKEN_TYPE,
-      });
-
-      expect(status).toBe(200);
-      expect(json.scope).toBe("openid identity.name");
-      expect(json).not.toHaveProperty("refresh_token");
-      const payload = await exchangedClaims(json.access_token as string);
-      expect(payload.scope).toBe("openid identity.name");
-    });
-
-    it("rejects a requested offline_access", async () => {
-      const subjectToken = await mintAccessToken(userId, {
-        scope: "openid offline_access",
-      });
-
-      const { status, json } = await postTokenWithDpop({
-        grant_type: TOKEN_EXCHANGE_GRANT_TYPE,
-        client_id: TEST_CLIENT_ID,
-        subject_token: subjectToken,
-        subject_token_type: ACCESS_TOKEN_TYPE,
-        scope: "openid offline_access",
-      });
-
-      expect(status).toBe(400);
-      expect(json).toMatchObject({
-        error: "invalid_scope",
-        error_description:
-          "Requested scope 'offline_access' is not available through token exchange",
-      });
-    });
-
-    it("rejects a subject token with no scope left to exchange", async () => {
-      const subjectToken = await mintAccessToken(userId, {
-        scope: "offline_access",
-      });
-
-      const { status, json } = await postTokenWithDpop({
-        grant_type: TOKEN_EXCHANGE_GRANT_TYPE,
-        client_id: TEST_CLIENT_ID,
-        subject_token: subjectToken,
-        subject_token_type: ACCESS_TOKEN_TYPE,
-      });
-
-      expect(status).toBe(400);
-      expect(json).toMatchObject({
-        error: "invalid_scope",
-        error_description:
-          "Subject token has no scope this client can exchange",
-      });
-    });
-
-    it("refuses agent bootstrap scopes to a resource server exchanging another client's token", async () => {
-      const resourceServerClientId = "installed-resource-server";
-      await createTestClient(resourceServerClientId, {
-        zentity_protected_resource: APP_AUDIENCE,
-      });
-      await createTestClient("upstream-client");
-      const subjectToken = await mintAccessToken(userId, {
-        aud: APP_AUDIENCE,
-        azp: "upstream-client",
-        scope: "agent:host.register agent:session.register",
-      });
-
-      const { status, json } = await postTokenWithDpop({
-        grant_type: TOKEN_EXCHANGE_GRANT_TYPE,
-        client_id: resourceServerClientId,
-        subject_token: subjectToken,
-        subject_token_type: ACCESS_TOKEN_TYPE,
-        audience: APP_AUDIENCE,
-        scope: "agent:host.register agent:session.register",
-      });
-
-      expect(status).toBe(400);
-      expect(json).toMatchObject({
-        error: "invalid_scope",
-        error_description:
-          "Only the client a subject token was issued to may exchange it for agent bootstrap scopes",
-      });
-    });
-  });
-
-  // These pin the exchanged token as the handler mints it today, so a change
-  // to how it is minted keeps the same claims, binding, and lifetime.
-  describe("exchanged token contract", () => {
-    const TOKEN_RESPONSE_KEYS = [
-      "access_token",
-      "expires_in",
-      "issued_token_type",
-      "scope",
-      "token_type",
-    ];
-
-    it("mints a JWT with exactly the exchange's claims for a separate resource server", async () => {
-      const subjectToken = await mintAccessToken(userId, {
-        authorizationDetails: [{ type: "purchase", amount: "10.00" }],
-        scope: "openid identity.name",
-      });
-
-      const { status, json, dpopKeyPair } = await postTokenWithDpop({
-        grant_type: TOKEN_EXCHANGE_GRANT_TYPE,
-        client_id: TEST_CLIENT_ID,
-        subject_token: subjectToken,
-        subject_token_type: ACCESS_TOKEN_TYPE,
-        resource: MCP_AUDIENCE,
-        scope: "openid",
-      });
-
-      expect(status).toBe(200);
-      expect(Object.keys(json).sort()).toEqual(TOKEN_RESPONSE_KEYS);
-      expect(json).toMatchObject({
-        issued_token_type: ACCESS_TOKEN_TYPE,
-        scope: "openid",
-        token_type: "DPoP",
-      });
-      const accessToken = json.access_token as string;
-      expect(accessToken).toMatch(JWT_SHAPE);
-
-      const payload = decodeJwt(accessToken);
-      expect(Object.keys(payload).sort()).toEqual(
-        [
-          AUTHENTICATION_CONTEXT_CLAIM,
-          "act",
-          "aud",
-          "azp",
-          "cnf",
-          "exp",
-          "iat",
-          "iss",
-          "jti",
-          "scope",
-          "sub",
-        ].sort()
-      );
-      expect(payload).toMatchObject({
-        [AUTHENTICATION_CONTEXT_CLAIM]: defaultAuthContextId,
-        act: { sub: TEST_CLIENT_ID, sub_profile: "service" },
-        aud: MCP_AUDIENCE,
-        azp: TEST_CLIENT_ID,
-        cnf: { jkt: await calculateJwkThumbprint(dpopKeyPair.jwk) },
-        iss: authIssuer,
-        scope: "openid",
-        // Current behavior, not a privacy requirement: a pairwise sub for the
-        // audience would be an intended change.
-        sub: userId,
-      });
-      expect(payload.jti).not.toBe(decodeJwt(subjectToken).jti);
-      expect(payload.exp).toBeLessThanOrEqual(
-        decodeJwt(subjectToken).exp as number
-      );
-    });
-
-    it("stores an opaque token with exactly the exchange's claims for a Zentity-hosted audience", async () => {
-      const subjectToken = await mintAccessToken(userId, {
-        authorizationDetails: [{ type: "purchase", amount: "10.00" }],
-        scope: "openid identity.name",
-      });
-
-      const { status, json, dpopKeyPair } = await postTokenWithDpop({
-        grant_type: TOKEN_EXCHANGE_GRANT_TYPE,
-        client_id: TEST_CLIENT_ID,
-        subject_token: subjectToken,
-        subject_token_type: ACCESS_TOKEN_TYPE,
-        audience: APP_AUDIENCE,
-      });
-
-      expect(status).toBe(200);
-      expect(Object.keys(json).sort()).toEqual(TOKEN_RESPONSE_KEYS);
-      expect(json).toMatchObject({
-        issued_token_type: ACCESS_TOKEN_TYPE,
-        scope: "openid identity.name",
-        token_type: "DPoP",
-      });
-      const accessToken = json.access_token as string;
-      expect(accessToken).not.toMatch(JWT_SHAPE);
-
-      const row = await findStoredOpaqueAccessToken(accessToken);
-      expect(row).toMatchObject({
-        accessTokenClaims: {
-          [AUTHENTICATION_CONTEXT_CLAIM]: defaultAuthContextId,
-        },
-        act: { sub: TEST_CLIENT_ID, sub_profile: "service" },
-        clientId: TEST_CLIENT_ID,
-        dpopJkt: await calculateJwkThumbprint(dpopKeyPair.jwk),
-        scopes: ["openid", "identity.name"],
-        sessionId: null,
-        userId,
-      });
-      expect(Object.keys(row?.accessTokenClaims ?? {})).toEqual([
-        AUTHENTICATION_CONTEXT_CLAIM,
-      ]);
-      expect(row?.referenceId).toEqual(expect.any(String));
-      expect(row?.referenceId).not.toBe(decodeJwt(subjectToken).jti);
-    });
-
-    it("binds the exchanged token to the requester's DPoP key when the subject is unbound", async () => {
-      const subjectToken = await mintAccessToken(userId);
-
-      const { status, json, dpopKeyPair } = await postTokenWithDpop({
-        grant_type: TOKEN_EXCHANGE_GRANT_TYPE,
-        client_id: TEST_CLIENT_ID,
-        subject_token: subjectToken,
-        subject_token_type: ACCESS_TOKEN_TYPE,
-        resource: MCP_AUDIENCE,
-      });
-
-      expect(status).toBe(200);
-      expect(json.token_type).toBe("DPoP");
-      const payload = decodeJwt(json.access_token as string);
-      expect(payload.cnf).toEqual({
-        jkt: await calculateJwkThumbprint(dpopKeyPair.jwk),
-      });
-    });
-
-    it.each([
-      ["JWT", MCP_AUDIENCE],
-      ["opaque", APP_AUDIENCE],
-    ])("never outlives the subject token (%s)", async (_shape, audience) => {
-      const subjectExp = Math.floor(Date.now() / 1000) + 600;
-      const subjectToken = await mintAccessToken(userId, { exp: subjectExp });
-
-      const { status, json } = await postTokenWithDpop({
-        grant_type: TOKEN_EXCHANGE_GRANT_TYPE,
-        client_id: TEST_CLIENT_ID,
-        subject_token: subjectToken,
-        subject_token_type: ACCESS_TOKEN_TYPE,
-        audience,
-      });
-
-      expect(status).toBe(200);
-      expect(json.expires_in).toBeGreaterThan(0);
-      expect(json.expires_in).toBeLessThanOrEqual(600);
-      const accessToken = json.access_token as string;
-      if (accessToken.match(JWT_SHAPE)) {
-        expect(decodeJwt(accessToken).exp).toBe(subjectExp);
-      } else {
-        const row = await findStoredOpaqueAccessToken(accessToken);
-        expect(row?.expiresAt.getTime()).toBe(subjectExp * 1000);
-      }
-    });
-
-    it("lets the client revoke an exchanged opaque access token", async () => {
-      const exchange = await postTokenWithDpop({
-        grant_type: TOKEN_EXCHANGE_GRANT_TYPE,
-        client_id: TEST_CLIENT_ID,
-        subject_token: await mintAccessToken(userId),
-        subject_token_type: ACCESS_TOKEN_TYPE,
-        audience: APP_AUDIENCE,
-      });
-      const exchanged = exchange.json.access_token as string;
-      expect(exchanged).not.toMatch(JWT_SHAPE);
-
-      const revocation = await auth.handler(
-        new Request(`${authIssuer}/oauth2/revoke`, {
-          method: "POST",
-          headers: { "Content-Type": "application/x-www-form-urlencoded" },
-          body: new URLSearchParams({
-            token: exchanged,
-            client_id: TEST_CLIENT_ID,
-          }),
-        })
-      );
-      expect(revocation.status).toBe(200);
-
-      const refused = await postTokenWithDpop(
-        {
-          grant_type: TOKEN_EXCHANGE_GRANT_TYPE,
-          client_id: TEST_CLIENT_ID,
-          subject_token: exchanged,
-          subject_token_type: ACCESS_TOKEN_TYPE,
-          audience: APP_AUDIENCE,
-        },
-        exchange.dpopKeyPair
-      );
-      expect(refused.status).toBe(400);
-      expect(refused.json.error).toBe("invalid_grant");
-    });
-
-    it("points each hop's delegation at the token it was exchanged from", async () => {
-      const subjectToken = await mintAccessToken(userId, {
-        aap: {
-          aap_claims_version: 1,
-          act: {
-            host_attestation: "attested",
-            session_id: "session-123",
-            sub: "pairwise-agent-subject",
-          },
-          delegation: { depth: 0, max_depth: 2, parent_jti: null },
-          task: {
-            created_at: 1_700_000_000,
-            description: "purchase",
-            expires_at: 1_700_003_600,
-            hash: "task-hash-123",
-          },
-          oversight: {
-            approval_id: "grant-123",
-            approved_at: 1_700_000_000,
-            method: "session",
-          },
-          audit: { context_id: "ctx-123", release_id: "release-123" },
-        },
-      });
-
-      const firstHop = await postTokenWithDpop({
-        grant_type: TOKEN_EXCHANGE_GRANT_TYPE,
-        client_id: TEST_CLIENT_ID,
-        subject_token: subjectToken,
-        subject_token_type: ACCESS_TOKEN_TYPE,
-        resource: MCP_AUDIENCE,
-      });
-      expect(firstHop.status).toBe(200);
-      const firstToken = firstHop.json.access_token as string;
-      const firstPayload = decodeJwt(firstToken);
-      expect(firstPayload.delegation).toEqual({
-        depth: 1,
-        max_depth: 2,
-        parent_jti: decodeJwt(subjectToken).jti,
-      });
-
-      const secondHop = await postTokenWithDpop(
-        {
-          grant_type: TOKEN_EXCHANGE_GRANT_TYPE,
-          client_id: TEST_CLIENT_ID,
-          subject_token: firstToken,
-          subject_token_type: ACCESS_TOKEN_TYPE,
-          audience: APP_AUDIENCE,
-        },
-        firstHop.dpopKeyPair
-      );
-      expect(secondHop.status).toBe(200);
-      const secondPayload = await exchangedClaims(
-        secondHop.json.access_token as string
-      );
-      expect(secondPayload.delegation).toEqual({
-        depth: 2,
-        max_depth: 2,
-        parent_jti: firstPayload.jti,
-      });
-    });
-  });
-
-  describe("act claim nesting", () => {
-    it("nests act claims across multiple exchanges", async () => {
-      const originalToken = await mintAccessToken(userId, {
-        scope: "openid identity.name",
-      });
-
-      const firstExchange = await postTokenWithDpop({
-        grant_type: TOKEN_EXCHANGE_GRANT_TYPE,
-        client_id: TEST_CLIENT_ID,
-        subject_token: originalToken,
-        subject_token_type: ACCESS_TOKEN_TYPE,
-        audience: MCP_AUDIENCE,
-        scope: "openid identity.name",
-      });
-
-      const firstPayload = await exchangedClaims(
-        firstExchange.json.access_token as string
-      );
-      expect(firstPayload.act).toEqual({
-        sub: TEST_CLIENT_ID,
-        sub_profile: "service",
-      });
-
-      // The second hop is the resource server the first token was issued for.
-      const resourceServerClientId = "mcp-resource-server";
-      await createTestClient(resourceServerClientId, {
-        zentity_protected_resource: MCP_AUDIENCE,
-      });
-
-      const { status, json: secondExchange } = await postTokenWithDpop({
-        grant_type: TOKEN_EXCHANGE_GRANT_TYPE,
-        client_id: resourceServerClientId,
-        subject_token: firstExchange.json.access_token as string,
-        subject_token_type: ACCESS_TOKEN_TYPE,
-        scope: "openid",
-      });
-
-      expect(status).toBe(200);
-      const secondPayload = await exchangedClaims(
-        secondExchange.access_token as string
-      );
-      expect(secondPayload.act).toEqual({
-        sub: resourceServerClientId,
-        sub_profile: "service",
-        act: { sub: TEST_CLIENT_ID, sub_profile: "service" },
-      });
-    });
-    it("reports the actor at introspection of an opaque exchanged token", async () => {
-      const clientId = "introspecting-exchange-agent";
-      const clientSecret = "introspecting-exchange-secret";
-      await db
-        .insert(oauthClients)
-        .values({
-          clientId,
-          clientSecret: crypto
-            .createHash("sha256")
-            .update(clientSecret)
-            .digest("base64url"),
-          name: clientId,
-          redirectUris: JSON.stringify(["http://localhost/callback"]),
-          grantTypes: JSON.stringify([TOKEN_EXCHANGE_GRANT_TYPE]),
-          tokenEndpointAuthMethod: "client_secret_post",
-        })
-        .run();
-
-      const exchange = await postTokenWithDpop({
-        grant_type: TOKEN_EXCHANGE_GRANT_TYPE,
-        client_id: clientId,
-        client_secret: clientSecret,
-        subject_token: await mintAccessToken(userId, { azp: clientId }),
-        subject_token_type: ACCESS_TOKEN_TYPE,
-        audience: APP_AUDIENCE,
-      });
-      expect(exchange.status).toBe(200);
-      expect(exchange.json.access_token).not.toMatch(JWT_SHAPE);
-
-      const response = await auth.handler(
-        new Request(INTROSPECT_URL, {
-          method: "POST",
-          headers: { "Content-Type": "application/x-www-form-urlencoded" },
-          body: new URLSearchParams({
-            token: exchange.json.access_token as string,
-            client_id: clientId,
-            client_secret: clientSecret,
-          }),
-        })
-      );
-      const introspection = (await response.json()) as Record<string, unknown>;
-      expect(introspection.active).toBe(true);
-      expect(introspection.act).toEqual({
-        sub: clientId,
-        sub_profile: "service",
-      });
-      expect(introspection[AUTHENTICATION_CONTEXT_CLAIM]).toBe(
-        defaultAuthContextId
-      );
-    });
-
-    it("nests the actor the provider stored on an opaque subject token", async () => {
-      // A CIBA token, for example, names its actor only in the provider's
-      // own act column.
-      const cibaClientId = "ciba-client";
-      await createTestClient(cibaClientId);
-      const dpopKeyPair = await createTestDpopKeyPair();
-      const subjectToken = crypto.randomBytes(32).toString("base64url");
-      await db
-        .insert(oauthAccessTokens)
-        .values({
-          accessTokenClaims: JSON.stringify({
-            [AUTHENTICATION_CONTEXT_CLAIM]: defaultAuthContextId,
-          }),
-          act: JSON.stringify({ sub: "ciba-agent" }),
-          clientId: cibaClientId,
-          confirmation: JSON.stringify({
-            jkt: await calculateJwkThumbprint(dpopKeyPair.jwk),
-          }),
-          expiresAt: new Date(Date.now() + 3_600_000),
-          scopes: JSON.stringify(["openid"]),
-          token: crypto
-            .createHash("sha256")
-            .update(subjectToken)
-            .digest("base64url"),
-          userId,
-        })
-        .run();
-
-      const { status, json } = await postTokenWithDpop(
-        {
-          grant_type: TOKEN_EXCHANGE_GRANT_TYPE,
-          client_id: cibaClientId,
-          subject_token: subjectToken,
-          subject_token_type: ACCESS_TOKEN_TYPE,
-          scope: "openid",
-        },
-        dpopKeyPair
-      );
-
-      expect(status).toBe(200);
-      const payload = await exchangedClaims(json.access_token as string);
-      expect(payload.act).toEqual({
-        sub: cibaClientId,
-        sub_profile: "service",
-        act: { sub: "ciba-agent" },
-      });
-    });
-  });
-
-  describe("pairwise subject identifiers", () => {
-    const PAIRWISE_CLIENT_ID = "pairwise-exchange-agent";
-    const PAIRWISE_REDIRECT = "https://pairwise-rp.example.com/callback";
-
-    async function createPairwiseClient() {
-      await db
-        .insert(oauthClients)
-        .values({
-          clientId: PAIRWISE_CLIENT_ID,
-          name: "Pairwise Exchange Agent",
-          redirectUris: JSON.stringify([PAIRWISE_REDIRECT]),
-          grantTypes: JSON.stringify([TOKEN_EXCHANGE_GRANT_TYPE]),
-          tokenEndpointAuthMethod: "none",
-          subjectType: "pairwise",
-        })
-        .run();
+    if (status !== 200) {
+      throw new Error(`login failed: ${JSON.stringify(json)}`);
     }
+    return { token: json.access_token as string, dpopKeyPair, session };
+  }
 
-    it("resolves opaque Zentity-audienced tokens at userinfo to the client's pairwise subject", async () => {
-      await createPairwiseClient();
-      const subjectToken = await mintAccessToken(userId, {
-        azp: PAIRWISE_CLIENT_ID,
-      });
+  /** A remote host's JWT for the MCP server, as an MCP client receives it. */
+  async function remoteHostToken(
+    scope = "openid compliance:read offline_access"
+  ) {
+    const { status, json, session } = await redeemTestAuthorizationCode({
+      clientId: REMOTE_HOST_ID,
+      redirectUri: LOOPBACK_REDIRECT,
+      userId,
+      scope,
+      resource: MCP_AUDIENCE,
+    });
+    if (status !== 200) {
+      throw new Error(`remote host login failed: ${JSON.stringify(json)}`);
+    }
+    return { token: json.access_token as string, session };
+  }
 
-      const { status, json, dpopKeyPair } = await postTokenWithDpop({
-        grant_type: TOKEN_EXCHANGE_GRANT_TYPE,
-        client_id: PAIRWISE_CLIENT_ID,
-        subject_token: subjectToken,
-        subject_token_type: ACCESS_TOKEN_TYPE,
-        audience: APP_AUDIENCE,
-      });
+  describe("bootstrap self-exchange", () => {
+    it("mints an opaque bootstrap token for the app, bound to the login key", async () => {
+      const login = await agentLogin();
+
+      const { status, json } = await exchange(
+        { subject_token: login.token, scope: BOOTSTRAP_SCOPE },
+        { keyPair: login.dpopKeyPair }
+      );
 
       expect(status).toBe(200);
-      const accessToken = json.access_token as string;
-      expect(accessToken).not.toMatch(JWT_SHAPE);
+      expect(json).toEqual({
+        access_token: expect.any(String),
+        issued_token_type: ACCESS_TOKEN_TYPE,
+        token_type: "DPoP",
+        expires_in: expect.any(Number),
+        scope: BOOTSTRAP_SCOPE,
+      });
+      const token = json.access_token as string;
+      expect(token.split(".")).toHaveLength(1);
+      const stored = await findStoredOpaqueAccessToken(token);
+      expect(stored).toMatchObject({
+        act: null,
+        accessTokenClaims: { zentity_token_use: "agent_bootstrap" },
+        dpopJkt: await jwkThumbprint(login.dpopKeyPair),
+        userId,
+      });
 
-      const userinfoResponse = await auth.handler(
-        new Request(USERINFO_URL, {
-          method: "GET",
+      // The provider validates the minted row and returns the marker with it.
+      const { payload } = await introspectZentityAccessToken(token);
+      expect(payload).toMatchObject({
+        active: true,
+        sub: userId,
+        client_id: AGENT_ID,
+        sid: login.session.sessionId,
+        zentity_token_use: "agent_bootstrap",
+      });
+      expect(payload.act).toBeUndefined();
+    });
+
+    it("refuses a proof by a key other than the login token's", async () => {
+      const login = await agentLogin();
+
+      const { status, json } = await exchange({
+        subject_token: login.token,
+        scope: BOOTSTRAP_SCOPE,
+      });
+
+      expect(status).toBe(400);
+      expect(json.error).toBe("invalid_dpop_proof");
+    });
+
+    // R12: an installed client no longer widens a loopback login.
+    it("refuses a bootstrap scope the login token does not hold", async () => {
+      const login = await agentLogin("openid compliance:read");
+
+      const { status, json } = await exchange(
+        { subject_token: login.token, scope: "agent:host.register" },
+        { keyPair: login.dpopKeyPair }
+      );
+
+      expect({ status, json }).toEqual({
+        status: 400,
+        json: {
+          error: "invalid_scope",
+          error_description:
+            "scope agent:host.register is not available through token exchange",
+        },
+      });
+    });
+
+    it("inherits no bootstrap scope when the request names no scope", async () => {
+      const login = await agentLogin(
+        `openid compliance:read ${BOOTSTRAP_SCOPE}`
+      );
+
+      const { status, json } = await exchange(
+        { subject_token: login.token },
+        { keyPair: login.dpopKeyPair }
+      );
+
+      expect(status).toBe(200);
+      expect(json.scope).toBe("openid compliance:read");
+      const { payload } = await introspectZentityAccessToken(
+        json.access_token as string
+      );
+      expect(payload.active).toBe(true);
+      expect(payload.zentity_token_use).toBeUndefined();
+    });
+
+    it("refuses an exchange that would inherit no scope", async () => {
+      const login = await agentLogin(BOOTSTRAP_SCOPE);
+
+      const { status, json } = await exchange(
+        { subject_token: login.token },
+        { keyPair: login.dpopKeyPair }
+      );
+
+      expect({ status, json }).toEqual({
+        status: 400,
+        json: {
+          error: "invalid_scope",
+          error_description:
+            "Subject token has no scope this client can exchange",
+        },
+      });
+    });
+
+    it("refuses bootstrap scopes mixed with other scopes", async () => {
+      const login = await agentLogin(
+        `openid compliance:read ${BOOTSTRAP_SCOPE}`
+      );
+
+      const { status, json } = await exchange(
+        {
+          subject_token: login.token,
+          scope: "agent:host.register compliance:read",
+        },
+        { keyPair: login.dpopKeyPair }
+      );
+
+      expect({ status, json }).toEqual({
+        status: 400,
+        json: {
+          error: "invalid_scope",
+          error_description:
+            "Bootstrap token exchanges may only request agent bootstrap scopes",
+        },
+      });
+    });
+  });
+
+  describe("resource server exchange", () => {
+    it("lets the linked MCP client exchange a remote host's token, bound to its own key", async () => {
+      const remote = await remoteHostToken();
+
+      const { status, json, dpopKeyPair } = await exchangeAsMcp(remote.token);
+
+      expect(status).toBe(200);
+      // R7, R8, R15: offline_access never carries over, openid stays.
+      expect(json.scope).toBe("openid compliance:read");
+      expect(json).not.toHaveProperty("refresh_token");
+      const stored = await findStoredOpaqueAccessToken(
+        json.access_token as string
+      );
+      expect(stored).toMatchObject({
+        act: null,
+        accessTokenClaims: {},
+        clientId: MCP_ID,
+        dpopJkt: await jwkThumbprint(dpopKeyPair),
+        userId,
+      });
+      expect(await db.select().from(agentTokenSnapshots).all()).toEqual([]);
+    });
+
+    // R26: the MCP server's subject is its own pairwise subject.
+    it("gives the MCP client a pairwise subject at UserInfo that works as its CIBA login hint", async () => {
+      const remote = await remoteHostToken();
+      const exchanged = await exchangeAsMcp(remote.token);
+      const accessToken = exchanged.json.access_token as string;
+      const userInfoUrl = `${authIssuer}/oauth2/userinfo`;
+
+      const userInfo = await auth.handler(
+        new Request(userInfoUrl, {
           headers: {
             authorization: `DPoP ${accessToken}`,
             DPoP: await buildDpopProof(
-              dpopKeyPair,
+              exchanged.dpopKeyPair,
               "GET",
-              USERINFO_URL,
+              userInfoUrl,
               accessToken
             ),
           },
         })
       );
-      expect(userinfoResponse.status).toBe(200);
-      const userinfo = parseTokenResponse(await userinfoResponse.text());
-      expect(userinfo.sub).toBe(
-        await computePairwiseSub(
-          userId,
-          new URL(PAIRWISE_REDIRECT).host,
-          process.env.PAIRWISE_SECRET as string
-        )
+      const { sub } = (await userInfo.json()) as { sub: string };
+      expect(userInfo.status).toBe(200);
+      expect(sub).not.toBe(userId);
+      expect(sub).toBe(await resolveSubForClientId(userId, MCP_ID));
+
+      const backchannel = await auth.handler(
+        new Request(`${AUTH_URL}/oauth2/bc-authorize`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/x-www-form-urlencoded",
+            ...basicAuth(MCP_ID, MCP_SECRET),
+          },
+          body: new URLSearchParams({
+            scope: "openid identity.name",
+            login_hint: sub,
+            binding_message: "Read your name",
+          }),
+        })
       );
+      expect(backchannel.status).toBe(200);
     });
 
-    it("uses pairwise sub in access tokens audienced to a separate resource server", async () => {
-      await createPairwiseClient();
-      const subjectToken = await mintAccessToken(userId, {
-        azp: PAIRWISE_CLIENT_ID,
-      });
-
-      const { status, json } = await postTokenWithDpop({
-        grant_type: TOKEN_EXCHANGE_GRANT_TYPE,
-        client_id: PAIRWISE_CLIENT_ID,
-        subject_token: subjectToken,
-        subject_token_type: ACCESS_TOKEN_TYPE,
-        audience: MCP_AUDIENCE,
-      });
-
-      expect(status).toBe(200);
-      const payload = await exchangedClaims(json.access_token as string);
-      expect(payload.sub).toBe(
-        await computePairwiseSub(
-          userId,
-          new URL(PAIRWISE_REDIRECT).host,
-          process.env.PAIRWISE_SECRET as string
-        )
+    // R6: a public client cannot claim to be the resource server, whatever
+    // it registered.
+    it("refuses a public client presenting another client's token", async () => {
+      const remote = await remoteHostToken();
+      const registration = await registerClient(
+        new Request(`${AUTH_URL}/oauth2/register`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            client_name: "Claims To Be MCP",
+            redirect_uris: [LOOPBACK_REDIRECT],
+            token_endpoint_auth_method: "none",
+            grant_types: ["authorization_code", TOKEN_EXCHANGE_GRANT_TYPE],
+            response_types: ["code"],
+            zentity_protected_resource: MCP_AUDIENCE,
+          }),
+        })
       );
+      const { client_id: clientId } = (await registration.json()) as {
+        client_id: string;
+      };
+
+      const { status, json } = await exchange({
+        client_id: clientId,
+        subject_token: remote.token,
+      });
+
+      expect({ status, json }).toEqual({ status: 400, json: INVALID_SUBJECT });
     });
 
-    it("preserves raw userId for public-subject clients", async () => {
-      // Default test client is public-subject
-      const subjectToken = await mintAccessToken(userId);
-
-      const { status, json } = await postTokenWithDpop({
-        grant_type: TOKEN_EXCHANGE_GRANT_TYPE,
-        client_id: TEST_CLIENT_ID,
-        subject_token: subjectToken,
-        subject_token_type: ACCESS_TOKEN_TYPE,
+    it("refuses a confidential client the MCP resource is not linked to", async () => {
+      await insertResourceServer("unlinked-server", {
+        linked: false,
+        skipConsent: true,
       });
+      const remote = await remoteHostToken();
+
+      const { status, json } = await exchangeAsMcp(
+        remote.token,
+        {},
+        "unlinked-server"
+      );
+
+      expect({ status, json }).toEqual({ status: 400, json: INVALID_SUBJECT });
+    });
+
+    it("refuses a linked resource server that does not skip consent", async () => {
+      await insertResourceServer("consenting-server", {
+        linked: true,
+        skipConsent: false,
+      });
+      const remote = await remoteHostToken();
+
+      const { status, json } = await exchangeAsMcp(
+        remote.token,
+        {},
+        "consenting-server"
+      );
+
+      expect({ status, json }).toEqual({
+        status: 400,
+        json: invalidRequest(
+          "the user has not consented to this client for this exchange"
+        ),
+      });
+    });
+
+    it("refuses a confidential client that sends no secret", async () => {
+      const remote = await remoteHostToken();
+
+      const { status, json } = await exchange({
+        client_id: MCP_ID,
+        subject_token: remote.token,
+      });
+
+      expect({ status, json }).toEqual({
+        status: 400,
+        // The provider refuses the authentication method before the secret.
+        json: {
+          error: "invalid_client",
+          error_description:
+            "client registered for client_secret_basic cannot use none",
+        },
+      });
+    });
+
+    // R7: exchanged scopes stay within the client's registration.
+    it("refuses an explicit scope the client did not register", async () => {
+      const remote = await remoteHostToken(
+        "openid compliance:read proof:sybil"
+      );
+
+      const { status, json } = await exchangeAsMcp(remote.token, {
+        scope: "openid proof:sybil",
+      });
+
+      expect({ status, json }).toEqual({
+        status: 400,
+        json: {
+          error: "invalid_scope",
+          error_description: "client does not allow scope proof:sybil",
+        },
+      });
+    });
+
+    it("drops a defaulted scope the client did not register", async () => {
+      const remote = await remoteHostToken(
+        "openid compliance:read proof:sybil"
+      );
+
+      const { status, json } = await exchangeAsMcp(remote.token);
 
       expect(status).toBe(200);
-      const payload = await exchangedClaims(json.access_token as string);
-      expect(payload.sub).toBe(userId);
+      expect(json.scope).toBe("openid compliance:read");
     });
 
-    it("resolves a pairwise access-token subject to the user", async () => {
-      await createPairwiseClient();
+    it("refuses an explicit offline_access", async () => {
+      const remote = await remoteHostToken();
 
-      const pairwiseSub = await resolveSubForClient(userId, {
-        sectorIdentifier: null,
-        subjectType: "pairwise",
-        redirectUris: [PAIRWISE_REDIRECT],
-      });
-      const subjectToken = await mintAccessToken(pairwiseSub, {
-        azp: PAIRWISE_CLIENT_ID,
+      const { status, json } = await exchangeAsMcp(remote.token, {
+        scope: "openid offline_access",
       });
 
-      const { status, json } = await postTokenWithDpop({
-        grant_type: TOKEN_EXCHANGE_GRANT_TYPE,
-        client_id: PAIRWISE_CLIENT_ID,
-        subject_token: subjectToken,
-        subject_token_type: ACCESS_TOKEN_TYPE,
+      expect({ status, json }).toEqual({
+        status: 400,
+        json: {
+          error: "invalid_scope",
+          error_description:
+            "scope offline_access is not available through token exchange",
+        },
       });
-
-      expect(status).toBe(200);
-      const payload = await exchangedClaims(json.access_token as string);
-      expect(payload.sub).toBe(userId);
-    });
-  });
-
-  describe("error cases", () => {
-    it("rejects missing subject_token", async () => {
-      const { status, json } = await postTokenWithDpop({
-        grant_type: TOKEN_EXCHANGE_GRANT_TYPE,
-        client_id: TEST_CLIENT_ID,
-        subject_token_type: ACCESS_TOKEN_TYPE,
-      });
-
-      expect(status).toBe(400);
-      expect(json.error).toBe("invalid_request");
     });
 
-    it("rejects invalid/expired subject token", async () => {
-      const expired = await new SignJWT({
-        iss: authIssuer,
-        sub: userId,
-        scope: "openid",
-        iat: Math.floor(Date.now() / 1000) - 7200,
-        exp: Math.floor(Date.now() / 1000) - 3600,
-      })
-        .setProtectedHeader({ alg: "EdDSA", typ: "JWT", kid: testKid })
-        .sign(testKeyPair.privateKey);
+    // R5: nothing about an agent crosses to the exchanged token.
+    it("introspects the exchanged token without actor or agent claims", async () => {
+      const remote = await remoteHostToken();
+      const exchanged = await exchangeAsMcp(remote.token);
 
-      const { status, json } = await postTokenWithDpop({
-        grant_type: TOKEN_EXCHANGE_GRANT_TYPE,
-        client_id: TEST_CLIENT_ID,
-        subject_token: expired,
-        subject_token_type: ACCESS_TOKEN_TYPE,
-      });
+      const { payload } = await introspectZentityAccessToken(
+        exchanged.json.access_token as string
+      );
 
-      expect(status).toBe(400);
-      expect(json.error).toBe("invalid_grant");
-    });
-
-    it("rejects JWTs that are not access tokens as access-token subjects", async () => {
-      const idTokenTyped = await new SignJWT({
-        iss: authIssuer,
-        sub: userId,
-        aud: TEST_CLIENT_ID,
-        scope: "openid",
-        jti: crypto.randomUUID(),
-        iat: Math.floor(Date.now() / 1000),
-        exp: Math.floor(Date.now() / 1000) + 3600,
-      })
-        .setProtectedHeader({ alg: "EdDSA", typ: "JWT", kid: testKid })
-        .sign(testKeyPair.privateKey);
-      const logoutTyped = await new SignJWT({
-        iss: authIssuer,
-        sub: userId,
-        aud: TEST_CLIENT_ID,
-        iat: Math.floor(Date.now() / 1000),
-        exp: Math.floor(Date.now() / 1000) + 120,
-        events: { "http://schemas.openid.net/event/backchannel-logout": {} },
-      })
-        .setProtectedHeader({ alg: "EdDSA", typ: "logout+jwt", kid: testKid })
-        .sign(testKeyPair.privateKey);
-
-      for (const subjectToken of [idTokenTyped, logoutTyped]) {
-        const { json } = await postTokenWithDpop({
-          grant_type: TOKEN_EXCHANGE_GRANT_TYPE,
-          client_id: TEST_CLIENT_ID,
-          subject_token: subjectToken,
-          subject_token_type: ACCESS_TOKEN_TYPE,
-        });
-        expect(json.error).toBe("invalid_grant");
+      expect(payload.active).toBe(true);
+      for (const claim of ["act", "session_id", "host_id", "did", "audit"]) {
+        expect(payload).not.toHaveProperty(claim);
       }
     });
 
-    it("rejects unsupported subject_token_type", async () => {
-      const subjectToken = await mintAccessToken(userId);
+    // R20: ending the session ends the exchanged token.
+    it("ends the exchanged token with the session it derives from", async () => {
+      const remote = await remoteHostToken();
+      const exchanged = await exchangeAsMcp(remote.token);
+      const accessToken = exchanged.json.access_token as string;
 
-      const { status, json } = await postTokenWithDpop({
-        grant_type: TOKEN_EXCHANGE_GRANT_TYPE,
-        client_id: TEST_CLIENT_ID,
-        subject_token: subjectToken,
-        subject_token_type: "urn:ietf:params:oauth:token-type:refresh_token",
+      await db
+        .delete(sessions)
+        .where(eq(sessions.id, remote.session.sessionId))
+        .run();
+
+      const { payload } = await introspectZentityAccessToken(accessToken);
+      expect(payload).toEqual({ active: false });
+      const userInfoUrl = `${authIssuer}/oauth2/userinfo`;
+      const userInfo = await auth.handler(
+        new Request(userInfoUrl, {
+          headers: {
+            authorization: `DPoP ${accessToken}`,
+            DPoP: await buildDpopProof(
+              exchanged.dpopKeyPair,
+              "GET",
+              userInfoUrl,
+              accessToken
+            ),
+          },
+        })
+      );
+      expect(userInfo.status).toBe(401);
+    });
+
+    // R19 as built: a refresh after sign-out is refused, and a JWT bound to
+    // the ended session is no longer a valid subject.
+    it("refuses a remote host's token once its browser session ends", async () => {
+      const remote = await remoteHostToken();
+      await db
+        .delete(sessions)
+        .where(eq(sessions.id, remote.session.sessionId))
+        .run();
+
+      const { status, json } = await exchangeAsMcp(remote.token);
+
+      expect({ status, json }).toEqual({ status: 400, json: INVALID_SUBJECT });
+    });
+
+    // D24: a JWT without a session takes its grant's stored context.
+    it("resolves a JWT subject without sid through its refresh token", async () => {
+      const referenceId = crypto.randomUUID();
+      const authContextId = (
+        await createAuthenticationContext({
+          userId,
+          loginMethod: "passkey",
+          authenticatedAt: new Date(),
+          sourceKind: "better_auth",
+          referenceType: "oauth_refresh_token",
+        })
+      ).id;
+      await db
+        .insert(oauthRefreshTokens)
+        .values({
+          token: hashToken(crypto.randomUUID()),
+          clientId: REMOTE_HOST_ID,
+          userId,
+          referenceId,
+          authContextId,
+          scopes: JSON.stringify(["openid", "compliance:read"]),
+          expiresAt: new Date(Date.now() + 3_600_000),
+        })
+        .run();
+      const subject = await signAccessToken({
+        sub: userId,
+        azp: REMOTE_HOST_ID,
+        client_id: REMOTE_HOST_ID,
+        scope: "openid compliance:read",
+        reference_id: referenceId,
       });
 
-      expect(status).toBe(400);
-      expect(json.error).toBe("invalid_request");
+      const { status, json } = await exchangeAsMcp(subject);
+
+      expect(status).toBe(200);
+      const stored = await findStoredOpaqueAccessToken(
+        json.access_token as string
+      );
+      expect(stored?.accessTokenClaims).toEqual({
+        [AUTHENTICATION_CONTEXT_CLAIM]: authContextId,
+      });
+    });
+  });
+
+  describe("subjects the grant refuses", () => {
+    // R1: RFC 9396 details never cross an exchange.
+    it("refuses a JWT subject that carries authorization_details", async () => {
+      const subject = await signAccessToken({
+        sub: userId,
+        aud: WALLET_AUDIENCE,
+        authorization_details: [{ type: "payment_authorization" }],
+      });
+
+      const { status, json } = await exchange({ subject_token: subject });
+
+      expect({ status, json }).toEqual({
+        status: 400,
+        json: invalidRequest(
+          "subject_token must not carry authorization_details"
+        ),
+      });
+    });
+
+    it("refuses an opaque subject whose stored claims carry authorization_details", async () => {
+      const keyPair = await createTestDpopKeyPair();
+      const { sessionId, authContextId } = await createTestSession(userId);
+      const subject = await insertOpaqueToken({
+        userId,
+        scopes: "openid",
+        sessionId,
+        authContextId,
+        dpopKeyPair: keyPair,
+        accessTokenClaims: {
+          authorization_details: [{ type: "x402_purchase" }],
+        },
+      });
+
+      const { status, json } = await exchange(
+        { subject_token: subject },
+        { keyPair }
+      );
+
+      expect({ status, json }).toEqual({
+        status: 400,
+        json: invalidRequest(
+          "subject_token must not carry authorization_details"
+        ),
+      });
+    });
+
+    // R4, R11: agent and CIBA tokens are delegated.
+    it("refuses a CIBA token", async () => {
+      const { authReqId } = await createTestCibaRequest({
+        clientId: AGENT_ID,
+        userId,
+        status: "approved",
+      });
+      const poll = await postTokenWithDpop({
+        grant_type: CIBA_GRANT_TYPE,
+        auth_req_id: authReqId,
+        client_id: AGENT_ID,
+      });
+      expect(poll.status).toBe(200);
+
+      const { status, json } = await exchange(
+        { subject_token: poll.json.access_token as string },
+        { keyPair: poll.dpopKeyPair }
+      );
+
+      expect({ status, json }).toEqual({
+        status: 400,
+        json: DELEGATED_SUBJECT,
+      });
+    });
+
+    // R30: the approval record refuses a CIBA token even without its actor.
+    it("refuses a CIBA token whose stored actor was removed", async () => {
+      const { authReqId, authReqIdHash } = await createTestCibaRequest({
+        clientId: AGENT_ID,
+        userId,
+        status: "approved",
+      });
+      const poll = await postTokenWithDpop({
+        grant_type: CIBA_GRANT_TYPE,
+        auth_req_id: authReqId,
+        client_id: AGENT_ID,
+      });
+      await db
+        .update(oauthAccessTokens)
+        .set({ act: null })
+        .where(eq(oauthAccessTokens.referenceId, authReqIdHash))
+        .run();
+      const { payload } = await introspectZentityAccessToken(
+        poll.json.access_token as string
+      );
+      expect(payload.act).toBeUndefined();
+
+      const { status, json } = await exchange(
+        { subject_token: poll.json.access_token as string },
+        { keyPair: poll.dpopKeyPair }
+      );
+
+      expect({ status, json }).toEqual({
+        status: 400,
+        json: DELEGATED_SUBJECT,
+      });
+    });
+
+    it("refuses a JWT subject with an actor", async () => {
+      const subject = await signAccessToken({
+        sub: userId,
+        act: { sub: "agent-session", sub_profile: "service" },
+      });
+
+      const { status, json } = await exchange({ subject_token: subject });
+
+      expect({ status, json }).toEqual({
+        status: 400,
+        json: DELEGATED_SUBJECT,
+      });
+    });
+
+    it("refuses a public client's subject that is not DPoP-bound", async () => {
+      const { sessionId, authContextId } = await createTestSession(userId);
+      const subject = await insertOpaqueToken({
+        userId,
+        scopes: "openid",
+        sessionId,
+        authContextId,
+      });
+
+      const { status, json } = await exchange({ subject_token: subject });
+
+      expect({ status, json }).toEqual({
+        status: 400,
+        json: invalidRequest(
+          "a public client may only exchange a DPoP-bound subject_token"
+        ),
+      });
+    });
+
+    // R18: no exchanged token without the authentication behind it.
+    it("refuses a subject with no authentication context", async () => {
+      const keyPair = await createTestDpopKeyPair();
+      const subject = await insertOpaqueToken({
+        userId,
+        scopes: "openid",
+        dpopKeyPair: keyPair,
+      });
+
+      const { status, json } = await exchange(
+        { subject_token: subject },
+        { keyPair }
+      );
+
+      expect({ status, json }).toEqual({
+        status: 400,
+        json: invalidRequest("subject_token has no authentication context"),
+      });
+    });
+
+    it("refuses an unknown subject token", async () => {
+      const { status, json } = await exchange({
+        subject_token: "not-a-token",
+      });
+
+      expect({ status, json }).toEqual({ status: 400, json: INVALID_SUBJECT });
+    });
+
+    // R14: the exchanged token never outlives its subject.
+    it("caps the lifetime at the subject's expiry", async () => {
+      const keyPair = await createTestDpopKeyPair();
+      const { sessionId, authContextId } = await createTestSession(userId);
+      const subject = await insertOpaqueToken({
+        userId,
+        scopes: "openid",
+        sessionId,
+        authContextId,
+        dpopKeyPair: keyPair,
+        expiresAt: new Date(Date.now() + 600_000),
+      });
+
+      const { status, json } = await exchange(
+        { subject_token: subject },
+        { keyPair }
+      );
+
+      expect(status).toBe(200);
+      expect(json.expires_in).toBeLessThanOrEqual(600);
+    });
+
+    it("refuses a subject that expires before issuance", async () => {
+      // The subject is still active within its last second, but its `exp`
+      // (whole seconds) leaves nothing to issue.
+      const now = new Date("2026-11-16T12:00:00.000Z");
+      vi.useFakeTimers({ toFake: ["Date"], now });
+      const keyPair = await createTestDpopKeyPair();
+      const { sessionId, authContextId } = await createTestSession(userId);
+      const subject = await insertOpaqueToken({
+        userId,
+        scopes: "openid",
+        sessionId,
+        authContextId,
+        dpopKeyPair: keyPair,
+        expiresAt: new Date(now.getTime() + 900),
+      });
+
+      const { status, json } = await exchange(
+        { subject_token: subject },
+        { keyPair }
+      );
+
+      expect({ status, json }).toEqual({
+        status: 400,
+        json: invalidRequest("the token this grant derives from has expired"),
+      });
+    });
+  });
+
+  describe("request parameters", () => {
+    // R10: ID tokens are neither input nor output.
+    it.each([
+      [
+        "an id_token subject",
+        { subject_token_type: ID_TOKEN_TYPE },
+        `subject_token_type must be ${ACCESS_TOKEN_TYPE}`,
+      ],
+      [
+        "an id_token output",
+        { requested_token_type: ID_TOKEN_TYPE },
+        "requested_token_type is not supported",
+      ],
+      // R23: actor tokens are refused, not ignored.
+      [
+        "an actor_token",
+        { actor_token: "actor", actor_token_type: ACCESS_TOKEN_TYPE },
+        "actor_token is not supported",
+      ],
+    ])("refuses %s", async (_case, params, description) => {
+      const { status, json } = await exchange({
+        client_id: AGENT_ID,
+        subject_token: "unused",
+        ...params,
+      });
+
+      expect({ status, json }).toEqual({
+        status: 400,
+        json: invalidRequest(description),
+      });
+    });
+
+    it("refuses a request without subject_token", async () => {
+      const { status, json } = await exchange({ client_id: AGENT_ID });
+
+      expect({ status, json }).toEqual({
+        status: 400,
+        json: invalidRequest("subject_token is required"),
+      });
+    });
+
+    // R8: the app is the only target.
+    it("refuses a request without a target", async () => {
+      const { status, json } = await postTokenWithDpop({
+        grant_type: TOKEN_EXCHANGE_GRANT_TYPE,
+        client_id: AGENT_ID,
+        subject_token: "unused",
+        subject_token_type: ACCESS_TOKEN_TYPE,
+      });
+
+      expect({ status, json }).toEqual({
+        status: 400,
+        json: invalidRequest("resource or audience is required"),
+      });
     });
 
     it.each([
-      ["subject_token_type", { subject_token_type: ID_TOKEN_TYPE }],
-      ["requested_token_type", { requested_token_type: ID_TOKEN_TYPE }],
-    ])("rejects an ID token %s", async (parameter, tokenType) => {
+      ["UserInfo", { audience: `${authIssuer}/oauth2/userinfo` }],
+      ["the MCP resource", { audience: MCP_AUDIENCE }],
+      ["a relying party's client id", { audience: REMOTE_HOST_ID }],
+      ["two targets", { resource: APP_AUDIENCE, audience: MCP_AUDIENCE }],
+    ])("refuses %s as a target", async (_case, target) => {
       const { status, json } = await postTokenWithDpop({
         grant_type: TOKEN_EXCHANGE_GRANT_TYPE,
-        client_id: TEST_CLIENT_ID,
-        subject_token: await mintAccessToken(userId),
+        client_id: AGENT_ID,
+        subject_token: "unused",
         subject_token_type: ACCESS_TOKEN_TYPE,
-        ...tokenType,
+        ...target,
+      });
+
+      expect({ status, json }).toEqual({ status: 400, json: INVALID_TARGET });
+    });
+
+    it("refuses the wallet as a target", async () => {
+      const { status, json } = await exchange({
+        client_id: AGENT_ID,
+        subject_token: "unused",
+        audience: WALLET_AUDIENCE,
       });
 
       expect(status).toBe(400);
-      expect(json.error).toBe("invalid_request");
-      expect(json.error_description).toBe(
-        `Unsupported ${parameter}: ${ID_TOKEN_TYPE}`
+      expect(json.error).toBe("invalid_target");
+    });
+
+    // RFC 9449: every exchange is DPoP-bound.
+    it("refuses a request without a DPoP proof", async () => {
+      const response = await auth.handler(
+        new Request(`${AUTH_URL}/oauth2/token`, {
+          method: "POST",
+          headers: { "Content-Type": "application/x-www-form-urlencoded" },
+          body: new URLSearchParams({
+            grant_type: TOKEN_EXCHANGE_GRANT_TYPE,
+            client_id: AGENT_ID,
+            subject_token: "unused",
+            subject_token_type: ACCESS_TOKEN_TYPE,
+            audience: APP_AUDIENCE,
+          }),
+        })
       );
+
+      expect(response.status).toBe(400);
+      expect(await response.json()).toEqual({
+        error: "invalid_dpop_proof",
+        error_description: "DPoP proof header is required",
+      });
     });
   });
 });

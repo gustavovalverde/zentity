@@ -16,7 +16,6 @@ import {
   buildLoopbackClientRegistration,
   createFirstPartyAuthFileStorage,
   createInstalledClientAuth,
-  deriveAppAudience,
 } from "@zentity/sdk/node";
 import { createDpopClientFromKeyPair } from "@zentity/sdk/rp";
 
@@ -33,7 +32,6 @@ const installedAuth = createInstalledClientAuth({
     scope: "openid email",
   }),
   loginScope: "openid email",
-  tokenExchangeAudience: deriveAppAudience(issuerUrl),
 });
 
 const session = await installedAuth.ensureOAuthSession();
@@ -44,15 +42,16 @@ const agent = createAgent({
 });
 ```
 
+The session's `accessToken` is the login token itself, bound to `session.dpopKey`, and `session.accountSub` is the subject UserInfo returns for it.
+
 ## Agent Bootstrap
 
-Zentity's token exchange issues only scopes the login token was granted. An installed agent therefore requests the agent bootstrap scopes at sign-in and registers them with its client. It keeps them off its session token with `tokenExchangeScope`, then exchanges the login token for a bootstrap token when it registers its host and sessions.
+Zentity's token exchange issues only scopes the login token was granted. An agent that registers with Zentity therefore adds the bootstrap scopes from `@zentity/sdk/agent-contract` (`AGENT_BOOTSTRAP_SCOPES`) to `loginScope` and to the registration's `scope`, then exchanges the login token for a bootstrap token with `exchangeLoginToken` when it registers its host and sessions.
 
 ```ts
 import { AGENT_BOOTSTRAP_SCOPES } from "@zentity/sdk/agent-contract";
 
-const sessionScope = "openid email";
-const loginScope = [sessionScope, ...AGENT_BOOTSTRAP_SCOPES].join(" ");
+const loginScope = ["openid email", ...AGENT_BOOTSTRAP_SCOPES].join(" ");
 
 const installedAuth = createInstalledClientAuth({
   issuerUrl,
@@ -70,8 +69,6 @@ const installedAuth = createInstalledClientAuth({
     scope: loginScope,
   }),
   loginScope,
-  tokenExchangeAudience: deriveAppAudience(issuerUrl),
-  tokenExchangeScope: sessionScope,
 });
 
 const bootstrap = await installedAuth.exchangeLoginToken({
@@ -79,6 +76,10 @@ const bootstrap = await installedAuth.exchangeLoginToken({
   scope: AGENT_BOOTSTRAP_SCOPES.join(" "),
 });
 ```
+
+## Confidential Clients
+
+`exchangeToken` (`@zentity/sdk/fpa`), `beginCibaApproval`, `pollCibaTokenOnce`, and `requestCibaApproval` take an optional `clientSecret`. With it, the request authenticates with `client_secret_basic` (RFC 6749 §2.3.1) and sends no `client_id` in the body; without it, the client is public and sends `client_id`.
 
 ## Sub-paths
 
