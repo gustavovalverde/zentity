@@ -1,7 +1,7 @@
 import crypto from "node:crypto";
 
 import { eq } from "drizzle-orm";
-import { exportJWK, generateKeyPair, SignJWT } from "jose";
+import { decodeJwt, exportJWK, generateKeyPair, SignJWT } from "jose";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const WALLET_AUDIENCE = vi.hoisted(() => {
@@ -12,10 +12,7 @@ const WALLET_AUDIENCE = vi.hoisted(() => {
 import { POST as registerClient } from "@/app/api/auth/oauth2/register/route";
 import { env } from "@/env";
 import { auth } from "@/lib/auth/auth-config";
-import {
-  AUTHENTICATION_CONTEXT_CLAIM,
-  createAuthenticationContext,
-} from "@/lib/auth/auth-context";
+import { AUTHENTICATION_CONTEXT_CLAIM } from "@/lib/auth/auth-context";
 import { encryptPrivateKey } from "@/lib/auth/oidc/jwt-signer";
 import { resolveSubForClientId } from "@/lib/auth/oidc/pairwise";
 import { introspectZentityAccessToken } from "@/lib/auth/oidc/resource-principal";
@@ -29,7 +26,6 @@ import {
   oauthAccessTokens,
   oauthClientResources,
   oauthClients,
-  oauthRefreshTokens,
 } from "@/lib/db/schema/oauth-provider";
 import { redeemTestAuthorizationCode } from "@/test-utils/authorization-code-test-utils";
 import {
@@ -317,17 +313,23 @@ describe("Token Exchange (RFC 8693)", () => {
   async function remoteHostToken(
     scope = "openid compliance:read offline_access"
   ) {
-    const { status, json, session } = await redeemTestAuthorizationCode({
-      clientId: REMOTE_HOST_ID,
-      redirectUri: LOOPBACK_REDIRECT,
-      userId,
-      scope,
-      resource: MCP_AUDIENCE,
-    });
+    const { status, json, dpopKeyPair, session } =
+      await redeemTestAuthorizationCode({
+        clientId: REMOTE_HOST_ID,
+        redirectUri: LOOPBACK_REDIRECT,
+        userId,
+        scope,
+        resource: MCP_AUDIENCE,
+      });
     if (status !== 200) {
       throw new Error(`remote host login failed: ${JSON.stringify(json)}`);
     }
-    return { token: json.access_token as string, session };
+    return {
+      token: json.access_token as string,
+      refreshToken: json.refresh_token as string,
+      dpopKeyPair,
+      session,
+    };
   }
 
   describe("bootstrap self-exchange", () => {
@@ -704,60 +706,70 @@ describe("Token Exchange (RFC 8693)", () => {
       expect(userInfo.status).toBe(401);
     });
 
-    // R19 as built: a refresh after sign-out is refused, and a JWT bound to
-    // the ended session is no longer a valid subject.
-    it("refuses a remote host's token once its browser session ends", async () => {
+    // R19 as built: a remote host's grant ends with the browser session. Its
+    // offline_access refresh token survives sign-out, but an `openid` refresh
+    // has no authentication context for the ID token, and any access token a
+    // refresh yields carries the ended `sid`, which the provider treats as
+    // revoked.
+    it("refuses a remote host's token, and refreshes it, once its browser session ends", async () => {
       const remote = await remoteHostToken();
-      await db
-        .delete(sessions)
-        .where(eq(sessions.id, remote.session.sessionId))
-        .run();
+      const withoutOpenid = await remoteHostToken(
+        "compliance:read offline_access"
+      );
+      for (const { session } of [remote, withoutOpenid]) {
+        await db
+          .delete(sessions)
+          .where(eq(sessions.id, session.sessionId))
+          .run();
+      }
+      const refresh = (grant: typeof remote) =>
+        postTokenWithDpop(
+          {
+            grant_type: "refresh_token",
+            refresh_token: grant.refreshToken,
+            client_id: REMOTE_HOST_ID,
+          },
+          grant.dpopKeyPair
+        );
 
-      const { status, json } = await exchangeAsMcp(remote.token);
+      const direct = await exchangeAsMcp(remote.token);
+      const openidRefresh = await refresh(remote);
+      const scopedRefresh = await refresh(withoutOpenid);
+      const refreshedToken = scopedRefresh.json.access_token as string;
+      const fromRefresh = await exchangeAsMcp(refreshedToken);
 
-      expect({ status, json }).toEqual({ status: 400, json: INVALID_SUBJECT });
+      expect(direct).toMatchObject({ status: 400, json: INVALID_SUBJECT });
+      expect(openidRefresh).toMatchObject({
+        status: 400,
+        json: {
+          error: "invalid_grant",
+          error_description:
+            "Authentication context required for ID token issuance",
+        },
+      });
+      expect(scopedRefresh.status).toBe(200);
+      expect(decodeJwt(refreshedToken).sid).toBe(
+        withoutOpenid.session.sessionId
+      );
+      expect(fromRefresh).toMatchObject({ status: 400, json: INVALID_SUBJECT });
     });
 
-    // D24: a JWT without a session takes its grant's stored context.
-    it("resolves a JWT subject without sid through its refresh token", async () => {
-      const referenceId = crypto.randomUUID();
-      const authContextId = (
-        await createAuthenticationContext({
-          userId,
-          loginMethod: "passkey",
-          authenticatedAt: new Date(),
-          sourceKind: "better_auth",
-          referenceType: "oauth_refresh_token",
-        })
-      ).id;
-      await db
-        .insert(oauthRefreshTokens)
-        .values({
-          token: hashToken(crypto.randomUUID()),
-          clientId: REMOTE_HOST_ID,
-          userId,
-          referenceId,
-          authContextId,
-          scopes: JSON.stringify(["openid", "compliance:read"]),
-          expiresAt: new Date(Date.now() + 3_600_000),
-        })
-        .run();
+    // D24: no context is read from the refresh row or a claim, so a JWT
+    // without `sid` has none.
+    it("refuses a JWT subject without a session", async () => {
       const subject = await signAccessToken({
         sub: userId,
         azp: REMOTE_HOST_ID,
         client_id: REMOTE_HOST_ID,
         scope: "openid compliance:read",
-        reference_id: referenceId,
+        reference_id: crypto.randomUUID(),
       });
 
       const { status, json } = await exchangeAsMcp(subject);
 
-      expect(status).toBe(200);
-      const stored = await findStoredOpaqueAccessToken(
-        json.access_token as string
-      );
-      expect(stored?.accessTokenClaims).toEqual({
-        [AUTHENTICATION_CONTEXT_CLAIM]: authContextId,
+      expect({ status, json }).toEqual({
+        status: 400,
+        json: invalidRequest("subject_token has no authentication context"),
       });
     });
   });

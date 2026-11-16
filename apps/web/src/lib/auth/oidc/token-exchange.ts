@@ -17,7 +17,7 @@ import {
   validateClientScopes,
 } from "@better-auth/oauth-provider/internal";
 import { isAPIError } from "better-auth/api";
-import { and, eq, isNotNull } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 
 import { env } from "@/env";
 import {
@@ -32,7 +32,6 @@ import { mintOpaqueAccessToken } from "@/lib/auth/oidc/haip/opaque-access-token"
 import { isZentityAccessToken } from "@/lib/auth/oidc/resource-access-token";
 import { db } from "@/lib/db/connection";
 import { cibaApprovals } from "@/lib/db/schema/ciba";
-import { oauthRefreshTokens } from "@/lib/db/schema/oauth-provider";
 
 export const TOKEN_EXCHANGE_GRANT_TYPE =
   "urn:ietf:params:oauth:grant-type:token-exchange";
@@ -103,46 +102,23 @@ async function hasCibaApproval(referenceId: unknown): Promise<boolean> {
   return Boolean(row);
 }
 
-async function refreshTokenAuthContextId(
-  referenceId: unknown
-): Promise<string | null> {
-  if (typeof referenceId !== "string" || !referenceId) {
-    return null;
-  }
-  const row = await db
-    .select({ authContextId: oauthRefreshTokens.authContextId })
-    .from(oauthRefreshTokens)
-    .where(
-      and(
-        eq(oauthRefreshTokens.referenceId, referenceId),
-        isNotNull(oauthRefreshTokens.authContextId)
-      )
-    )
-    .limit(1)
-    .get();
-  return row?.authContextId ?? null;
-}
-
 /**
  * The subject's authentication context, resolved on the server and never
- * read from a claim the client presented: its session's, the one stored with
- * an opaque token's claims, or for a JWT without a session, the one stored
- * with the refresh token of its grant.
+ * read from a claim the client presented: its session's, or for an opaque
+ * token without a session, the one stored with the token's claims.
  */
 async function resolveSubjectAuthContextId(
   subjectToken: string,
   subject: JWTPayload
 ): Promise<string | null> {
   const sessionId = typeof subject.sid === "string" ? subject.sid : null;
-  let authContextId: string | null = null;
-  if (!sessionId) {
-    const stored = subject[AUTHENTICATION_CONTEXT_CLAIM];
-    if (subjectToken.split(".").length === 3) {
-      authContextId = await refreshTokenAuthContextId(subject.reference_id);
-    } else if (typeof stored === "string") {
-      authContextId = stored;
-    }
-  }
+  const stored = subject[AUTHENTICATION_CONTEXT_CLAIM];
+  const authContextId =
+    sessionId ||
+    subjectToken.split(".").length === 3 ||
+    typeof stored !== "string"
+      ? null
+      : stored;
   const context = await resolveAuthenticationContext({
     authContextId,
     sessionId,

@@ -761,7 +761,7 @@ The CIBA access token is the result. Zentity never exchanges it for another audi
 
 ### HTTP transport
 
-The HTTP transport serves remote MCP hosts. It authenticates to Zentity as a confidential client, `MCP_CLIENT_ID` and `MCP_CLIENT_SECRET`, which `pnpm --filter @zentity/web mcp:provision` creates and links to `MCP_PUBLIC_URL`; the transport refuses to start without them. For each request, it exchanges the remote host's MCP-audience token for an opaque Zentity token bound to its own per-process DPoP key, reads its pairwise subject from UserInfo with that token, and runs CIBA for `my_profile` and `purchase` with `client_secret_basic`.
+The HTTP transport serves remote MCP hosts. It authenticates to Zentity as a confidential client, `MCP_CLIENT_ID` and `MCP_CLIENT_SECRET`, which `pnpm --filter @zentity/web mcp:provision` creates and links to `MCP_PUBLIC_URL`; the transport refuses to start without them. For each request, it exchanges the remote host's MCP-audience token for an opaque Zentity token bound to its own per-process DPoP key, reads its pairwise subject from UserInfo with that token, and runs CIBA for `my_profile` and `purchase` with `client_secret_basic`. The remote host's access lasts as long as the user's browser session: after sign-out or session expiry, its token and every token its refresh yields are refused, so the user authorizes the MCP connector again.
 
 ### Session expiry
 
