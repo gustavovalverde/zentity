@@ -1,5 +1,9 @@
 import { decodeJwt, type JWTVerifyOptions } from "jose";
 import { z } from "zod";
+import {
+  type IdentityStrength,
+  IdentityStrengthSchema,
+} from "../protocol/purchase-authorization";
 import type { DpopClient } from "./dpop-client";
 import {
   createJwksTokenVerifier,
@@ -87,9 +91,15 @@ export interface ProofOfHumanTokenRequestFailure {
 
 export interface ProofOfHumanTokenRequestSuccess {
   confirmationJkt: string | null;
+  /** Seconds the token lives, as the issuer stated it. */
+  expiresIn: number | null;
   ok: true;
   token: string;
-  unverifiedClaims: ProofOfHumanClaims;
+  /**
+   * The token's `poh` claims, read without verifying the signature: the
+   * client-mode axes, or a merchant-mode predicate.
+   */
+  unverifiedClaims: ProofOfHumanClaims | MerchantProofOfHumanClaims;
 }
 
 export type ProofOfHumanTokenRequestResult =
@@ -107,6 +117,30 @@ function asStrength(value: unknown): IdentityEvidenceStrength {
   return typeof value === "string" && VALID_STRENGTHS.has(value as never)
     ? (value as IdentityEvidenceStrength)
     : "none";
+}
+
+/**
+ * The `poh` claims of a merchant-mode token: only that the user's identity
+ * meets the merchant's minimum.
+ */
+export interface MerchantProofOfHumanClaims {
+  identity: { strength_at_least: IdentityStrength };
+  policy: ProofOfHumanPolicyAxis;
+}
+
+const merchantClaimsSchema = z
+  .object({
+    identity: z.object({ strength_at_least: IdentityStrengthSchema }).strict(),
+    policy: z.object({ version: z.string() }).strict(),
+  })
+  .strict();
+
+/** Reads merchant-mode `poh` claims, or null for any other shape. */
+export function parseMerchantProofOfHumanClaims(
+  claims: unknown
+): MerchantProofOfHumanClaims | null {
+  const parsed = merchantClaimsSchema.safeParse(claims);
+  return parsed.success ? parsed.data : null;
 }
 
 function parseProofOfHumanClaims(claims: unknown): ProofOfHumanClaims {
@@ -186,6 +220,7 @@ export function createProofOfHumanTokenVerifier(
 const proofOfHumanResponseSchema = z.object({
   error: z.string().optional().catch(undefined),
   error_description: z.string().optional().catch(undefined),
+  expires_in: z.number().optional().catch(undefined),
   token: z.string().optional().catch(undefined),
 });
 
@@ -226,6 +261,9 @@ export async function requestProofOfHumanToken(
     ok: true,
     token,
     confirmationJkt: parseProofOfHumanConfirmation(payload.cnf)?.jkt ?? null,
-    unverifiedClaims: parseProofOfHumanClaims(payload.poh),
+    expiresIn: result.expires_in ?? null,
+    unverifiedClaims:
+      parseMerchantProofOfHumanClaims(payload.poh) ??
+      parseProofOfHumanClaims(payload.poh),
   };
 }

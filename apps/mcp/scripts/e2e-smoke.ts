@@ -334,7 +334,7 @@ async function runToolChecks(client: Client) {
       amount: 1,
       currency: "USD",
     });
-    assert(purchase.status === "complete", `status ${purchase.status}`);
+    assert(purchase.status === "approved", `status ${purchase.status}`);
     assert(purchase.approved === true, "purchase approved");
     const fulfillment = purchase.fulfillment as { name?: unknown } | null;
     assert(typeof fulfillment?.name === "string", "fulfillment name returned");

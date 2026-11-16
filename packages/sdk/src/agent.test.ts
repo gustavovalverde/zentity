@@ -1,12 +1,17 @@
 import { describe, expect, it, vi } from "vitest";
 
+import { decodeProtectedHeader } from "jose";
+
+import {
+  createStubSchemeClient,
+  paymentRequiredResponse,
+  RESOURCE_URL,
+  requirement,
+  TEST_ISSUER,
+} from "./__fixtures__/x402-merchant";
 import { createAgent } from "./agent";
 import { createDpopClient } from "./rp/dpop-client";
-import {
-  PAYMENT_REQUIRED_HEADER,
-  PAYMENT_SIGNATURE_HEADER,
-  parsePaymentSignatureHeader,
-} from "./rp/payment-required";
+import { PAYMENT_SIGNATURE_HEADER } from "./rp/payment-required";
 
 const FAKE_TIMERS = {
   toFake: ["setTimeout", "clearTimeout", "Date"],
@@ -40,6 +45,15 @@ function encodeJwtPayload(payload: Record<string, unknown>): string {
   const body = Buffer.from(JSON.stringify(payload)).toString("base64url");
   return `${header}.${body}.`;
 }
+
+const MERCHANT_POH_TOKEN = encodeJwtPayload({
+  aud: "https://merchant.example",
+  exp: FUTURE_EXP,
+  poh: {
+    identity: { strength_at_least: "documentary_full" },
+    policy: { version: "v1.0" },
+  },
+});
 
 function createDiscoveryResponse(): Response {
   return new Response(
@@ -87,32 +101,6 @@ const MANUAL_AGENT_AUTHORIZATION = {
   ...AGENT_AUTHORIZATION,
   oversight: { method: "user_verification", approved_at: 1_763_200_000 },
 };
-
-function createPaymentRequiredHeader(): string {
-  return Buffer.from(
-    JSON.stringify({
-      x402Version: 2,
-      accepts: [
-        {
-          scheme: "exact",
-          network: "eip155:84532",
-          payTo: "0x000000000000000000000000000000000000dEaD",
-          amount: "1",
-          maxTimeoutSeconds: 300,
-          asset: "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
-          extra: {},
-        },
-      ],
-      resource: { url: "https://merchant.example/api/purchase" },
-      extensions: {
-        zentity: {
-          minComplianceLevel: 2,
-          pohIssuer: "https://issuer.example",
-        },
-      },
-    })
-  ).toString("base64");
-}
 
 describe("createAgent", () => {
   // R16: an opaque access token carries no capabilities to read, and a
@@ -280,73 +268,151 @@ describe("createAgent", () => {
     vi.useRealTimers();
   });
 
-  it("auto-retries x402 responses with a proof-of-human token", async () => {
+  // R16 and R11: the agent sends the strict x402_purchase entry, one CIBA
+  // request per purchase, each under its own key.
+  it("approves each x402 purchase under a fresh key with the merchant's requirement", async () => {
     vi.useFakeTimers(FAKE_TIMERS);
-    const fetchFn = vi
-      .fn<typeof fetch>()
-      .mockResolvedValueOnce(
-        new Response("payment required", {
-          status: 402,
-          headers: { [PAYMENT_REQUIRED_HEADER]: createPaymentRequiredHeader() },
-        })
-      )
-      .mockResolvedValueOnce(createDiscoveryResponse())
-      .mockResolvedValueOnce(cibaAuthResponse())
-      .mockResolvedValueOnce(
-        cibaTokenResponse("opaque-capability-token", AGENT_AUTHORIZATION)
-      )
-      .mockResolvedValueOnce(
-        new Response(
+    const cibaBodies: URLSearchParams[] = [];
+    const proofKeys: Record<string, string[]> = {};
+    function recordProofKey(path: string, headers: Headers) {
+      const proof = headers.get("DPoP");
+      if (proof) {
+        const jwk = decodeProtectedHeader(proof).jwk as { x: string };
+        proofKeys[path] = [...(proofKeys[path] ?? []), jwk.x];
+      }
+    }
+    const fetchFn = vi.fn<typeof fetch>(async (input, init) => {
+      const request = input instanceof Request ? input : new Request(input, init);
+      const url = new URL(request.url);
+      const headers = new Headers(init?.headers ?? request.headers);
+      if (url.pathname.endsWith("/.well-known/openid-configuration")) {
+        return new Response(
           JSON.stringify({
-            token: encodeJwtPayload({
-              sub: "user-1",
-              exp: FUTURE_EXP,
-              poh: {
-                identity: {
-                  verified: true,
-                  strength: "documentary_full",
-                },
-                humanity: { proven: false },
-                policy: { version: "v1.0" },
-              },
-            }),
-          }),
-          { status: 200 }
-        )
-      )
-      .mockResolvedValueOnce(
-        new Response(JSON.stringify({ access: "granted" }))
-      );
+            issuer: TEST_ISSUER,
+            authorization_endpoint: `${TEST_ISSUER}/oauth2/authorize`,
+            backchannel_authentication_endpoint: `${TEST_ISSUER}/oauth2/bc-authorize`,
+            token_endpoint: `${TEST_ISSUER}/oauth2/token`,
+          })
+        );
+      }
+      if (url.pathname.endsWith("/oauth2/bc-authorize")) {
+        cibaBodies.push(init?.body as URLSearchParams);
+        return cibaAuthResponse(`auth-${cibaBodies.length}`);
+      }
+      if (url.pathname.endsWith("/oauth2/token")) {
+        recordProofKey("token", headers);
+        const sent = cibaBodies.at(-1)?.get("authorization_details") as string;
+        return cibaTokenResponse("opaque-x402-token", {
+          authorization_details: JSON.parse(sent),
+          oversight: { method: "user_verification", approved_at: 1 },
+        });
+      }
+      if (url.pathname.endsWith("/proof-of-human")) {
+        recordProofKey("mint", headers);
+        return new Response(
+          JSON.stringify({
+            token: MERCHANT_POH_TOKEN,
+            token_type: "DPoP",
+            expires_in: 300,
+          })
+        );
+      }
+      if (headers.get(PAYMENT_SIGNATURE_HEADER)) {
+        recordProofKey("merchant", headers);
+        return new Response(JSON.stringify({ access: "granted" }));
+      }
+      return paymentRequiredResponse();
+    });
+    const installation = await createDpopClient();
 
     const agent = createAgent({
-      issuerUrl: "https://issuer.example",
+      issuerUrl: TEST_ISSUER,
+      clientId: "client-1",
+      dpopClient: installation,
+      fetch: fetchFn,
+      loginHint: "pairwise-sub",
+      resource: "https://issuer.example",
+      x402SchemeClient: createStubSchemeClient(),
+    });
+    const x402 = {
+      maxAmount: "1",
+      maxIdentityStrength: "documentary_full",
+    } as const;
+
+    const first = await settle(agent.fetch(RESOURCE_URL, { x402 }));
+    const second = await settle(agent.fetch(RESOURCE_URL, { x402 }));
+
+    expect(first.status).toBe(200);
+    expect(second.status).toBe(200);
+    expect(cibaBodies).toHaveLength(2);
+    for (const body of cibaBodies) {
+      expect(body.get("scope")).toBe("openid poh");
+      expect(body.get("binding_message")).toBe(
+        "Proof-of-Human for merchant.example"
+      );
+      expect(body.has("resource")).toBe(false);
+      const [entry] = JSON.parse(body.get("authorization_details") as string);
+      expect(entry).toEqual({
+        type: "x402_purchase",
+        resource_url: RESOURCE_URL,
+        resource_description: "Financial analytics",
+        payment_requirements: requirement(),
+        min_identity_strength: "documentary_full",
+      });
+      expect(entry).not.toHaveProperty("resource");
+    }
+
+    const installationKey = installation.keyPair.publicJwk.x;
+    const [firstKey, secondKey] = proofKeys.token ?? [];
+    expect(firstKey).toBeDefined();
+    expect(secondKey).not.toBe(firstKey);
+    expect(proofKeys.mint).toEqual([firstKey, secondKey]);
+    expect(proofKeys.merchant).toEqual([firstKey, secondKey]);
+    expect(Object.values(proofKeys).flat()).not.toContain(installationKey);
+    vi.useRealTimers();
+  });
+
+  it("refuses a purchase whose approved details differ from the request", async () => {
+    vi.useFakeTimers(FAKE_TIMERS);
+    const fetchFn = vi.fn<typeof fetch>(async (input, init) => {
+      const request = input instanceof Request ? input : new Request(input, init);
+      const url = new URL(request.url);
+      if (url.pathname.endsWith("/.well-known/openid-configuration")) {
+        return new Response(
+          JSON.stringify({
+            issuer: TEST_ISSUER,
+            authorization_endpoint: `${TEST_ISSUER}/oauth2/authorize`,
+            backchannel_authentication_endpoint: `${TEST_ISSUER}/oauth2/bc-authorize`,
+            token_endpoint: `${TEST_ISSUER}/oauth2/token`,
+          })
+        );
+      }
+      if (url.pathname.endsWith("/oauth2/bc-authorize")) {
+        return cibaAuthResponse();
+      }
+      if (url.pathname.endsWith("/oauth2/token")) {
+        return cibaTokenResponse("opaque-x402-token", {
+          authorization_details: [{ type: "x402_purchase", changed: true }],
+        });
+      }
+      return paymentRequiredResponse();
+    });
+    const agent = createAgent({
+      issuerUrl: TEST_ISSUER,
       clientId: "client-1",
       dpopClient: await createDpopClient(),
       fetch: fetchFn,
-      loginHint: "user@example.com",
+      loginHint: "pairwise-sub",
+      x402SchemeClient: createStubSchemeClient(),
     });
 
-    const responsePromise = agent.fetch("https://merchant.example/api", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ resourceId: "resource-1" }),
-      x402: { autoPayWithProofOfHuman: true },
-    });
-    const response = await settle(responsePromise);
-
-    expect(response.status).toBe(200);
-    const cibaBody = fetchFn.mock.calls[2]?.[1]?.body as URLSearchParams;
-    expect(cibaBody.get("resource")).toBe("https://issuer.example");
-    const retryRequest = fetchFn.mock.calls[5]?.[0] as Request;
-    await expect(retryRequest.json()).resolves.toEqual({
-      resourceId: "resource-1",
-    });
-    const paymentPayload = parsePaymentSignatureHeader(
-      retryRequest.headers.get(PAYMENT_SIGNATURE_HEADER) as string
-    );
-    expect(paymentPayload.extensions?.zentity).toMatchObject({
-      pohToken: expect.any(String),
-    });
+    await expect(
+      settle(
+        agent.fetch(RESOURCE_URL, {
+          x402: { maxAmount: "1", maxIdentityStrength: "documentary_full" },
+        })
+      )
+    ).rejects.toMatchObject({ code: "approval_mismatch" });
     vi.useRealTimers();
   });
 });

@@ -89,6 +89,11 @@ export async function acquirePohToken(): Promise<PohResult | PohError> {
     };
   }
 
+  // demo-rp's sign-in token yields a client-mode token, with the identity
+  // and humanity axes.
+  if (!("humanity" in result.unverifiedClaims)) {
+    return { error: "unexpected_poh_token", status: 502 };
+  }
   return {
     token: result.token,
     dpopJkt: result.confirmationJkt,

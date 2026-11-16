@@ -4,20 +4,31 @@ import type {
   ServerContext,
 } from "@modelcontextprotocol/server";
 import {
-  ComplianceInsufficientError,
+  assertApprovedDetails,
+  buildX402PurchaseAuthorization,
+  type CreateX402FetchOptions,
   createX402Fetch,
-  type X402PaymentContext,
+  type X402ApprovalContext,
+  X402PurchaseError,
+  type X402PurchaseErrorCode,
 } from "@zentity/sdk";
 import {
-  identityStrengthTier,
+  canonicalJson,
+  IDENTITY_STRENGTHS,
+  type IdentityStrength,
+  truncateBindingMessage,
+  type X402PaymentRequirements,
+} from "@zentity/sdk/protocol";
+import {
+  createDpopClient,
+  type DpopClient,
   PAYMENT_RESPONSE_HEADER,
-  type ProofOfHumanClaims,
   parsePaymentResponseHeader,
   requestProofOfHumanToken,
 } from "@zentity/sdk/rp";
 import { z } from "zod";
-import { prefixBindingMessage } from "../agent.js";
 import { config } from "../config.js";
+import { discoverMcpOAuth } from "../oauth-client.js";
 import { signAgentAssertion } from "../runtime/agent-registration.js";
 import {
   getAuthContext,
@@ -32,14 +43,23 @@ import {
   requestUserAction,
 } from "../services/interactive-approval.js";
 
+const X402_REFUSALS = [
+  "payment_not_configured",
+  "merchant_mismatch",
+  "untrusted_issuer",
+  "unsupported_resource",
+  "payment_bounds_exceeded",
+  "identity_strength_bound_exceeded",
+  "approval_mismatch",
+] as const satisfies readonly X402PurchaseErrorCode[];
+
 const purchaseOutputSchema = z.object({
   status: z.enum([
-    "complete",
+    "approved",
     "needs_user_action",
     "denied",
     "expired",
-    "compliance_insufficient",
-    "payment_bounds_exceeded",
+    ...X402_REFUSALS,
   ]),
   approved: z.boolean().nullable(),
   bindingMessage: z.string(),
@@ -58,14 +78,11 @@ const purchaseOutputSchema = z.object({
       expiresAt: z.string(),
     })
     .optional(),
-  upgrade_url: z.string().url().optional(),
   x402: z
     .object({
-      level_used: z.number().nullable(),
+      identity_strength: z.string().nullable(),
       payment_response: z.unknown().nullable(),
-      poh_issuer: z.string().nullable(),
       response: z.unknown().nullable(),
-      retried: z.boolean(),
       status: z.number(),
     })
     .optional(),
@@ -107,16 +124,30 @@ function formatFulfillment(
 }
 
 interface PurchaseParams {
-  amount: number;
-  currency: string;
-  description?: string | undefined;
-  item: string;
+  amount?: number | undefined;
+  currency?: string | undefined;
+  item?: string | undefined;
   maxAmount?: number | undefined;
-  maxComplianceLevel?: number | undefined;
-  merchant: string;
-  network?: string | undefined;
+  maxIdentityStrength?: IdentityStrength | undefined;
+  merchant?: string | undefined;
   requires_age_verification?: boolean | undefined;
   url?: string | undefined;
+}
+
+interface DirectPurchase {
+  amount: number;
+  currency: string;
+  item: string;
+  merchant: string;
+  requiresAgeVerification: boolean;
+}
+
+export interface PurchaseToolOptions {
+  /**
+   * Signs x402 payments. The MCP server has no source of one yet, so x402
+   * purchases answer `payment_not_configured`; tests inject a stub.
+   */
+  x402SchemeClient?: CreateX402FetchOptions["schemeClient"];
 }
 
 class PurchaseNeedsUserActionError extends Error {
@@ -143,74 +174,20 @@ class PurchaseAuthorizationEndedError extends Error {
   }
 }
 
-class PaymentBoundsExceededError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = "PaymentBoundsExceededError";
-  }
-}
-
-function buildRawBindingMessage(params: PurchaseParams): string {
-  const { item, merchant, amount, currency, description } = params;
-  const base = `Purchase ${item} from ${merchant} for ${amount} ${currency}`;
-  return description ? `${base}: ${description}` : base;
-}
-
-function buildPurchaseFingerprint(
-  oauth: ReturnType<typeof getOAuthContext>,
-  runtime: ReturnType<typeof tryGetRuntimeState>,
-  params: PurchaseParams
-): string {
-  return [
-    oauth.accountSub,
-    oauth.clientId,
-    runtime?.sessionId ?? "no-runtime",
-    "purchase",
-    params.merchant,
-    params.item,
-    params.amount.toFixed(2),
-    params.currency,
-    params.description?.trim() ?? "",
-    params.requires_age_verification ? "age" : "standard",
-  ].join(":");
-}
-
 function buildPurchaseScope(requiresAgeVerification: boolean): string {
   return requiresAgeVerification
     ? "openid proof:age proof:nationality identity.name identity.address"
     : "openid identity.name identity.address";
 }
 
-function buildX402PurchaseScope(): string {
-  return "openid poh";
-}
+const X402_PURCHASE_SCOPE = "openid poh";
+const ISO_4217_CODE = /^[A-Z]{3}$/;
 
-function buildX402PurchaseFingerprint(
+function sessionFingerprint(
   oauth: ReturnType<typeof getOAuthContext>,
-  runtime: ReturnType<typeof tryGetRuntimeState>,
-  params: PurchaseParams
-): string {
-  return [
-    oauth.accountSub,
-    oauth.clientId,
-    runtime?.sessionId ?? "no-runtime",
-    "x402",
-    params.url,
-    params.amount.toFixed(2),
-    params.currency,
-    params.description?.trim() ?? "",
-    params.maxAmount === undefined ? "" : params.maxAmount.toFixed(2),
-    params.maxComplianceLevel === undefined
-      ? ""
-      : String(params.maxComplianceLevel),
-    params.network ?? "",
-  ].join(":");
-}
-
-function buildX402BindingMessage(params: PurchaseParams): string {
-  const target = params.url ? new URL(params.url).origin : params.merchant;
-  const base = `Authorize x402 purchase from ${target} for ${params.amount} ${params.currency}`;
-  return params.description ? `${base}: ${params.description}` : base;
+  runtime: ReturnType<typeof tryGetRuntimeState>
+): string[] {
+  return [oauth.accountSub, oauth.clientId, runtime?.sessionId ?? "no-runtime"];
 }
 
 async function readResponsePayload(response: Response): Promise<unknown> {
@@ -239,87 +216,16 @@ function readPaymentResponseHeader(response: Response): unknown {
   }
 }
 
-function getRequiredPaymentAmount(context: X402PaymentContext): number | null {
-  const amount = context.selectedPaymentRequirement.amount;
-  if (typeof amount !== "string") {
-    return null;
-  }
-
-  const parsed = Number(amount);
-  return Number.isFinite(parsed) ? parsed : null;
-}
-
-function assertX402Bounds(params: PurchaseParams, context: X402PaymentContext) {
-  const requirement = context.selectedPaymentRequirement;
-
-  const requiredAmount = getRequiredPaymentAmount(context);
-  const maxAmount = params.maxAmount ?? params.amount;
-  if (requiredAmount !== null && requiredAmount > maxAmount) {
-    throw new PaymentBoundsExceededError(
-      `x402 payment amount ${requiredAmount} exceeds maxAmount ${maxAmount}`
-    );
-  }
-
-  if (params.network && requirement.network !== params.network) {
-    throw new PaymentBoundsExceededError(
-      `x402 network ${requirement.network} does not match ${params.network}`
-    );
-  }
-
-  if (
-    params.maxComplianceLevel !== undefined &&
-    context.requirement.minComplianceLevel > params.maxComplianceLevel
-  ) {
-    throw new PaymentBoundsExceededError(
-      `x402 compliance level ${context.requirement.minComplianceLevel} exceeds maxComplianceLevel ${params.maxComplianceLevel}`
-    );
-  }
-}
-
-async function requestProofOfHumanForPurchase(input: {
-  accessToken: string;
-  dpopClient: ReturnType<typeof getOAuthContext>["dpopClient"];
-  minComplianceLevel: number;
-}): Promise<{ claims: ProofOfHumanClaims; token: string }> {
-  const proofOfHuman = await requestProofOfHumanToken({
-    accessToken: input.accessToken,
-    dpopClient: input.dpopClient,
-    proofOfHumanUrl: `${config.zentityUrl}/api/auth/oauth2/proof-of-human`,
-  });
-
-  if (!proofOfHuman.ok) {
-    throw new Error(
-      proofOfHuman.errorDescription ??
-        `Proof of human request failed: ${proofOfHuman.error}`
-    );
-  }
-
-  const actualLevel = identityStrengthTier(proofOfHuman.unverifiedClaims);
-  if (actualLevel < input.minComplianceLevel) {
-    throw new ComplianceInsufficientError({
-      actualLevel,
-      issuerUrl: config.zentityUrl,
-      requiredLevel: input.minComplianceLevel,
-    });
-  }
-
-  return {
-    claims: proofOfHuman.unverifiedClaims,
-    token: proofOfHuman.token,
-  };
-}
-
 interface PurchaseInput {
-  bindingMessage: string;
   ctx: ServerContext;
   oauth: ReturnType<typeof getOAuthContext>;
-  params: PurchaseParams;
   runtime: ReturnType<typeof tryGetRuntimeState>;
   server: McpServer;
 }
 
 function needsUserActionResponse(
   input: PurchaseInput,
+  bindingMessage: string,
   interaction: InteractiveToolInteraction
 ) {
   return requestUserAction(
@@ -329,143 +235,135 @@ function needsUserActionResponse(
     buildPurchaseResponse({
       status: "needs_user_action",
       approved: null,
-      bindingMessage: input.bindingMessage,
+      bindingMessage,
       fulfillment: null,
       interaction,
     })
   );
 }
 
-async function fetchX402Purchase(
-  input: PurchaseInput
-): Promise<PurchaseStructuredContent> {
-  let proofOfHumanClaims: ProofOfHumanClaims | undefined;
-  let x402Context: X402PaymentContext | undefined;
-
-  const fetchWithX402 = createX402Fetch(fetch, {
-    getPohToken: async (minComplianceLevel, context) => {
-      x402Context = context;
-      assertX402Bounds(input.params, context);
-      const scope = buildX402PurchaseScope();
-      const authorizationDetails = [
-        {
-          type: "purchase",
-          url: input.params.url,
-          amount: {
-            value: input.params.amount.toFixed(2),
-            currency: input.params.currency,
-          },
-          minComplianceLevel,
-        },
-      ];
-      const agentAssertion = input.runtime
-        ? await signAgentAssertion(input.runtime, {
-            bindingMessage: input.bindingMessage,
-            scope,
-            authorizationDetails,
-          })
-        : undefined;
-      const outcome = await beginOrResumeInteractiveFlow({
-        toolName: "purchase",
-        fingerprint: buildX402PurchaseFingerprint(
-          input.oauth,
-          input.runtime,
-          input.params
-        ),
-        oauth: input.oauth,
-        approval: {
-          scope,
-          bindingMessage: input.bindingMessage,
-          authorizationDetails,
-          ...(agentAssertion ? { agentAssertion } : {}),
-        },
-        onApproved: async (tokenSet) => {
-          const proofOfHuman = await requestProofOfHumanForPurchase({
-            accessToken: tokenSet.accessToken,
-            dpopClient: input.oauth.dpopClient,
-            minComplianceLevel,
-          });
-          proofOfHumanClaims = proofOfHuman.claims;
-          return proofOfHuman.token;
-        },
-      });
-
-      if (outcome.status === "needs_user_action") {
-        throw new PurchaseNeedsUserActionError(outcome.interaction);
-      }
-      if (outcome.status === "denied") {
-        throw new PurchaseAuthorizationEndedError("denied");
-      }
-      if (outcome.status === "expired") {
-        throw new PurchaseAuthorizationEndedError("expired");
-      }
-
-      if (outcome.status === "complete") {
-        return outcome.data;
-      }
-
-      throw new Error("Unexpected x402 purchase authorization state");
-    },
-  });
-
-  const response = await fetchWithX402(input.params.url ?? "", {
-    method: "GET",
-    x402: { autoPayWithProofOfHuman: true },
-  });
-  const responsePayload = await readResponsePayload(response);
-  const paymentResponse = readPaymentResponseHeader(response);
-
-  return {
-    status: "complete",
-    approved: response.ok,
-    bindingMessage: input.bindingMessage,
-    fulfillment: null,
-    x402: {
-      level_used:
-        (proofOfHumanClaims
-          ? identityStrengthTier(proofOfHumanClaims)
-          : undefined) ??
-        x402Context?.requirement.minComplianceLevel ??
-        null,
-      payment_response: paymentResponse,
-      poh_issuer: x402Context?.requirement.pohIssuer ?? null,
-      response: responsePayload,
-      retried: Boolean(x402Context),
-      status: response.status,
-    },
-  };
+function x402BindingMessage(resourceUrl: string): string {
+  return truncateBindingMessage(
+    `Proof-of-Human for ${new URL(resourceUrl).host}`
+  );
 }
 
-async function runX402PurchaseTool(input: PurchaseInput) {
+/**
+ * Asks the user to approve a Proof-of-Human for the merchant's requirement
+ * and mints the token under a key made for this purchase. A changed 402 is a
+ * new requirement, so it starts a new approval.
+ */
+async function approveX402Purchase(
+  input: PurchaseInput,
+  requirement: X402PaymentRequirements,
+  context: X402ApprovalContext
+): Promise<{ dpopClient: DpopClient; pohToken: string }> {
+  const bindingMessage = x402BindingMessage(context.resourceUrl);
+  const authorizationDetails = [
+    buildX402PurchaseAuthorization(requirement, context),
+  ];
+  const agentAssertion = input.runtime
+    ? await signAgentAssertion(input.runtime, {
+        bindingMessage,
+        scope: X402_PURCHASE_SCOPE,
+        authorizationDetails,
+      })
+    : undefined;
+
+  const outcome = await beginOrResumeInteractiveFlow({
+    toolName: "purchase",
+    fingerprint: [
+      ...sessionFingerprint(input.oauth, input.runtime),
+      "x402",
+      canonicalJson(authorizationDetails),
+    ].join(":"),
+    oauth: input.oauth,
+    createFlowDpopClient: createDpopClient,
+    approval: {
+      scope: X402_PURCHASE_SCOPE,
+      bindingMessage,
+      authorizationDetails,
+      ...(agentAssertion ? { agentAssertion } : {}),
+    },
+    onApproved: async (tokenSet, dpopClient) => {
+      assertApprovedDetails(
+        authorizationDetails,
+        tokenSet.authorizationDetails
+      );
+      const proofOfHuman = await requestProofOfHumanToken({
+        accessToken: tokenSet.accessToken,
+        dpopClient,
+        proofOfHumanUrl: `${config.zentityUrl}/api/auth/oauth2/proof-of-human`,
+      });
+      if (!proofOfHuman.ok) {
+        throw new Error(
+          proofOfHuman.errorDescription ??
+            `Proof of human request failed: ${proofOfHuman.error}`
+        );
+      }
+      return { dpopClient, pohToken: proofOfHuman.token };
+    },
+  });
+
+  if (outcome.status === "needs_user_action") {
+    throw new PurchaseNeedsUserActionError(outcome.interaction);
+  }
+  if (outcome.status !== "complete") {
+    throw new PurchaseAuthorizationEndedError(outcome.status);
+  }
+  return outcome.data;
+}
+
+async function runX402PurchaseTool(
+  input: PurchaseInput,
+  url: string,
+  bounds: { maxAmount: number; maxIdentityStrength: IdentityStrength },
+  options: PurchaseToolOptions
+) {
+  const bindingMessage = x402BindingMessage(url);
+  let identityStrength: string | null = null;
   try {
-    return buildPurchaseResponse(await fetchX402Purchase(input));
+    const discovery = await discoverMcpOAuth();
+    const x402Fetch = createX402Fetch({
+      issuer: discovery.issuer,
+      maxAmount: bounds.maxAmount,
+      maxIdentityStrength: bounds.maxIdentityStrength,
+      schemeClient: options.x402SchemeClient,
+      approve: (requirement, context) => {
+        identityStrength = context.minIdentityStrength;
+        return approveX402Purchase(input, requirement, context);
+      },
+    });
+    const response = await x402Fetch(url, { method: "GET" });
+    return buildPurchaseResponse({
+      status: "approved",
+      approved: response.ok,
+      bindingMessage,
+      fulfillment: null,
+      x402: {
+        identity_strength: identityStrength,
+        payment_response: readPaymentResponseHeader(response),
+        response: await readResponsePayload(response),
+        status: response.status,
+      },
+    });
   } catch (error) {
     if (error instanceof PurchaseNeedsUserActionError) {
-      return needsUserActionResponse(input, error.interaction);
-    }
-    if (error instanceof ComplianceInsufficientError) {
-      return buildPurchaseResponse({
-        status: "compliance_insufficient",
-        approved: false,
-        bindingMessage: input.bindingMessage,
-        error: error.message,
-        fulfillment: null,
-        upgrade_url: error.upgradeUrl,
-      });
+      return needsUserActionResponse(input, bindingMessage, error.interaction);
     }
     if (error instanceof PurchaseAuthorizationEndedError) {
       return buildPurchaseResponse({
         status: error.status,
         approved: false,
-        bindingMessage: input.bindingMessage,
+        bindingMessage,
         fulfillment: null,
       });
     }
-    if (error instanceof PaymentBoundsExceededError) {
+    if (error instanceof X402PurchaseError) {
       return buildPurchaseResponse({
-        status: "payment_bounds_exceeded",
+        status: error.code,
         approved: false,
-        bindingMessage: input.bindingMessage,
+        bindingMessage,
         error: error.message,
         fulfillment: null,
       });
@@ -474,39 +372,44 @@ async function runX402PurchaseTool(input: PurchaseInput) {
   }
 }
 
-async function runDirectPurchaseTool(input: PurchaseInput) {
-  const scope = buildPurchaseScope(
-    Boolean(input.params.requires_age_verification)
+async function runDirectPurchaseTool(
+  input: PurchaseInput,
+  purchase: DirectPurchase
+) {
+  const bindingMessage = truncateBindingMessage(
+    `Buy from ${purchase.merchant}`
   );
+  const scope = buildPurchaseScope(purchase.requiresAgeVerification);
   const authorizationDetails = [
     {
       type: "purchase",
-      merchant: input.params.merchant,
-      item: input.params.item,
+      merchant: { name: purchase.merchant },
+      item: purchase.item,
       amount: {
-        value: input.params.amount.toFixed(2),
-        currency: input.params.currency,
+        value: purchase.amount.toFixed(2),
+        currency: purchase.currency,
       },
     },
   ];
   const agentAssertion = input.runtime
     ? await signAgentAssertion(input.runtime, {
-        bindingMessage: input.bindingMessage,
+        bindingMessage,
         scope,
         authorizationDetails,
       })
     : undefined;
   const outcome = await beginOrResumeInteractiveFlow({
     toolName: "purchase",
-    fingerprint: buildPurchaseFingerprint(
-      input.oauth,
-      input.runtime,
-      input.params
-    ),
+    fingerprint: [
+      ...sessionFingerprint(input.oauth, input.runtime),
+      "purchase",
+      canonicalJson(authorizationDetails),
+      scope,
+    ].join(":"),
     oauth: input.oauth,
     approval: {
       scope,
-      bindingMessage: input.bindingMessage,
+      bindingMessage,
       authorizationDetails,
       ...(agentAssertion ? { agentAssertion } : {}),
     },
@@ -516,16 +419,16 @@ async function runDirectPurchaseTool(input: PurchaseInput) {
         input.oauth.dpopClient
       );
       return {
-        status: "complete" as const,
+        status: "approved" as const,
         approved: true,
-        bindingMessage: input.bindingMessage,
+        bindingMessage,
         fulfillment: formatFulfillment(pii),
       };
     },
   });
 
   if (outcome.status === "needs_user_action") {
-    return needsUserActionResponse(input, outcome.interaction);
+    return needsUserActionResponse(input, bindingMessage, outcome.interaction);
   }
 
   if (outcome.status === "complete") {
@@ -535,71 +438,112 @@ async function runDirectPurchaseTool(input: PurchaseInput) {
   return buildPurchaseResponse({
     status: outcome.status,
     approved: false,
-    bindingMessage: input.bindingMessage,
+    bindingMessage,
     fulfillment: null,
   });
 }
 
-async function runPurchaseTool(
+function invalidInput(message: string) {
+  return {
+    content: [{ type: "text" as const, text: message }],
+    isError: true,
+  };
+}
+
+function runPurchaseTool(
   server: McpServer,
   ctx: ServerContext,
-  params: PurchaseParams
-): Promise<ReturnType<typeof buildPurchaseResponse> | InputRequiredResult> {
+  params: PurchaseParams,
+  options: PurchaseToolOptions
+): Promise<
+  | ReturnType<typeof buildPurchaseResponse>
+  | InputRequiredResult
+  | ReturnType<typeof invalidInput>
+> {
   const auth = getAuthContext();
-  const oauth = getOAuthContext(auth);
-  const runtime = tryGetRuntimeState(auth);
-  const rawBindingMessage = params.url
-    ? buildX402BindingMessage(params)
-    : buildRawBindingMessage(params);
-  const bindingMessage = prefixBindingMessage(
-    runtime?.display.name ?? "Zentity MCP",
-    rawBindingMessage
-  );
-  const purchaseInput = {
-    bindingMessage,
+  const input: PurchaseInput = {
     ctx,
-    oauth,
-    params,
-    runtime,
+    oauth: getOAuthContext(auth),
+    runtime: tryGetRuntimeState(auth),
     server,
   };
 
-  return params.url
-    ? runX402PurchaseTool(purchaseInput)
-    : runDirectPurchaseTool(purchaseInput);
+  if (params.url) {
+    if (params.maxAmount === undefined) {
+      return Promise.resolve(
+        invalidInput("maxAmount is required for an x402 purchase")
+      );
+    }
+    return runX402PurchaseTool(
+      input,
+      params.url,
+      {
+        maxAmount: params.maxAmount,
+        maxIdentityStrength: params.maxIdentityStrength ?? "cryptographic_chip",
+      },
+      options
+    );
+  }
+
+  const { amount, currency, item, merchant } = params;
+  if (
+    amount === undefined ||
+    currency === undefined ||
+    item === undefined ||
+    merchant === undefined
+  ) {
+    return Promise.resolve(
+      invalidInput(
+        "amount, currency, item, and merchant are required without url"
+      )
+    );
+  }
+  return runDirectPurchaseTool(input, {
+    amount,
+    currency,
+    item,
+    merchant,
+    requiresAgeVerification: Boolean(params.requires_age_verification),
+  });
 }
 
-export function registerPurchaseTool(server: McpServer): void {
+export function registerPurchaseTool(
+  server: McpServer,
+  options: PurchaseToolOptions = {}
+): void {
   server.registerTool(
     "purchase",
     {
       title: "Purchase",
-      description:
-        "Authorize and execute a purchase on behalf of the user. This tool owns the browser approval flow and returns fulfillment data after approval.",
+      description: [
+        "Buy something on behalf of the user, who approves in the browser with a passkey.",
+        "Without url: a purchase from a named merchant; pass merchant, item, amount, and currency, and the tool returns the user's shipping details once after approval.",
+        "With url: an x402 resource that needs a Zentity Proof-of-Human. The user approves proving their identity to that merchant; the agent's own wallet pays the merchant's price, up to maxAmount. This needs a payment scheme client, so it answers payment_not_configured until one is configured.",
+        "Statuses: approved, needs_user_action, denied, expired, payment_not_configured, merchant_mismatch, untrusted_issuer, unsupported_resource, payment_bounds_exceeded, identity_strength_bound_exceeded, approval_mismatch.",
+      ].join(" "),
       inputSchema: z.object({
-        amount: z.number().describe("Purchase amount"),
-        currency: z.string().describe("Currency code (e.g. USD, EUR)"),
-        description: z
+        merchant: z
           .string()
-          .optional()
-          .describe("Additional purchase context"),
-        item: z.string().describe("Item being purchased"),
-        merchant: z.string().describe("Merchant name"),
-        maxAmount: z
-          .number()
-          .optional()
-          .describe("Maximum acceptable x402 payment amount"),
-        maxComplianceLevel: z
-          .number()
-          .int()
           .min(1)
-          .max(4)
+          .max(64)
           .optional()
-          .describe("Maximum compliance tier the merchant may require"),
-        network: z
+          .describe("Merchant name (required without url)"),
+        item: z
           .string()
+          .min(1)
+          .max(120)
           .optional()
-          .describe("Required x402 payment network, e.g. eip155:84532"),
+          .describe("Item being purchased (required without url)"),
+        amount: z
+          .number()
+          .positive()
+          .optional()
+          .describe("Purchase amount (required without url)"),
+        currency: z
+          .string()
+          .regex(ISO_4217_CODE)
+          .optional()
+          .describe("ISO 4217 currency code, e.g. EUR (required without url)"),
         requires_age_verification: z
           .boolean()
           .optional()
@@ -610,7 +554,20 @@ export function registerPurchaseTool(server: McpServer): void {
           .string()
           .url()
           .optional()
-          .describe("Optional x402 merchant URL to fetch with PoH retry"),
+          .describe("x402 resource URL to fetch with a Proof-of-Human"),
+        maxAmount: z
+          .number()
+          .positive()
+          .optional()
+          .describe(
+            "The most to pay for the x402 resource, in USDC (required with url)"
+          ),
+        maxIdentityStrength: z
+          .enum(IDENTITY_STRENGTHS)
+          .optional()
+          .describe(
+            "The strongest identity verification the merchant may require (default cryptographic_chip)"
+          ),
       }),
       outputSchema: purchaseOutputSchema,
       annotations: {
@@ -618,6 +575,8 @@ export function registerPurchaseTool(server: McpServer): void {
         idempotentHint: false,
       },
     },
-    withToolAuth(server, (params, ctx) => runPurchaseTool(server, ctx, params))
+    withToolAuth(server, (params, ctx) =>
+      runPurchaseTool(server, ctx, params, options)
+    )
   );
 }

@@ -207,19 +207,48 @@ return createPaymentRequired({
 });
 ```
 
-## x402 Selection
+## x402 Purchases
 
-`createX402Fetch()` selects the first advertised `PAYMENT-REQUIRED.accepts`
-entry for the retry and exposes it as `context.selectedPaymentRequirement`.
-Callers that enforce amount or network bounds should validate that selected
-requirement.
+An agent pays an x402 merchant that requires a Zentity Proof-of-Human with `createX402Fetch()`, or with `agent.fetch(url, { x402: { maxAmount, maxIdentityStrength } })` from `createAgent()`.
+
+```ts
+import { ExactEvmScheme } from "@x402/evm/exact/client";
+import { createAgent } from "@zentity/sdk";
+
+const agent = createAgent({
+  clientId,
+  dpopClient,
+  issuerUrl: "https://app.zentity.xyz/api/auth",
+  loginHint,
+  signAgentAssertion,
+  x402SchemeClient: new ExactEvmScheme(signer),
+});
+
+const response = await agent.fetch(resourceUrl, {
+  x402: { maxAmount: "1.00", maxIdentityStrength: "documentary_full" },
+});
+```
+
+When the merchant answers `402 Payment Required`, the client checks the 402 before it asks the user, in this order:
+
+1. A scheme client is configured. The SDK depends only on `@x402/core`; pass a `SchemeNetworkClient` such as `new ExactEvmScheme(signer)` from `@x402/evm/exact/client`.
+2. `resource.url` is on the request's origin.
+3. The `auth-hints` extension names the Zentity issuer as its `oauth2` authorization server.
+4. The `zentity` extension (`{ info: { minIdentityStrength }, schema }`) names no `identityRegistryMirror`. Resources that check identity on-chain are not available to agents.
+5. A requirement in a registered asset (Base Sepolia USDC) costs at most `maxAmount`, in display units. That bound replaces `@x402/core`'s default `$1` per-payment cap.
+6. The merchant's `minIdentityStrength` is at most `maxIdentityStrength`.
+
+The agent then asks the user to approve an `x402_purchase` with the merchant's requirement copied verbatim, under a DPoP key it generates for this purchase. It polls the CIBA token and mints a merchant-mode Proof-of-Human token with that key, checks that the token response returned exactly the details it sent, and only then signs the payment. The retry carries `PAYMENT-SIGNATURE`, `Authorization: DPoP <poh>`, and a DPoP proof by the purchase key; the payment payload carries no Zentity token.
+
+A refusal throws `X402PurchaseError` with one of these codes: `payment_not_configured`, `merchant_mismatch`, `untrusted_issuer`, `unsupported_resource`, `payment_bounds_exceeded`, `identity_strength_bound_exceeded`, or `approval_mismatch`. Only `approval_mismatch` comes after Zentity is contacted.
+
+`buildX402PurchaseAuthorization()` and `assertApprovedDetails()` are the two steps a caller with its own approval flow, such as the MCP server, runs around the CIBA request.
 
 ## Error Codes
 
 `@zentity/sdk/protocol` exports the stable `SdkErrorCode` union. Runtime
 errors that carry one of these codes expose it on their `code` property.
 
-- `compliance_insufficient`
 - `invalid_did_key_format`
 - `token_refresh_failed`
 - `use_dpop_nonce`

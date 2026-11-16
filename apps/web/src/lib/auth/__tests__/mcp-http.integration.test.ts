@@ -15,7 +15,15 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
 import { createDpopNonce, DPOP_NONCE_HEADER } from "@better-auth/core/oauth2";
-import { createDpopClient, type DpopClient } from "@zentity/sdk/rp";
+import {
+  buildAuthHintsExtension,
+  buildZentityExtension,
+  createDpopClient,
+  createPaymentRequired,
+  type DpopClient,
+  PROOF_OF_HUMAN_CHALLENGE,
+} from "@zentity/sdk/rp";
+import { eq } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // DPoP proofs sign the URL the client calls (RFC 9449 §4.2), and Zentity
@@ -37,14 +45,23 @@ const AUTH_HARNESS_PORT = await vi.hoisted(async () => {
 });
 
 import { auth } from "@/lib/auth/auth-config";
+import { stageFinalCibaDisclosure } from "@/lib/auth/oidc/disclosure/context";
+import { createScopeHash } from "@/lib/auth/oidc/disclosure/delivery";
 import {
   type McpClientCredentials,
   provisionMcpClient,
 } from "@/lib/auth/oidc/mcp-client";
 import { db } from "@/lib/db/connection";
+import { cibaRequests } from "@/lib/db/schema/ciba";
 import { oauthClients } from "@/lib/db/schema/oauth-provider";
 import { seedTestAuthorizationCode } from "@/test-utils/authorization-code-test-utils";
+import {
+  confirmWithPasskey,
+  postDecision,
+  signInApprover,
+} from "@/test-utils/ciba-decision-test-utils";
 import { createTestUser, resetDatabase } from "@/test-utils/db-test-utils";
+import { TestAuthenticator } from "@/test-utils/webauthn-test-utils";
 
 const MCP_PORT = 3300;
 const MCP_PUBLIC_URL = `http://localhost:${MCP_PORT}`;
@@ -150,6 +167,39 @@ async function startAuthHarness(): Promise<{
             status: 200,
           }
         )
+      );
+    }
+
+    // An x402 merchant on the issuer's host, for the MCP server to fetch.
+    if (url.pathname === "/merchant/x402") {
+      const issuer = discovery.issuer as string;
+      return writeWebResponse(
+        res,
+        createPaymentRequired({
+          accepts: [
+            {
+              scheme: "exact",
+              network: "eip155:84532",
+              amount: "1",
+              asset: "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
+              payTo: "0x000000000000000000000000000000000000dEaD",
+              maxTimeoutSeconds: 300,
+              extra: { name: "USDC", version: "2" },
+            },
+          ],
+          resource: { url: url.toString() },
+          extensions: {
+            "auth-hints": buildAuthHintsExtension({
+              acceptIndexes: [0],
+              authorizationServer: issuer,
+              tokenEndpoint: `${issuer}/oauth2/token`,
+            }),
+            zentity: buildZentityExtension({
+              minIdentityStrength: "documentary",
+            }),
+          },
+          wwwAuthenticate: PROOF_OF_HUMAN_CHALLENGE,
+        })
       );
     }
 
@@ -348,9 +398,13 @@ describe("remote MCP HTTP auth integration", () => {
     await resetDatabase();
   });
 
-  afterEach(() => {
+  afterEach(async () => {
     if (mcpProcess) {
+      const exited =
+        mcpProcess.exitCode === null ? once(mcpProcess, "exit") : undefined;
       killSubprocess(mcpProcess);
+      // The next test's server listens on the same port.
+      await exited;
       mcpProcess = undefined;
     }
     authHarness?.server.close();
@@ -551,5 +605,138 @@ describe("remote MCP HTTP auth integration", () => {
         nonceChallenge(await callMcpWithNonce(dpop, accessToken, mcpUrl, nonce))
       ).toEqual(MCP_NONCE_CHALLENGE);
     }
+  });
+
+  // The purchase tool on the HTTP transport, as its confidential client: a
+  // passkey-approved purchase releases the shipping name once, and an x402
+  // purchase answers payment_not_configured because the server has no
+  // payment scheme client.
+  it("runs the purchase tool as the confidential client", async () => {
+    authHarness = await startAuthHarness();
+    const userId = await createTestUser({ email: "mcp-buyer@example.com" });
+    const authenticator = await new TestAuthenticator().register(userId);
+    const mcpClient = await provisionMcpClient({});
+    const redirectUri = "https://mcp-http.test/callback";
+    await db
+      .insert(oauthClients)
+      .values({
+        clientId: REMOTE_CLIENT_ID,
+        grantTypes: JSON.stringify(["authorization_code", "refresh_token"]),
+        name: "Remote MCP Test Client",
+        redirectUris: JSON.stringify([redirectUri]),
+        responseTypes: JSON.stringify(["code"]),
+        subjectType: "pairwise",
+        tokenEndpointAuthMethod: "none",
+      })
+      .run();
+    const { tokenRequest } = await seedTestAuthorizationCode({
+      clientId: REMOTE_CLIENT_ID,
+      redirectUri,
+      userId,
+      scope: "openid email",
+      resource: MCP_PUBLIC_URL,
+    });
+    const dpop = await createDpopClient();
+    const tokenResult = await postToken(
+      dpop,
+      `${authHarness.baseUrl}/api/auth/oauth2/token`,
+      tokenRequest
+    );
+    const accessToken = tokenResult.json.access_token as string;
+
+    mcpProcess = startMcpSubprocess(authHarness.baseUrl, mcpClient);
+    await waitForHealth(MCP_PUBLIC_URL);
+    const mcpUrl = `${MCP_PUBLIC_URL}/mcp`;
+    let id = 10;
+    async function callTool(name: string, args: Record<string, unknown>) {
+      id += 1;
+      const response = await callMcp(dpop, accessToken, mcpUrl, {
+        jsonrpc: "2.0",
+        method: "tools/call",
+        id,
+        params: { name, arguments: args },
+      });
+      const data = parseJsonRpcResponse(
+        response.headers.get("content-type"),
+        await response.text()
+      ) as { result?: { structuredContent?: Record<string, unknown> } };
+      return data.result?.structuredContent ?? {};
+    }
+
+    const purchase = {
+      merchant: "Corner Books",
+      item: "A paperback",
+      amount: 12,
+      currency: "EUR",
+    };
+    const pending = await callTool("purchase", purchase);
+    expect(pending.status).toBe("needs_user_action");
+
+    const request = await db
+      .select()
+      .from(cibaRequests)
+      .where(eq(cibaRequests.clientId, mcpClient.clientId))
+      .get();
+    expect(request?.bindingMessage).toBe("Buy from Corner Books");
+    expect(request?.scope).toBe("openid identity.name identity.address");
+    expect(JSON.parse(request?.authorizationDetails as string)).toEqual([
+      {
+        type: "purchase",
+        merchant: { name: "Corner Books" },
+        item: "A paperback",
+        amount: { value: "12.00", currency: "EUR" },
+      },
+    ]);
+
+    const identityScopes = ["identity.name", "identity.address"];
+    await stageFinalCibaDisclosure({
+      userId,
+      clientId: mcpClient.clientId,
+      claims: {
+        given_name: "Ada",
+        family_name: "Lovelace",
+        name: "Ada Lovelace",
+      },
+      authReqId: request?.authReqId as string,
+      scopes: identityScopes,
+      scopeHash: createScopeHash(identityScopes),
+      intentJti: crypto.randomUUID(),
+    });
+    const approver = await signInApprover(userId);
+    const decision = await postDecision(approver, {
+      request_id: request?.id as string,
+      channel: "page",
+      // The harness serves the issuer on 127.0.0.1, the passkey RP ID here.
+      webauthn: await confirmWithPasskey(
+        approver,
+        request?.id as string,
+        authenticator,
+        { origin: authHarness.baseUrl, rpId: "127.0.0.1" }
+      ),
+    });
+    expect(decision).toEqual(expect.objectContaining({ status: 200 }));
+
+    const approved = await vi.waitFor(
+      async () => {
+        const result = await callTool("purchase", purchase);
+        if (result.status !== "approved") {
+          throw new Error(`purchase is ${String(result.status)}`);
+        }
+        return result;
+      },
+      { timeout: 20_000, interval: 1000 }
+    );
+    expect(approved).toEqual(
+      expect.objectContaining({
+        approved: true,
+        fulfillment: expect.objectContaining({ name: "Ada Lovelace" }),
+      })
+    );
+
+    const x402 = await callTool("purchase", {
+      url: `${authHarness.baseUrl}/merchant/x402`,
+      maxAmount: 1,
+    });
+    expect(x402.status).toBe("payment_not_configured");
   });
 });

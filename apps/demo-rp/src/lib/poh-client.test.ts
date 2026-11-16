@@ -81,11 +81,19 @@ describe("poh-client", () => {
       confirmationJkt: "sign-in-jkt",
       ok: true,
       token: "poh-token",
-      unverifiedClaims: { tier: 2 },
+      unverifiedClaims: {
+        identity: { verified: true, strength: "documentary_full" },
+        humanity: { proven: false },
+        policy: { version: "v1.0" },
+      },
     });
 
     await expect(acquirePohToken()).resolves.toEqual({
-      claims: { tier: 2 },
+      claims: {
+        identity: { verified: true, strength: "documentary_full" },
+        humanity: { proven: false },
+        policy: { version: "v1.0" },
+      },
       dpopJkt: "sign-in-jkt",
       token: "poh-token",
     });

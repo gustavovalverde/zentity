@@ -54,15 +54,23 @@ export type ApprovalRequest = Pick<
 interface StartInteractiveFlowParams<T> {
   approval: ApprovalRequest;
   browserSearchParams?: Record<string, string | undefined>;
+  /**
+   * Creates the DPoP client a new flow polls with, for a flow whose token
+   * must not be bound to the session's key (an x402 purchase). A resumed flow
+   * keeps the client it started with.
+   */
+  createFlowDpopClient?: (() => Promise<DpopClient>) | undefined;
   fingerprint: string;
   oauth: OAuthSessionContext;
-  onApproved: (tokenSet: CibaTokenSet) => Promise<T>;
+  /** Receives the token set and the DPoP client the token is bound to. */
+  onApproved: (tokenSet: CibaTokenSet, dpopClient: DpopClient) => Promise<T>;
   toolName: "my_profile" | "purchase";
 }
 
 async function buildCibaRequest(
   oauth: OAuthSessionContext,
-  approval: ApprovalRequest
+  approval: ApprovalRequest,
+  dpopClient: DpopClient
 ): Promise<CibaRequest> {
   const discovery = await discoverMcpOAuth();
   if (!discovery.backchannel_authentication_endpoint) {
@@ -75,7 +83,7 @@ async function buildCibaRequest(
     cibaEndpoint: discovery.backchannel_authentication_endpoint,
     clientId: oauth.clientId,
     ...(oauth.clientSecret ? { clientSecret: oauth.clientSecret } : {}),
-    dpopClient: oauth.dpopClient,
+    dpopClient,
     loginHint: oauth.accountSub,
     resource: config.zentityUrl,
     tokenEndpoint: discovery.token_endpoint,
@@ -157,7 +165,10 @@ async function resumeInteractiveFlow<T>(
 
   flows.delete(params.fingerprint);
   if (poll.status === "approved") {
-    return { status: "complete", data: await params.onApproved(poll.tokenSet) };
+    return {
+      status: "complete",
+      data: await params.onApproved(poll.tokenSet, entry.dpopClient),
+    };
   }
   return { status: poll.status === "denied" ? "denied" : "expired" };
 }
@@ -176,7 +187,14 @@ export async function beginOrResumeInteractiveFlow<T>(
     return resumeInteractiveFlow(existing, params);
   }
 
-  const cibaRequest = await buildCibaRequest(params.oauth, params.approval);
+  const dpopClient = params.createFlowDpopClient
+    ? await params.createFlowDpopClient()
+    : params.oauth.dpopClient;
+  const cibaRequest = await buildCibaRequest(
+    params.oauth,
+    params.approval,
+    dpopClient
+  );
   const pendingAuthorization = await beginCibaApproval(cibaRequest);
   logPendingApprovalHandoff(
     createPendingApproval(cibaRequest, pendingAuthorization)
@@ -197,7 +215,7 @@ export async function beginOrResumeInteractiveFlow<T>(
     ...(params.oauth.clientSecret
       ? { clientSecret: params.oauth.clientSecret }
       : {}),
-    dpopClient: params.oauth.dpopClient,
+    dpopClient,
     tokenEndpoint: cibaRequest.tokenEndpoint,
   };
   flows.set(params.fingerprint, entry);

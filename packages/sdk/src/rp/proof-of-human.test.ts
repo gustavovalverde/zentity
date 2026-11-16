@@ -144,6 +144,7 @@ describe("requestProofOfHumanToken", () => {
       ok: true,
       token,
       confirmationJkt: "thumbprint-1",
+      expiresIn: null,
       unverifiedClaims: verifiedDocumentaryFullPoh,
     });
   });

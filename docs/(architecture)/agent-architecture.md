@@ -366,9 +366,39 @@ sequenceDiagram
 The difference between profile reads and purchases is structural rather than cosmetic:
 
 - `my_profile` always remains an explicit approval because identity scopes require vault unlock in a full browser context.
-- `purchase` is not grantable, and its manual ceremony is `user_verification`.
+- `purchase` is not grantable, and its manual ceremony is `user_verification`. Both purchase RAR types, `purchase` and `x402_purchase`, and the `poh` scope map to it in the approval policy table, so no capability grant ever approves a purchase and no notification approves one inline.
 
 That means both profile disclosure and purchase execution stay on the human approval boundary, with purchase additionally requiring a user-verified passkey assertion.
+
+The MCP `purchase` tool has two paths:
+
+- Without `url`, it requests a `purchase` entry (`merchant.name`, `item`, and an ISO 4217 `amount`) with the identity scopes a delivery needs, under the binding message `Buy from <merchant name>`. After approval it reads the staged shipping details once from UserInfo.
+- With `url`, it fetches an x402 resource. The approval is a Proof-of-Human for that merchant, under the binding message `Proof-of-Human for <merchant host>`; the agent's own wallet pays the merchant's price, up to `maxAmount` in USDC. The MCP server has no payment scheme client yet, so this path answers `payment_not_configured` before asking the user.
+
+### The x402 sequence
+
+```mermaid
+sequenceDiagram
+  participant Agent
+  participant Merchant
+  participant Zentity
+  participant User
+  Agent->>Merchant: GET resource
+  Merchant-->>Agent: 402 (auth-hints, zentity, WWW-Authenticate: DPoP)
+  Note over Agent: checks the 402, picks a requirement within maxAmount,<br/>generates key K for this purchase
+  Agent->>Zentity: bc-authorize x402_purchase, scope openid poh, Agent-Assertion
+  Zentity->>User: approval page: Proof-of-Human for the merchant
+  User->>Zentity: passkey approval (identity strength checked)
+  Agent->>Zentity: CIBA token poll, DPoP proof by K
+  Agent->>Zentity: PoH mint, DPoP proof by K (one mint per approval)
+  Zentity-->>Agent: poh+jwt, aud = merchant origin, cnf.jkt = K
+  Note over Agent: signs the payment for the approved requirement
+  Agent->>Merchant: GET resource, PAYMENT-SIGNATURE, Authorization: DPoP poh, DPoP proof by K
+  Note over Merchant: PoH and proof checks, requirement equality,<br/>facilitator verify, records the PoH jti, settle
+  Merchant-->>Agent: 200 with PAYMENT-RESPONSE
+```
+
+K signs the CIBA token poll, the mint, and the merchant request, and is then discarded, so the installation key never reaches a merchant. The interactive MCP flow keeps K with the pending approval, so a resumed tool call polls and mints with the same key. A merchant that changes its 402 between tool calls presents a different requirement, which starts a new approval.
 
 ---
 
