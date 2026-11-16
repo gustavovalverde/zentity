@@ -57,6 +57,7 @@ export const oidc4vciIssuedCredentials = sqliteTable(
   },
   (table) => [
     index("oidc4vci_issued_credential_user_id_idx").on(table.userId),
+    index("oidc4vci_issued_credential_created_at_idx").on(table.createdAt),
     uniqueIndex("oidc4vci_issued_credential_status_entry_unique").on(
       table.statusListId,
       table.statusListIndex

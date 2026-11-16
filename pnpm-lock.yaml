@@ -1078,7 +1078,7 @@ packages:
       better-call: ~1.4.5
 
   '@better-auth/oidc4vci@file:apps/web/vendor/better-auth-oidc4vci-1.8.0-beta.10.tgz':
-    resolution: {integrity: sha512-kxXY4njxihPMhtkdiBp2FIhv0k0SZnMGY/V+uu/eDunIVXziugYGmJhOgDQJwPZHcfwRVk+zMyXov3PHwHO1hw==, tarball: file:apps/web/vendor/better-auth-oidc4vci-1.8.0-beta.10.tgz}
+    resolution: {integrity: sha512-lPZEdoNWjpeYt5gDPzVi9UIGLVxNlwJwPr2Y/xZ3yarwHckklhdWmONMuUx2NTOzT81AK3CY8wLnn5gMg0wTbw==, tarball: file:apps/web/vendor/better-auth-oidc4vci-1.8.0-beta.10.tgz}
     version: 1.8.0-beta.10
     peerDependencies:
       '@better-auth/core': ^1.8.0-beta.10

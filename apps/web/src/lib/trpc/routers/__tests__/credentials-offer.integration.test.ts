@@ -33,7 +33,11 @@ const OFFER_URI_PATTERN = /^openid-credential-offer:\/\/\?/;
 
 async function insertWallet(
   clientId: string,
-  values: { disabled?: boolean; grantTypes?: string[] } = {}
+  values: {
+    disabled?: boolean;
+    grantTypes?: string[];
+    tokenEndpointAuthMethod?: string;
+  } = {}
 ) {
   await db
     .insert(oauthClients)
@@ -46,7 +50,7 @@ async function insertWallet(
       ),
       redirectUris: JSON.stringify(["https://wallet.example/cb"]),
       scopes: JSON.stringify(["openid"]),
-      tokenEndpointAuthMethod: "none",
+      tokenEndpointAuthMethod: values.tokenEndpointAuthMethod ?? "none",
       skipConsent: true,
       subjectType: "pairwise",
       sectorIdentifier: "wallet.example",
@@ -62,12 +66,12 @@ function preAuthorizedCode(offer: Record<string, unknown>): string {
   return grants[PRE_AUTHORIZED_GRANT_TYPE]?.["pre-authorized_code"] ?? "";
 }
 
-async function redeem(code: string, clientId: string) {
+async function redeem(code: string, clientId?: string) {
   return postTokenWithDpop(
     {
       grant_type: PRE_AUTHORIZED_GRANT_TYPE,
       "pre-authorized_code": code,
-      client_id: clientId,
+      ...(clientId ? { client_id: clientId } : {}),
     },
     await createTestDpopKeyPair()
   );
@@ -118,6 +122,23 @@ describe("credentials.createOffer", () => {
     expect(builtIn.status).toBe(400);
     expect(builtIn.json.error).toBe("invalid_grant");
     expect((await redeem(code, REGISTERED_WALLET_ID)).status).toBe(200);
+  });
+
+  it("lets a confidential registered wallet redeem only after it authenticates", async () => {
+    await insertWallet(REGISTERED_WALLET_ID, {
+      tokenEndpointAuthMethod: "client_secret_basic",
+    });
+
+    const { offer } = await caller.createOffer({
+      walletClientId: REGISTERED_WALLET_ID,
+    });
+
+    const code = preAuthorizedCode(offer);
+    const anonymous = await redeem(code);
+    expect(anonymous.status).toBe(400);
+    expect(anonymous.json.error).toBe("invalid_client");
+    const withoutSecret = await redeem(code, REGISTERED_WALLET_ID);
+    expect(withoutSecret.json.error).toBe("invalid_client");
   });
 
   it.each([
