@@ -1131,16 +1131,23 @@ async function buildAccessTokenDisclosureClaims(
   const referenceId = info.referenceId;
   const scopeList = toScopeList(info.scopes);
   const claims: Record<string, unknown> = {};
+  // Per-RP anti-abuse handles stay in tokens only Zentity reads (ADR
+  // privacy/0015 rule 5). Zentity-hosted resources are dropped before
+  // issuance, so a token with resources is a JWT for an outside audience.
+  const isOpaqueToken = (info.resources?.length ?? 0) === 0;
 
-  // Per-RP sybil nullifier
-  if (scopeList.includes("proof:sybil") && clientId) {
+  if (isOpaqueToken && scopeList.includes("proof:sybil") && clientId) {
     const nullifier = await resolveSybilNullifier(userId, clientId);
     if (nullifier) {
       claims.sybil_nullifier = nullifier;
     }
   }
 
-  if (scopeList.includes("proof:humanity:rp_unique") && clientId) {
+  if (
+    isOpaqueToken &&
+    scopeList.includes("proof:humanity:rp_unique") &&
+    clientId
+  ) {
     const credentials = await getActiveHumanityCredentials(userId);
     const humanity = resolveRpUniqueHumanityClaim({
       clientId,

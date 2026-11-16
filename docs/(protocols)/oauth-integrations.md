@@ -515,8 +515,8 @@ Proof claims are projected from the account identity snapshot. The issuer reads 
 | `proof:compliance` | `policy_version`, `verification_time`, `attestation_expires_at` |
 | `proof:chip` | `chip_verified`, `chip_verification_method` |
 | `proof:humanity` | `humanity_proven` — boolean (id_token + userinfo); provenance is intentionally not exposed |
-| `proof:sybil` | `sybil_nullifier` — per-RP pseudonymous nullifier from document/chip credentials (access tokens only) |
-| `proof:humanity:rp_unique` | `rp_unique_humanity_id` — per-RP pseudonym derived from the union of the user's humanity credentials (access tokens only) |
+| `proof:sybil` | `sybil_nullifier` — per-RP pseudonymous nullifier from document/chip credentials (opaque access tokens only) |
+| `proof:humanity:rp_unique` | `rp_unique_humanity_id` — per-RP pseudonym derived from the union of the user's humanity credentials (opaque access tokens only) |
 | `poh` | (no id_token/userinfo claims) — gates the [Proof of Human resource endpoint](#proof-of-human) |
 
 `proof:sybil` derives from the bundle-owned `nullifierSeed`. At credential write time the system derives the seed as `HMAC-SHA256(DEDUP_HMAC_SECRET, rawKey || source)` (where `rawKey` is the OCR `dedupKey` or the raw NFC chip nullifier, and `source` domain-separates the two inputs). Verification finalization seeds `nullifierSeed` from the authoritative verified credential, and token issuance derives `sybil_nullifier = HMAC-SHA256(DEDUP_HMAC_SECRET, nullifierSeed + "|rp|" + clientId)`. This keeps the nullifier stable across credential additions, prevents any raw ZKPassport chip identifier from reaching the bundle, and resets only after full identity revocation.
@@ -691,7 +691,7 @@ For the user, a linked humanity credential:
 
 A relying party requesting `proof:humanity` receives `humanity_proven: true` in id_token + userinfo. Provenance — the provider name, count, or per-credential metadata — is intentionally not exposed; that count would be a fingerprinting surface even as an integer.
 
-A relying party requesting `proof:humanity:rp_unique` receives `rp_unique_humanity_id` in the access token only:
+A relying party requesting `proof:humanity:rp_unique` receives `rp_unique_humanity_id` in an opaque access token only, by introspecting it; a JWT access token for an outside resource server never carries it:
 
 - **Per-RP** — derived from `HMAC(HUMANITY_HMAC_SECRET, "personhood:rp_unique:v1" || rpClientId || stable_humanity_id)`
 - **Aggregated** — `stable_humanity_id` commits to the **union** of the user's active provider-subject hashes (sorted then HMACed), so RPs cannot tell from the pseudonym alone how many providers backed it
