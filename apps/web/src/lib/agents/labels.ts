@@ -173,9 +173,9 @@ export function formatPaymentAmount(amount: {
 // ─── Purchases ──────────────────────────────────────────────────────
 
 /** Who stated a line: the agent, the merchant, or Zentity itself. */
-export type PurchaseLineSource = "agent" | "merchant" | "zentity";
+type PurchaseLineSource = "agent" | "merchant" | "zentity";
 
-export interface PurchaseLine {
+interface PurchaseLine {
   /** "Stated by the agent" or "Described by the merchant", when not Zentity's. */
   label?: string;
   source: PurchaseLineSource;

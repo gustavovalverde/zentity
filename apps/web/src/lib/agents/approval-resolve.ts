@@ -72,7 +72,7 @@ const STRONGEST_IDENTITY = IDENTITY_STRENGTHS.at(-1) as IdentityStrength;
  * request without one. An entry that no longer parses requires the strongest
  * evidence, so it can never be approved.
  */
-export function requiredIdentityStrength(
+function requiredIdentityStrength(
   authorizationDetails: unknown
 ): IdentityStrength | null {
   const entry = normalizeAuthorizationDetails(authorizationDetails).find(
