@@ -5,6 +5,8 @@ export interface ComplianceBadge {
 }
 
 export interface RouteScenarioDcrConfig {
+  /** RFC 9396 §10 `authorization_details_types` the client registers. */
+  authorizationDetailsTypes?: string[];
   clientName: string;
   grantTypes?: string[];
   requestedScopes: string;

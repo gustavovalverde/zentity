@@ -61,6 +61,9 @@ export const dcrClient = sqliteTable("dcr_client", {
   scenarioId: text("scenarioId").primaryKey(),
   clientId: text("clientId").notNull(),
   clientSecret: text("clientSecret"),
+  // Hex SHA-256 of the registration body that created the client. A client
+  // registered from an older body is replaced on its next use.
+  registrationFingerprint: text("registrationFingerprint"),
 });
 
 export const validityNotice = sqliteTable(

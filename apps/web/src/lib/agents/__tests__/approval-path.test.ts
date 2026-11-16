@@ -64,7 +64,7 @@ describe("approvalPolicy", () => {
   // R14: a payment grant does not cover extra scopes.
   it("does not let a payment grant cover proof scopes added to the payment", () => {
     const policy = approvalPolicy({
-      scope: "openid payment_authorization:sign proof:age",
+      scope: "openid proof:age",
       authorizationDetails: [PAYMENT_ENTRY],
     });
 
@@ -73,29 +73,24 @@ describe("approvalPolicy", () => {
     expect(policy.pageOnly).toBe(true);
   });
 
-  // R22: the payment scope is grantable only with its payment entry.
-  it("grants the payment scope only together with a payment entry", () => {
-    const withEntry = approvalPolicy({
-      scope: "openid payment_authorization:sign",
+  // The payment entry, not a scope, makes the request a payment.
+  it("derives the payment capability from the payment entry alone", () => {
+    const policy = approvalPolicy({
+      scope: "openid",
       authorizationDetails: JSON.stringify([PAYMENT_ENTRY]),
     });
-    expect(withEntry.grantCapability).toBe("payment_authorization:sign");
-    expect(withEntry.ceremony).toBe("user_verification");
-    expect(withEntry.pageOnly).toBe(true);
+    expect(policy.grantCapability).toBe("payment_authorization:sign");
+    expect(policy.ceremony).toBe("user_verification");
+    expect(policy.pageOnly).toBe(true);
+  });
 
-    const scopeOnly = approvalPolicy({
-      scope: "openid payment_authorization:sign",
-    });
-    expect(scopeOnly.grantCapability).toBeNull();
-    expect(scopeOnly.ceremony).toBe("user_verification");
-    expect(scopeOnly.pageOnly).toBe(true);
-
+  // The capability id is not a scope: as one, it is an unknown item.
+  it("treats the payment capability id as an unknown scope", () => {
     expect(
-      approvalPolicy({
-        scope: "openid",
-        authorizationDetails: [PAYMENT_ENTRY],
-      }).grantCapability
-    ).toBe("payment_authorization:sign");
+      approvalPolicy({ scope: "openid payment_authorization:sign" })
+    ).toEqual(
+      expect.objectContaining({ grantCapability: null, pageOnly: true })
+    );
   });
 
   it("treats an unknown scope as page only, not grantable, and session", () => {

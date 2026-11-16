@@ -24,7 +24,12 @@
  *
  * - Exactly one `payment_authorization` entry per `authorization_details`.
  *   Batch flows reject with `rar_too_many_entries` (D-14).
- * - The capability id is `payment_authorization:sign` (D-15, D-1).
+ * - An entry with a field this schema does not define is refused.
+ * - `payment_authorization:sign` is the agent capability that grants and
+ *   approvals name (D-15, D-1). It is not an OAuth scope: a payment client
+ *   registers `authorization_details_types: ["payment_authorization"]`
+ *   (RFC 9396 §10), and the token's lifetime and audience come from the
+ *   authorization server's wallet resource.
  */
 
 import { z } from "zod";
@@ -43,41 +48,53 @@ const caip10AccountRegex =
 const decimalStringRegex = /^(0|[1-9][0-9]*)(\.[0-9]+)?$/;
 const intentHashPayloadRegex = /^[A-Za-z0-9_-]{43}$/;
 
-export const ChainIdSchema = z.object({
+export const ChainIdSchema = z
+	.object({
 	namespace: z
 		.string()
 		.regex(caip2NamespaceRegex, "chain.namespace must be CAIP-2 (a-z0-9-)"),
 	reference: z
 		.string()
 		.regex(caip2ReferenceRegex, "chain.reference must be CAIP-2 (a-zA-Z0-9-)"),
-});
+	})
+	.strict();
 export type ChainId = z.infer<typeof ChainIdSchema>;
 
 export const AmountUnitSchema = z.enum(["base", "display"]);
 
-export const AmountSchema = z.object({
-	currency: z.string().min(1).max(16),
-	value: z
-		.string()
-		.regex(decimalStringRegex, "amount.value must be a decimal string"),
-	unit: AmountUnitSchema,
-});
+export const AmountSchema = z
+	.object({
+		currency: z.string().min(1).max(16),
+		value: z
+			.string()
+			.regex(decimalStringRegex, "amount.value must be a decimal string"),
+		unit: AmountUnitSchema,
+	})
+	.strict();
 export type Amount = z.infer<typeof AmountSchema>;
 
 export const ExpiresAtSchema = z.discriminatedUnion("kind", [
-	z.object({
-		kind: z.literal("block_height"),
-		value: z.number().int().nonnegative(),
-	}),
-	z.object({ kind: z.literal("slot"), value: z.number().int().nonnegative() }),
-	z.object({
-		kind: z.literal("block_number"),
-		value: z.number().int().nonnegative(),
-	}),
-	z.object({
-		kind: z.literal("timestamp_seconds"),
-		value: z.number().int().nonnegative(),
-	}),
+	z
+		.object({
+			kind: z.literal("block_height"),
+			value: z.number().int().nonnegative(),
+		})
+		.strict(),
+	z
+		.object({ kind: z.literal("slot"), value: z.number().int().nonnegative() })
+		.strict(),
+	z
+		.object({
+			kind: z.literal("block_number"),
+			value: z.number().int().nonnegative(),
+		})
+		.strict(),
+	z
+		.object({
+			kind: z.literal("timestamp_seconds"),
+			value: z.number().int().nonnegative(),
+		})
+		.strict(),
 ]);
 export type ExpiresAt = z.infer<typeof ExpiresAtSchema>;
 
@@ -90,17 +107,21 @@ export const IntentHashStringSchema = z
 	);
 export type IntentHashString = z.infer<typeof IntentHashStringSchema>;
 
-export const PaymentAuthorizationSchema = z.object({
-	type: z.literal(PAYMENT_AUTHORIZATION_TYPE),
-	chain: ChainIdSchema,
-	recipient: z
-		.string()
-		.regex(caip10AccountRegex, "recipient must be CAIP-10 account id"),
-	amount: AmountSchema,
-	payment_id: z.string().min(1).max(128),
-	intent_hash: IntentHashStringSchema,
-	expires_at: ExpiresAtSchema,
-});
+// Strict at every level: RFC 9396 §5 refuses a known type with unknown
+// fields, and the canonical entry the token carries must equal what was sent.
+export const PaymentAuthorizationSchema = z
+	.object({
+		type: z.literal(PAYMENT_AUTHORIZATION_TYPE),
+		chain: ChainIdSchema,
+		recipient: z
+			.string()
+			.regex(caip10AccountRegex, "recipient must be CAIP-10 account id"),
+		amount: AmountSchema,
+		payment_id: z.string().min(1).max(128),
+		intent_hash: IntentHashStringSchema,
+		expires_at: ExpiresAtSchema,
+	})
+	.strict();
 export type PaymentAuthorization = z.infer<typeof PaymentAuthorizationSchema>;
 
 export const PaymentAuthorizationDetailsSchema = z

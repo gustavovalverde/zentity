@@ -45,6 +45,33 @@ describe("payment-authorization", () => {
 		expect(() => PaymentAuthorizationSchema.parse(bad)).toThrow();
 	});
 
+	it.each([
+		["the entry", { ...VALID_AUTHORIZATION, note: "extra" }],
+		[
+			"chain",
+			{
+				...VALID_AUTHORIZATION,
+				chain: { ...VALID_AUTHORIZATION.chain, extra: 1 },
+			},
+		],
+		[
+			"amount",
+			{
+				...VALID_AUTHORIZATION,
+				amount: { ...VALID_AUTHORIZATION.amount, decimals: 8 },
+			},
+		],
+		[
+			"expires_at",
+			{
+				...VALID_AUTHORIZATION,
+				expires_at: { ...VALID_AUTHORIZATION.expires_at, unit: "block" },
+			},
+		],
+	])("rejects an unknown member of %s", (_where, bad) => {
+		expect(PaymentAuthorizationSchema.safeParse(bad).success).toBe(false);
+	});
+
 	it("rejects an amount.value with a leading sign", () => {
 		const bad = {
 			...VALID_AUTHORIZATION,

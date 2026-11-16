@@ -35,14 +35,21 @@ vi.mock("@/env", async (importOriginal) => {
   };
 });
 
+import crypto from "node:crypto";
+
 import { GET as listRevocations } from "@/app/api/auth/oauth2/revoked/route";
 import { env } from "@/env";
+import { resolveAgentSubForClient } from "@/lib/agents/actor-subject";
 import { auth } from "@/lib/auth/auth-config";
 import { createAuthenticationContext } from "@/lib/auth/auth-context";
-import { PAYMENT_AUTHORIZATION_SCOPE } from "@/lib/auth/oidc/payment-mint";
+import { stageFinalCibaDisclosure } from "@/lib/auth/oidc/disclosure/context";
+import { createScopeHash } from "@/lib/auth/oidc/disclosure/delivery";
+import { resolveSubForClientId } from "@/lib/auth/oidc/pairwise";
+import { getAuthIssuer } from "@/lib/auth/oidc/well-known";
 import { db } from "@/lib/db/connection";
+import { agentHosts, agentSessions } from "@/lib/db/schema/agent";
 import { cibaRequests } from "@/lib/db/schema/ciba";
-import { oauthClients } from "@/lib/db/schema/oauth-provider";
+import { oauthClients, oauthResources } from "@/lib/db/schema/oauth-provider";
 import {
   confirmWithPasskey,
   decisionRecord,
@@ -52,11 +59,16 @@ import {
   signInApprover,
 } from "@/test-utils/ciba-decision-test-utils";
 import {
+  createTestCibaApproval,
   createTestUser,
   hashCibaAuthReqId,
   resetDatabase,
 } from "@/test-utils/db-test-utils";
-import { postTokenWithDpop } from "@/test-utils/dpop-test-utils";
+import {
+  buildDpopProof,
+  type DpopKeyPair,
+  postTokenWithDpop,
+} from "@/test-utils/dpop-test-utils";
 import { TestAuthenticator } from "@/test-utils/webauthn-test-utils";
 
 const WALLET_AUDIENCE = "urn:zentity:wallet:payment-token-test";
@@ -65,6 +77,10 @@ const BC_AUTHORIZE_URL = "http://localhost:3000/api/auth/oauth2/bc-authorize";
 const REVOKE_URL = "http://localhost:3000/api/auth/oauth2/revoke";
 const CLIENT_ID = "payment-token-agent";
 const CLIENT_REQUESTED_RESOURCE = "http://localhost:3000";
+const AUTH_URL = "http://localhost:3000/api/auth";
+const USERINFO_URL = `${AUTH_URL}/oauth2/userinfo`;
+const SPIRITS_SCOPE =
+  "openid proof:age proof:nationality identity.name identity.address";
 
 const PAYMENT_RAR = {
   type: "payment_authorization",
@@ -76,37 +92,106 @@ const PAYMENT_RAR = {
   expires_at: { kind: "block_height", value: 4_056_276 },
 };
 
-async function postBcAuthorize(body: Record<string, string>) {
+async function postForm(url: string, body: Record<string, string>) {
   const response = await auth.handler(
-    new Request(BC_AUTHORIZE_URL, {
+    new Request(url, {
       method: "POST",
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
       body: new URLSearchParams(body),
     })
   );
+  const text = await response.text();
   return {
     status: response.status,
-    json: (await response.json()) as Record<string, unknown>,
+    json: (text ? JSON.parse(text) : {}) as Record<string, unknown>,
   };
+}
+
+function postBcAuthorize(body: Record<string, string>) {
+  return postForm(BC_AUTHORIZE_URL, body);
+}
+
+async function insertCibaClient(
+  clientId: string,
+  metadata: Record<string, unknown>
+) {
+  await db
+    .insert(oauthClients)
+    .values({
+      clientId,
+      name: "Payment Agent",
+      redirectUris: JSON.stringify(["http://localhost/callback"]),
+      grantTypes: JSON.stringify([CIBA_GRANT_TYPE]),
+      tokenEndpointAuthMethod: "none",
+      subjectType: "pairwise",
+      sectorIdentifier: `client/${clientId}`,
+      metadata: JSON.stringify({
+        backchannel_token_delivery_mode: "poll",
+        ...metadata,
+      }),
+    })
+    .run();
+}
+
+async function fetchUserInfo(accessToken: string, keyPair: DpopKeyPair) {
+  const response = await auth.handler(
+    new Request(USERINFO_URL, {
+      method: "GET",
+      headers: {
+        authorization: `DPoP ${accessToken}`,
+        DPoP: await buildDpopProof(keyPair, "GET", USERINFO_URL, accessToken),
+      },
+    })
+  );
+  return {
+    status: response.status,
+    body: (await response.json()) as Record<string, unknown>,
+  };
+}
+
+async function createRegisteredAgent(userId: string) {
+  const [host] = await db
+    .insert(agentHosts)
+    .values({
+      userId,
+      clientId: CLIENT_ID,
+      publicKey: JSON.stringify({
+        crv: "Ed25519",
+        kty: "OKP",
+        x: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+      }),
+      publicKeyThumbprint: `host-${crypto.randomUUID()}`,
+      name: "Test Host",
+    })
+    .returning({ id: agentHosts.id });
+  const [session] = await db
+    .insert(agentSessions)
+    .values({
+      hostId: host?.id as string,
+      publicKey: JSON.stringify({
+        crv: "Ed25519",
+        kty: "OKP",
+        x: "AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE",
+      }),
+      publicKeyThumbprint: `agent-${crypto.randomUUID()}`,
+      displayName: "Test Agent",
+    })
+    .returning({ id: agentSessions.id });
+  return { hostId: host?.id as string, sessionId: session?.id as string };
 }
 
 describe("payment_authorization token", () => {
   let userId: string;
+  let loginHint: string;
 
   beforeEach(async () => {
     await resetDatabase();
     userId = await createTestUser();
-    await db
-      .insert(oauthClients)
-      .values({
-        clientId: CLIENT_ID,
-        name: "Payment Agent",
-        redirectUris: JSON.stringify(["http://localhost/callback"]),
-        grantTypes: JSON.stringify([CIBA_GRANT_TYPE]),
-        tokenEndpointAuthMethod: "none",
-        metadata: JSON.stringify({ backchannel_token_delivery_mode: "poll" }),
-      })
-      .run();
+    // RFC 9396 §10: a payment client declares the type it requests.
+    await insertCibaClient(CLIENT_ID, {
+      authorization_details_types: ["payment_authorization"],
+    });
+    loginHint = (await resolveSubForClientId(userId, CLIENT_ID)) as string;
   });
 
   afterEach(() => {
@@ -117,8 +202,8 @@ describe("payment_authorization token", () => {
   async function requestPayment(): Promise<string> {
     const authorize = await postBcAuthorize({
       client_id: CLIENT_ID,
-      scope: `openid ${PAYMENT_AUTHORIZATION_SCOPE}`,
-      login_hint: userId,
+      scope: "openid",
+      login_hint: loginHint,
       authorization_details: JSON.stringify([PAYMENT_RAR]),
     });
     if (authorize.status !== 200) {
@@ -204,11 +289,15 @@ describe("payment_authorization token", () => {
     expect(response.json.error).toBe("insufficient_user_authentication");
   });
 
-  async function issuePaymentToken(): Promise<Record<string, unknown>> {
+  async function approvePayment(input: {
+    agent?: { hostId: string; sessionId: string };
+    scope?: string;
+  }) {
+    const scope = input.scope ?? "openid";
     const authorize = await postBcAuthorize({
       client_id: CLIENT_ID,
-      scope: `openid ${PAYMENT_AUTHORIZATION_SCOPE}`,
-      login_hint: userId,
+      scope,
+      login_hint: loginHint,
       authorization_details: JSON.stringify([PAYMENT_RAR]),
       resource: CLIENT_REQUESTED_RESOURCE,
     });
@@ -216,6 +305,7 @@ describe("payment_authorization token", () => {
       throw new Error(`bc-authorize answered ${authorize.status}`);
     }
     const authReqId = authorize.json.auth_req_id as string;
+    const authReqIdHash = hashCibaAuthReqId(authReqId);
 
     const approval = await createAuthenticationContext({
       userId,
@@ -230,47 +320,210 @@ describe("payment_authorization token", () => {
         status: "approved",
         authContextId: approval.id,
         // A Zentity approval makes the request reference its own hash.
-        referenceId: hashCibaAuthReqId(authReqId),
+        referenceId: authReqIdHash,
+        ...(input.agent
+          ? {
+              agentSessionId: input.agent.sessionId,
+              hostId: input.agent.hostId,
+              assertionVerified: true,
+            }
+          : {}),
       })
-      .where(eq(cibaRequests.authReqId, hashCibaAuthReqId(authReqId)))
+      .where(eq(cibaRequests.authReqId, authReqIdHash))
       .run();
+    if (input.agent) {
+      await createTestCibaApproval({
+        authReqIdHash,
+        clientId: CLIENT_ID,
+        requestId: await requestIdForAuthReqId(authReqIdHash),
+        scope,
+        userId,
+        overrides: {
+          authContextId: approval.id,
+          agentSessionId: input.agent.sessionId,
+          hostId: input.agent.hostId,
+        },
+      });
+    }
+    return { authReqId, authReqIdHash };
+  }
 
+  async function pollToken(authReqId: string) {
     const token = await postTokenWithDpop({
       grant_type: CIBA_GRANT_TYPE,
       auth_req_id: authReqId,
       client_id: CLIENT_ID,
     });
     if (token.status !== 200) {
-      throw new Error(`token request answered ${token.status}`);
+      throw new Error(
+        `token request answered ${token.status}: ${JSON.stringify(token.json)}`
+      );
     }
-    return token.json;
+    return token;
+  }
+
+  async function issuePaymentToken(): Promise<Record<string, unknown>> {
+    const { authReqId } = await approvePayment({});
+    return (await pollToken(authReqId)).json;
   }
 
   it("is issued for the wallet audience whatever resource the client requested", async () => {
     const response = await issuePaymentToken();
     const claims = decodeJwt(response.access_token as string);
-    const audience = [claims.aud].flat();
-    expect(audience).toContain(WALLET_AUDIENCE);
-    expect(audience).not.toContain(CLIENT_REQUESTED_RESOURCE);
+    // Upstream adds UserInfo to `aud` for an `openid` token with a resource;
+    // ask U9 would let the wallet resource opt out, which flips this.
+    expect(claims.aud).toEqual([
+      WALLET_AUDIENCE,
+      `${getAuthIssuer()}/oauth2/userinfo`,
+    ]);
+    // The wallet resource sets the lifetime; the payment carries no scope.
+    expect(claims.scope).toBe("openid");
     expect((claims.exp ?? 0) - (claims.iat ?? 0)).toBe(120);
     expect(claims.authorization_details).toEqual([PAYMENT_RAR]);
     // RFC 9396 §7: the token response reports the details the token carries.
     expect(response.authorization_details).toEqual([PAYMENT_RAR]);
   });
 
-  it("rejects a request with more than one payment entry", async () => {
+  it("keeps the wallet lifetime after a restart with an older resource row", async () => {
+    await db
+      .update(oauthResources)
+      .set({ accessTokenTtl: null })
+      .where(eq(oauthResources.identifier, WALLET_AUDIENCE))
+      .run();
+
+    vi.resetModules();
+    const rebooted = await import("@/lib/auth/auth-config");
+    await rebooted.auth.$context;
+
+    const [row] = await db
+      .select({ accessTokenTtl: oauthResources.accessTokenTtl })
+      .from(oauthResources)
+      .where(eq(oauthResources.identifier, WALLET_AUDIENCE))
+      .all();
+    expect(row?.accessTokenTtl).toBe(120);
+  });
+
+  it("lives 120 seconds alongside identity scopes, and UserInfo releases the staged identity", async () => {
+    const { authReqId, authReqIdHash } = await approvePayment({
+      scope: SPIRITS_SCOPE,
+    });
+    const identityScopes = ["identity.name", "identity.address"];
+    expect(
+      await stageFinalCibaDisclosure({
+        userId,
+        clientId: CLIENT_ID,
+        claims: { given_name: "Ada", family_name: "Lovelace" },
+        authReqId: authReqIdHash,
+        scopes: identityScopes,
+        scopeHash: createScopeHash(identityScopes),
+        intentJti: crypto.randomUUID(),
+      })
+    ).toEqual({ ok: true });
+
+    const { json, dpopKeyPair } = await pollToken(authReqId);
+    const accessToken = json.access_token as string;
+    const claims = decodeJwt(accessToken);
+    expect((claims.exp ?? 0) - (claims.iat ?? 0)).toBe(120);
+    expect(claims.ba_sub).toEqual(expect.any(String));
+
+    const userInfo = await fetchUserInfo(accessToken, dpopKeyPair);
+    expect(userInfo).toEqual({
+      status: 200,
+      body: expect.objectContaining({
+        sub: loginHint,
+        given_name: "Ada",
+        family_name: "Lovelace",
+      }),
+    });
+  });
+
+  it("keeps the actor Zentity computed for a verified agent", async () => {
+    const agent = await createRegisteredAgent(userId);
+    const { authReqId } = await approvePayment({ agent });
+
+    const claims = decodeJwt(
+      (await pollToken(authReqId)).json.access_token as string
+    );
+    expect(claims.sub).toBe(loginHint);
+    expect(claims.act).toMatchObject({
+      sub: await resolveAgentSubForClient(agent.sessionId, CLIENT_ID),
+      sub_profile: "service",
+    });
+  });
+
+  it("stores the scope the client sent", async () => {
+    await approvePayment({ scope: "openid proof:age" });
+
+    const [request] = await db
+      .select({ scope: cibaRequests.scope })
+      .from(cibaRequests)
+      .all();
+    expect(request?.scope).toBe("openid proof:age");
+  });
+
+  it("refuses the wallet audience without a payment entry", async () => {
     const authorize = await postBcAuthorize({
       client_id: CLIENT_ID,
-      scope: `openid ${PAYMENT_AUTHORIZATION_SCOPE}`,
-      login_hint: userId,
-      authorization_details: JSON.stringify([
-        PAYMENT_RAR,
-        { ...PAYMENT_RAR, payment_id: "pay_456" },
-      ]),
+      scope: "openid",
+      login_hint: loginHint,
+      resource: WALLET_AUDIENCE,
+    });
+
+    expect(authorize).toEqual({
+      status: 400,
+      json: {
+        error: "invalid_target",
+        error_description: "the wallet audience accepts only payment requests",
+      },
+    });
+    expect(await db.select().from(cibaRequests).all()).toHaveLength(0);
+  });
+
+  it("refuses a payment from a client that did not register the type", async () => {
+    const clientId = "payment-undeclared-agent";
+    await insertCibaClient(clientId, {});
+
+    const authorize = await postBcAuthorize({
+      client_id: clientId,
+      scope: "openid",
+      login_hint: (await resolveSubForClientId(userId, clientId)) as string,
+      authorization_details: JSON.stringify([PAYMENT_RAR]),
     });
 
     expect(authorize.status).toBe(400);
-    expect(authorize.json.error).toBe("invalid_request");
+    expect(authorize.json.error).toBe("invalid_authorization_details");
+    expect(await db.select().from(cibaRequests).all()).toHaveLength(0);
+  });
+
+  // RFC 9396 §5: a known type with unknown, invalid, or missing fields.
+  it.each([
+    ["an unknown member", [{ ...PAYMENT_RAR, memo: "extra" }]],
+    [
+      "a wrong type",
+      [{ ...PAYMENT_RAR, amount: { ...PAYMENT_RAR.amount, value: 50 } }],
+    ],
+    [
+      "a missing field",
+      [
+        Object.fromEntries(
+          Object.entries(PAYMENT_RAR).filter(([k]) => k !== "recipient")
+        ),
+      ],
+    ],
+    [
+      "two payment entries",
+      [PAYMENT_RAR, { ...PAYMENT_RAR, payment_id: "pay_456" }],
+    ],
+  ])("refuses a payment with %s", async (_case, details) => {
+    const authorize = await postBcAuthorize({
+      client_id: CLIENT_ID,
+      scope: "openid",
+      login_hint: loginHint,
+      authorization_details: JSON.stringify(details),
+    });
+
+    expect(authorize.status).toBe(400);
+    expect(authorize.json.error).toBe("invalid_authorization_details");
     expect(await db.select().from(cibaRequests).all()).toHaveLength(0);
   });
 
@@ -281,7 +534,7 @@ describe("payment_authorization token", () => {
     const authorize = await postBcAuthorize({
       client_id: CLIENT_ID,
       scope: "openid",
-      login_hint: userId,
+      login_hint: loginHint,
       authorization_details: details,
     });
 
@@ -294,8 +547,8 @@ describe("payment_authorization token", () => {
 
     const authorize = await postBcAuthorize({
       client_id: CLIENT_ID,
-      scope: `openid ${PAYMENT_AUTHORIZATION_SCOPE}`,
-      login_hint: userId,
+      scope: "openid",
+      login_hint: loginHint,
       authorization_details: JSON.stringify([PAYMENT_RAR]),
     });
 
@@ -327,5 +580,101 @@ describe("payment_authorization token", () => {
     expect(
       ((await feed.json()) as { revocations: { jti: string }[] }).revocations
     ).toEqual([expect.objectContaining({ jti: decodeJwt(token).jti })]);
+  });
+});
+
+describe("wallet audience outside a CIBA payment", () => {
+  const WALLET_TARGET = {
+    error: "invalid_target",
+    error_description: "the wallet audience accepts only payment requests",
+  };
+
+  beforeEach(async () => {
+    await resetDatabase();
+    await db
+      .insert(oauthClients)
+      .values({
+        clientId: CLIENT_ID,
+        name: "Wallet Target Client",
+        redirectUris: JSON.stringify(["http://localhost/callback"]),
+        grantTypes: JSON.stringify([
+          "authorization_code",
+          "refresh_token",
+          "client_credentials",
+        ]),
+        responseTypes: JSON.stringify(["code"]),
+        tokenEndpointAuthMethod: "none",
+      })
+      .run();
+  });
+
+  const authorizeQuery = {
+    client_id: CLIENT_ID,
+    response_type: "code",
+    redirect_uri: "http://localhost/callback",
+    scope: "openid",
+    code_challenge: "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM",
+    code_challenge_method: "S256",
+    resource: WALLET_AUDIENCE,
+  };
+
+  it("is refused at the authorization endpoint", async () => {
+    const response = await auth.handler(
+      new Request(
+        `${AUTH_URL}/oauth2/authorize?${new URLSearchParams(authorizeQuery)}`
+      )
+    );
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual(WALLET_TARGET);
+  });
+
+  it("is refused at the pushed authorization request endpoint", async () => {
+    expect(await postForm(`${AUTH_URL}/oauth2/par`, authorizeQuery)).toEqual({
+      status: 400,
+      json: WALLET_TARGET,
+    });
+  });
+
+  it("is refused at the authorization challenge endpoint", async () => {
+    expect(
+      await postForm(`${AUTH_URL}/oauth2/authorize-challenge`, {
+        client_id: CLIENT_ID,
+        scope: "openid",
+        resource: WALLET_AUDIENCE,
+      })
+    ).toEqual({ status: 400, json: WALLET_TARGET });
+  });
+
+  it.each([
+    ["client_credentials", { grant_type: "client_credentials" }],
+    [
+      "pre-authorized code",
+      {
+        grant_type: "urn:ietf:params:oauth:grant-type:pre-authorized_code",
+        "pre-authorized_code": "unused",
+      },
+    ],
+    ["refresh", { grant_type: "refresh_token", refresh_token: "unused" }],
+  ])("is refused by the %s grant", async (_grant, body) => {
+    const { status, json } = await postTokenWithDpop({
+      client_id: CLIENT_ID,
+      resource: WALLET_AUDIENCE,
+      ...body,
+    });
+
+    expect({ status, json }).toEqual({ status: 400, json: WALLET_TARGET });
+  });
+
+  it("is refused as a token exchange audience", async () => {
+    const { status, json } = await postTokenWithDpop({
+      client_id: CLIENT_ID,
+      grant_type: "urn:ietf:params:oauth:grant-type:token-exchange",
+      subject_token: "unused",
+      subject_token_type: "urn:ietf:params:oauth:token-type:access_token",
+      audience: WALLET_AUDIENCE,
+    });
+
+    expect({ status, json }).toEqual({ status: 400, json: WALLET_TARGET });
   });
 });

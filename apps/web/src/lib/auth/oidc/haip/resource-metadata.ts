@@ -1,5 +1,9 @@
 import "server-only";
 
+import type { OAuthResourceInput } from "@better-auth/oauth-provider";
+
+import { APIError } from "better-auth/api";
+
 import { env } from "@/env";
 import { getAuthIssuer } from "@/lib/auth/oidc/well-known";
 
@@ -29,19 +33,55 @@ interface ProtectedResourceConfig {
   walletAudience?: string | undefined;
 }
 
+/** A payment token lives two minutes, so a leaked one is short-lived. */
+const WALLET_ACCESS_TOKEN_TTL_SECONDS = 120;
+
 export function getProtectedResourceAudiences(
   config: ProtectedResourceConfig
-): string[] {
+): Array<string | OAuthResourceInput> {
   const raw = [
     config.appUrl,
     config.authIssuer,
     config.mcpPublicUrl,
     config.oidc4vciCredentialAudience,
     config.rpApiAudience,
-    config.walletAudience,
   ];
   const present = raw.filter((value): value is string => Boolean(value));
-  return [...new Set(present.map(normalizeResource))];
+  const identifiers = [...new Set(present.map(normalizeResource))];
+  if (!config.walletAudience) {
+    return identifiers;
+  }
+  const walletAudience = normalizeResource(config.walletAudience);
+  return [
+    ...identifiers.filter((identifier) => identifier !== walletAudience),
+    {
+      identifier: walletAudience,
+      accessTokenTtl: WALLET_ACCESS_TOKEN_TTL_SECONDS,
+      dpopBoundAccessTokensRequired: true,
+    },
+  ];
+}
+
+/** Whether a resource indicator or audience names the agent wallet. */
+export function isWalletAudience(value: unknown): boolean {
+  return (
+    typeof value === "string" &&
+    Boolean(env.WALLET_AUDIENCE) &&
+    normalizeResource(value) === normalizeResource(env.WALLET_AUDIENCE ?? "")
+  );
+}
+
+/**
+ * Refuses a request that names the wallet audience. Only a CIBA payment
+ * request (where the payment pin sets it) and its token poll may.
+ */
+export function refuseWalletAudience(...values: unknown[]): void {
+  if (values.flat().some(isWalletAudience)) {
+    throw new APIError("BAD_REQUEST", {
+      error: "invalid_target",
+      error_description: "the wallet audience accepts only payment requests",
+    });
+  }
 }
 
 const zentityOrigins = [
@@ -65,12 +105,17 @@ export function isZentityHostedResource(resource: string): boolean {
  * Prepares the resource indicators of a user token request: each one takes the
  * registered form (no trailing slash, so `https://mcp.example/` names
  * `https://mcp.example`), and Zentity-hosted ones are dropped so the OAuth
- * provider issues an opaque token for them.
+ * provider issues an opaque token for them. The wallet audience is refused
+ * unless the caller allows it.
  */
 export function normalizeUserTokenResources(
-  params: Record<string, unknown>
+  params: Record<string, unknown>,
+  options: { allowWalletAudience: boolean }
 ): void {
   const { resource } = params;
+  if (!options.allowWalletAudience) {
+    refuseWalletAudience(resource);
+  }
   const external = (Array.isArray(resource) ? resource : [resource])
     .filter((value): value is string => typeof value === "string")
     .map(normalizeResource)

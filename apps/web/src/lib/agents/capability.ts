@@ -375,14 +375,6 @@ function policyRow(
   };
 }
 
-// Until T3 removes the scope, the payment scope is grantable only together
-// with the payment entry it accompanies.
-const PAYMENT_AUTHORIZATION_SCOPE_ROW = policyRow(
-  PAYMENT_AUTHORIZATION_CAPABILITY,
-  false,
-  "payment signature"
-);
-
 /**
  * The single list of what each scope and RAR type needs. Every approval
  * surface (grant evaluation, the decision endpoint, push, and the approval
@@ -428,7 +420,6 @@ const APPROVAL_POLICY = {
     "agent:introspect": policyRow(null, false, "agent status"),
     identity_verification: policyRow(null, false, "verification credential"),
     poh: policyRow(null, false, "proof-of-human tokens"),
-    [PAYMENT_AUTHORIZATION_CAPABILITY]: PAYMENT_AUTHORIZATION_SCOPE_ROW,
   } satisfies Record<string, ApprovalPolicyRow>,
   authorizationDetails: {
     [PAYMENT_AUTHORIZATION_TYPE]: policyRow(
@@ -524,7 +515,6 @@ export function approvalPolicy(request: ApprovalRequest): ApprovalPolicy {
     (scope) => scope !== "openid"
   );
   const types = detailTypes(request.authorizationDetails);
-  const hasPaymentEntry = types.includes(PAYMENT_AUTHORIZATION_TYPE);
 
   const scopeRows = scopes.map(
     (scope) => SCOPE_POLICY[scope] ?? unknownScopeRow(scope)
@@ -547,11 +537,7 @@ export function approvalPolicy(request: ApprovalRequest): ApprovalPolicy {
     rows.some((row) => !row.inline);
 
   const capabilities = new Set(rows.map((row) => row.capability));
-  const allGrantable = rows.every(
-    (row) =>
-      row.grantable &&
-      (row !== PAYMENT_AUTHORIZATION_SCOPE_ROW || hasPaymentEntry)
-  );
+  const allGrantable = rows.every((row) => row.grantable);
   const [onlyCapability] = capabilities;
   const grantCapability =
     rows.length > 0 && allGrantable && capabilities.size === 1

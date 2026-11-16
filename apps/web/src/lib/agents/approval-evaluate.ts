@@ -351,7 +351,7 @@ export async function evaluateSessionGrants(
   const spendAmount = parseSpendAmount(spend?.amount?.value);
 
   for (const grant of activeGrants) {
-    // A payment_authorization:sign grant authorizes on-chain spend. Never
+    // A grant of the payment capability authorizes on-chain spend. Never
     // auto-approve one that is not explicitly bounded: an empty-constraint /
     // no-limit grant would auto-approve any amount to any recipient. Require an
     // amount ceiling (a recipient allowlist is optional, since a shopping agent

@@ -143,7 +143,7 @@ describe("buildCibaPushPayload", () => {
 
   // R1: inline Approve only for requests a notification may approve.
   it.each([
-    ["a payment", "openid payment_authorization:sign", [PAYMENT_ENTRY]],
+    ["a payment", "openid", [PAYMENT_ENTRY]],
     ["compliance with email", "openid compliance:read email", undefined],
     ["an identity release", "openid identity.name", undefined],
   ])("does not offer inline approval for %s", (_case, scope, details) => {

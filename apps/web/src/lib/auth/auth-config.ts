@@ -133,6 +133,7 @@ import { getJarmDecryptionKey } from "@/lib/auth/oidc/haip/jarm-key";
 import {
   getProtectedResourceAudiences,
   normalizeUserTokenResources,
+  refuseWalletAudience,
 } from "@/lib/auth/oidc/haip/resource-metadata";
 import { loadX5cChain } from "@/lib/auth/oidc/haip/x5c-chain";
 import {
@@ -151,9 +152,8 @@ import {
 } from "@/lib/auth/oidc/pairwise";
 import { deletePairwiseSubjectsForUser } from "@/lib/auth/oidc/pairwise-subject-index";
 import {
-  PAYMENT_AUTHORIZATION_SCOPE,
-  PAYMENT_TOKEN_SCOPE_EXPIRATIONS,
   pinPaymentRequest,
+  registersPaymentAuthorization,
 } from "@/lib/auth/oidc/payment-mint";
 import { resourceAccessTokenPlugin } from "@/lib/auth/oidc/resource-access-token";
 import {
@@ -418,7 +418,6 @@ const allowedClientScopes = [
   "poh",
   "offline_access",
   ...AGENT_BOOTSTRAP_SCOPES,
-  PAYMENT_AUTHORIZATION_SCOPE,
 ];
 const oidcStandardClaims = [
   "sub",
@@ -1889,7 +1888,7 @@ export const auth = betterAuth({
       if (ctx.path === "/oauth2/bc-authorize") {
         if (ctx.body) {
           pinPaymentRequest(ctx.body);
-          normalizeUserTokenResources(ctx.body);
+          normalizeUserTokenResources(ctx.body, { allowWalletAudience: true });
         }
         return;
       }
@@ -1898,7 +1897,7 @@ export const auth = betterAuth({
           logError(error, { operation: "first-party-row-cleanup" })
         );
         if (ctx.body) {
-          normalizeUserTokenResources(ctx.body);
+          normalizeUserTokenResources(ctx.body, { allowWalletAudience: false });
         }
         return;
       }
@@ -1906,12 +1905,22 @@ export const auth = betterAuth({
         // Before any hook stages state for the grant, so the client's retry
         // with the nonce redeems the same grant (RFC 9449 §8).
         await oauthProviderApi(ctx).challengeDpopNonce();
-        if (ctx.body?.grant_type === CIBA_GRANT_TYPE) {
+        const isCibaGrant = ctx.body?.grant_type === CIBA_GRANT_TYPE;
+        // Only a CIBA payment approval yields a wallet-audience token. The
+        // per-grant checks below do not see every grant (client_credentials
+        // and the pre-authorized code grant skip resource normalization), so
+        // the refusal covers them all here.
+        if (!isCibaGrant) {
+          refuseWalletAudience(ctx.body?.resource, ctx.body?.audience);
+        }
+        if (isCibaGrant) {
           await beforeCibaTokenLoadRequest(ctx);
         }
         beforeTokenValidateResource(ctx);
         if (USER_TOKEN_GRANT_TYPES.has(ctx.body?.grant_type)) {
-          normalizeUserTokenResources(ctx.body);
+          normalizeUserTokenResources(ctx.body, {
+            allowWalletAudience: isCibaGrant,
+          });
         }
         await beforeTokenFinalizeDisclosureBindings(ctx);
         return;
@@ -1931,8 +1940,9 @@ export const auth = betterAuth({
               "resource parameter is required for PAR requests",
           });
         }
+        refuseWalletAudience(ctx.body.resource);
         beforeValidateResourceUri(ctx);
-        normalizeUserTokenResources(ctx.body);
+        normalizeUserTokenResources(ctx.body, { allowWalletAudience: false });
         return;
       }
       if (ctx.path === "/oauth2/authorize") {
@@ -1940,7 +1950,7 @@ export const auth = betterAuth({
         redirectCibaInteraction(ctx, request);
         await enforceAuthorizeAcr(ctx, db);
         await beforeAuthorizeVerifyConsentHmac(ctx, request);
-        normalizeUserTokenResources(request);
+        normalizeUserTokenResources(request, { allowWalletAudience: false });
         return;
       }
     }),
@@ -2032,9 +2042,6 @@ export const auth = betterAuth({
       // UserInfo, and Zentity's resources then refuse them; the wallet
       // runtime learns of them from the revocation feed.
       revocableJwtAccessTokens: true,
-      // Payment tokens live 120s (D-6); every other scope keeps the 3600s
-      // default. Token issuance takes the minimum across the granted scopes.
-      scopeExpirations: PAYMENT_TOKEN_SCOPE_EXPIRATIONS,
       // ES256 is the only proof algorithm Zentity clients present. Every DPoP
       // proof sent to this origin must carry a nonce this server issued in the
       // last 300 seconds (RFC 9449 §8, §9). Zentity's own DPoP endpoints verify
@@ -2058,7 +2065,7 @@ export const auth = betterAuth({
       // the provider adds the user id encrypted in `ba_sub`, which UserInfo,
       // introspection, and every `validateAccessToken` caller read back.
       accessTokenSubject: "pairwise",
-      scopes: [...OAUTH_SCOPES, PAYMENT_AUTHORIZATION_SCOPE],
+      scopes: [...OAUTH_SCOPES],
       grantTypes: [
         "authorization_code",
         "client_credentials",
@@ -2068,7 +2075,10 @@ export const auth = betterAuth({
       ],
       // Protected resources the AS issues tokens for (RFC 8707). Per-client
       // resource linkage is disabled: Zentity has dynamic DCR/wallet clients
-      // that implicitly may target any enabled resource.
+      // that implicitly may target any enabled resource. The wallet resource
+      // carries the 120 s payment token lifetime; "merge" applies it to a row
+      // seeded before it existed.
+      resourceSeedMode: "merge",
       resources: getProtectedResourceAudiences({
         appUrl,
         authIssuer,
@@ -2364,7 +2374,11 @@ export const auth = betterAuth({
       sendNotification: notifyCibaRequest,
       authorizationDetailsTypes: {
         [PAYMENT_AUTHORIZATION_TYPE]: {
-          validate: (detail) =>
+          // RFC 9396 §10: only a client that registered the type may request
+          // a payment. The plugin's own check lets a client that registered
+          // no types request any.
+          validate: (detail, { client }) =>
+            registersPaymentAuthorization(client.metadata) &&
             PaymentAuthorizationSchema.safeParse(detail).success,
         },
       },

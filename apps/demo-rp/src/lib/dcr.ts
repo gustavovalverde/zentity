@@ -24,6 +24,28 @@ export async function readDcrClientId(
   }
 }
 
+export async function readDcrRegistration(
+  scenarioId: RouteScenarioId
+): Promise<{
+  clientId: string;
+  registrationFingerprint: string | null;
+} | null> {
+  try {
+    const row = await getDb()
+      .select({
+        clientId: dcrClient.clientId,
+        registrationFingerprint: dcrClient.registrationFingerprint,
+      })
+      .from(dcrClient)
+      .where(eq(dcrClient.scenarioId, scenarioId))
+      .limit(1)
+      .get();
+    return row ?? null;
+  } catch {
+    return null;
+  }
+}
+
 export async function readDcrClient(
   scenarioId: RouteScenarioId
 ): Promise<{ clientId: string; clientSecret: string | null } | null> {
@@ -46,19 +68,13 @@ export async function readDcrClient(
 export async function saveDcrClientId(
   scenarioId: RouteScenarioId,
   clientId: string,
-  clientSecret?: string
+  registrationFingerprint: string
 ): Promise<void> {
+  const client = { clientId, clientSecret: null, registrationFingerprint };
   await getDb()
     .insert(dcrClient)
-    .values({
-      scenarioId,
-      clientId,
-      clientSecret: clientSecret ?? null,
-    })
-    .onConflictDoUpdate({
-      target: dcrClient.scenarioId,
-      set: { clientId, clientSecret: clientSecret ?? null },
-    });
+    .values({ scenarioId, ...client })
+    .onConflictDoUpdate({ target: dcrClient.scenarioId, set: client });
 }
 
 export async function findRouteScenarioByClientId(

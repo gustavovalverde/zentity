@@ -3,7 +3,6 @@ import {
   intentHash,
   intentHashToWireString,
   networkToChainReference,
-  PAYMENT_AUTHORIZATION_CAPABILITY,
   type PaymentAuthorization,
   paymentUriToCaip10,
   SignedPayloadSchema,
@@ -148,7 +147,7 @@ export async function POST(request: Request) {
       clientId: client.clientId,
       dpopClient,
       loginHint,
-      scope: `openid ${PAYMENT_AUTHORIZATION_CAPABILITY}`,
+      scope: "openid",
       authorizationDetails: [rar],
       // No `resource`: the issuer authoritatively pins aud=wallet thumbprint
       // for the payment grant regardless of what the client requests (D-5).

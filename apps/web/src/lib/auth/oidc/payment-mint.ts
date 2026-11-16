@@ -1,13 +1,15 @@
 import "server-only";
 
+import { parseClientMetadata } from "@better-auth/oauth-provider/internal";
 import {
-  PAYMENT_AUTHORIZATION_CAPABILITY,
   PAYMENT_AUTHORIZATION_TYPE,
   PaymentAuthorizationDetailsSchema,
 } from "@zentity/sdk/protocol";
 import { APIError } from "better-auth/api";
 
 import { env } from "@/env";
+
+import { refuseWalletAudience } from "./haip/resource-metadata";
 
 /**
  * One home for the `payment_authorization` token contract (PRD-43 Phase 1).
@@ -16,9 +18,10 @@ import { env } from "@/env";
  * the wallet checks: it carries exactly one canonical `payment_authorization`
  * RAR, its `aud` is the wallet's absolute-URI identity (e.g.
  * `urn:zentity:wallet:<jkt>`), and it lives 120 seconds. All three are pinned
- * through native OAuth seams: the RAR and a resource indicator at
- * bc-authorize, and a per-scope lifetime. This module owns all three so the
- * wiring reads as one decision instead of three scattered edits.
+ * through native OAuth seams: the RAR and the resource indicator here at
+ * bc-authorize, and the lifetime as the wallet resource's `accessTokenTtl`
+ * (`getProtectedResourceAudiences`). No scope is involved: a payment client
+ * registers `authorization_details_types: ["payment_authorization"]`.
  *
  * Trust note: the bc-authorize before-hook (pinPaymentRequest) overwrites
  * ctx.body.authorization_details and ctx.body.resource BEFORE the CIBA plugin
@@ -28,23 +31,18 @@ import { env } from "@/env";
  * enforces the RAR from the signed JWT regardless.
  */
 
-/**
- * The OAuth scope a payment token carries. Deliberately equal to the capability
- * name: one identifier, two enforcement layers — as a scope it drives the 120 s
- * lifetime via `scopeExpirations`; as a capability it drives boundary/ledger
- * evaluation.
- */
-export const PAYMENT_AUTHORIZATION_SCOPE = PAYMENT_AUTHORIZATION_CAPABILITY;
+// RFC 9396 §10 client metadata, stored by the CIBA plugin in the client's
+// metadata. The plugin keeps its reader private (upstream ask U17).
+const AUTHORIZATION_DETAILS_TYPES_FIELD = "authorization_details_types";
 
-/**
- * Per-scope lifetime (D-6): only tokens granted the payment scope shorten to
- * 120 s; everything else keeps the global 3600 s. The value is a DURATION
- * STRING, not a number — oauth-provider's `toExpJWT` treats a number as an
- * absolute epoch timestamp (which would mint an already-expired token).
- */
-export const PAYMENT_TOKEN_SCOPE_EXPIRATIONS: Record<string, string> = {
-  [PAYMENT_AUTHORIZATION_SCOPE]: "120s",
-};
+/** Whether a client registered the `payment_authorization` RAR type. */
+export function registersPaymentAuthorization(
+  metadata: string | object | undefined
+): boolean {
+  const types =
+    parseClientMetadata(metadata)?.[AUTHORIZATION_DETAILS_TYPES_FIELD];
+  return Array.isArray(types) && types.includes(PAYMENT_AUTHORIZATION_TYPE);
+}
 
 function parseAuthorizationDetails(raw: unknown): unknown[] | null {
   if (Array.isArray(raw)) {
@@ -73,11 +71,14 @@ function hasPaymentEntry(details: unknown[] | null): boolean {
 
 /**
  * Prepare a backchannel payment request at bc-authorize, before the CIBA plugin
- * persists it. A request without a payment entry is left untouched.
+ * persists it.
  *
- * - D-14: the RAR is validated and replaced with its canonical JSON, so "displayed
- *   equals signed" holds for the push card and the mint. A malformed RAR, or one
- *   with more than one entry, is rejected with `invalid_request`.
+ * - A request without a payment entry is left untouched, unless it names the
+ *   wallet audience, which is refused with `invalid_target`.
+ * - D-14: the RAR is validated and replaced with its canonical JSON, so
+ *   "displayed equals signed" holds for the push card and the mint. A malformed
+ *   entry, or more than one entry, is refused with
+ *   `invalid_authorization_details` (RFC 9396 §5).
  * - D-5: the resource is replaced with `WALLET_AUDIENCE`. The plugin issues the
  *   token for the stored resource, so the issuer, not the client, sets `aud`.
  *   The request fails closed when `WALLET_AUDIENCE` is unset rather than minting
@@ -86,12 +87,13 @@ function hasPaymentEntry(details: unknown[] | null): boolean {
 export function pinPaymentRequest(body: Record<string, unknown>): void {
   const details = parseAuthorizationDetails(body.authorization_details);
   if (!hasPaymentEntry(details)) {
+    refuseWalletAudience(body.resource);
     return;
   }
   const result = PaymentAuthorizationDetailsSchema.safeParse(details);
   if (!result.success) {
     throw new APIError("BAD_REQUEST", {
-      error: "invalid_request",
+      error: "invalid_authorization_details",
       error_description:
         result.error.issues[0]?.message ??
         "authorization_details is not a valid payment_authorization request",

@@ -3,12 +3,12 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const dcrMocks = vi.hoisted(() => ({
   getRouteScenario: vi.fn(),
   isRouteScenarioId: vi.fn(),
-  readDcrClientId: vi.fn(),
+  readDcrRegistration: vi.fn(),
   saveDcrClientId: vi.fn(),
 }));
 
 vi.mock("@/lib/dcr", () => ({
-  readDcrClientId: dcrMocks.readDcrClientId,
+  readDcrRegistration: dcrMocks.readDcrRegistration,
   saveDcrClientId: dcrMocks.saveDcrClientId,
 }));
 vi.mock("@/scenarios/route-scenario-registry", () => ({
@@ -25,6 +25,8 @@ vi.mock("@/lib/env", () => ({
 }));
 
 import { GET, POST } from "./route";
+
+const SHA256_HEX = /^[0-9a-f]{64}$/;
 
 describe("/api/dcr POST", () => {
   beforeEach(() => {
@@ -63,7 +65,11 @@ describe("/api/dcr POST", () => {
       client_id: "client-123",
       redirect_uri: "http://localhost:3102/api/auth/callback/zentity-bank",
     });
-    expect(dcrMocks.saveDcrClientId).toHaveBeenCalledWith("bank", "client-123");
+    expect(dcrMocks.saveDcrClientId).toHaveBeenCalledWith(
+      "bank",
+      "client-123",
+      expect.stringMatching(SHA256_HEX)
+    );
     expect(fetchMock).toHaveBeenCalledWith(
       "http://localhost:3000/api/auth/oauth2/register",
       expect.objectContaining({
@@ -113,16 +119,21 @@ describe("/api/dcr POST", () => {
 });
 
 describe("/api/dcr GET (self-heal)", () => {
+  const AETHER_LIKE = {
+    dcr: {
+      authorizationDetailsTypes: ["payment_authorization"],
+      clientName: "Aether AI",
+      grantTypes: ["authorization_code", "urn:openid:params:grant-type:ciba"],
+      requestedScopes: "openid email",
+    },
+    oauthProviderId: "zentity-bank",
+  };
+
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.restoreAllMocks();
     dcrMocks.isRouteScenarioId.mockReturnValue(true);
-    dcrMocks.getRouteScenario.mockReturnValue({
-      dcr: {
-        clientName: "Velocity Private",
-        requestedScopes: "openid email proof:verification",
-      },
-      oauthProviderId: "zentity-bank",
-    });
+    dcrMocks.getRouteScenario.mockReturnValue(AETHER_LIKE);
     dcrMocks.saveDcrClientId.mockResolvedValue(undefined);
   });
 
@@ -146,8 +157,35 @@ describe("/api/dcr GET (self-heal)", () => {
     );
   }
 
+  function registered(clientId: string) {
+    return new Response(JSON.stringify({ client_id: clientId }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  }
+
+  /** The fingerprint the route stores for the scenario's current body. */
+  async function currentFingerprint(): Promise<string> {
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(registered("probe"));
+    await POST(
+      new Request("http://localhost:3102/api/dcr", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ scenarioId: "bank" }),
+      })
+    );
+    const fingerprint = dcrMocks.saveDcrClientId.mock.calls.at(-1)?.[2];
+    vi.restoreAllMocks();
+    dcrMocks.saveDcrClientId.mockClear();
+    return fingerprint as string;
+  }
+
+  function registrationBodyOf(call: unknown[] | undefined) {
+    return JSON.parse(((call?.[1] as RequestInit).body as string) ?? "{}");
+  }
+
   it("returns registered:false when nothing is cached", async () => {
-    dcrMocks.readDcrClientId.mockResolvedValue(null);
+    dcrMocks.readDcrRegistration.mockResolvedValue(null);
     const fetchMock = vi.spyOn(globalThis, "fetch");
 
     const response = await GET(
@@ -159,8 +197,11 @@ describe("/api/dcr GET (self-heal)", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it("keeps the cached client when Zentity still recognizes it", async () => {
-    dcrMocks.readDcrClientId.mockResolvedValue("live-client");
+  it("keeps a current cached client when Zentity still recognizes it", async () => {
+    dcrMocks.readDcrRegistration.mockResolvedValue({
+      clientId: "live-client",
+      registrationFingerprint: await currentFingerprint(),
+    });
     const fetchMock = vi
       .spyOn(globalThis, "fetch")
       .mockResolvedValueOnce(parLive());
@@ -181,16 +222,14 @@ describe("/api/dcr GET (self-heal)", () => {
   });
 
   it("re-registers when Zentity has forgotten the cached client", async () => {
-    dcrMocks.readDcrClientId.mockResolvedValue("stale-client");
+    dcrMocks.readDcrRegistration.mockResolvedValue({
+      clientId: "stale-client",
+      registrationFingerprint: await currentFingerprint(),
+    });
     const fetchMock = vi
       .spyOn(globalThis, "fetch")
       .mockResolvedValueOnce(parInvalidClient())
-      .mockResolvedValueOnce(
-        new Response(JSON.stringify({ client_id: "fresh-client" }), {
-          status: 200,
-          headers: { "content-type": "application/json" },
-        })
-      );
+      .mockResolvedValueOnce(registered("fresh-client"));
 
     const response = await GET(
       new Request("http://localhost:3102/api/dcr?scenarioId=bank")
@@ -206,8 +245,40 @@ describe("/api/dcr GET (self-heal)", () => {
     );
     expect(dcrMocks.saveDcrClientId).toHaveBeenCalledWith(
       "bank",
-      "fresh-client"
+      "fresh-client",
+      expect.stringMatching(SHA256_HEX)
     );
+  });
+
+  // A client cached before its registration body changed (for example, before
+  // it declared authorization_details_types) is replaced, though still live.
+  it.each([
+    ["has no fingerprint", null],
+    ["was registered from another body", "0".repeat(64)],
+  ])("re-registers a cached client that %s", async (_case, fingerprint) => {
+    dcrMocks.readDcrRegistration.mockResolvedValue({
+      clientId: "old-client",
+      registrationFingerprint: fingerprint,
+    });
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(registered("fresh-client"));
+
+    const response = await GET(
+      new Request("http://localhost:3102/api/dcr?scenarioId=bank")
+    );
+
+    await expect(response.json()).resolves.toEqual({
+      registered: true,
+      client_id: "fresh-client",
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock.mock.calls[0]?.[0]).toBe(
+      "http://localhost:3000/api/auth/oauth2/register"
+    );
+    expect(registrationBodyOf(fetchMock.mock.calls[0])).toMatchObject({
+      authorization_details_types: ["payment_authorization"],
+    });
   });
 
   it("returns 400 for an invalid scenarioId", async () => {
