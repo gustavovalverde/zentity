@@ -20,7 +20,6 @@ vi.mock("@/env", async (importOriginal) => {
 
 import { deriveCapabilityName } from "@/lib/agents/capability";
 import {
-  buildPaymentAuthorizationClaims,
   PAYMENT_AUTHORIZATION_SCOPE,
   PAYMENT_TOKEN_SCOPE_EXPIRATIONS,
   pinPaymentRequest,
@@ -105,26 +104,6 @@ describe("pinPaymentRequest (bc-authorize, D-5 + D-14)", () => {
     };
     expect(() => pinPaymentRequest(body)).toThrow();
     expect(body.resource).toBe("http://localhost:3000");
-  });
-});
-
-describe("buildPaymentAuthorizationClaims (mint, D-1)", () => {
-  it("emits exactly one canonical authorization_details entry", () => {
-    const claims = buildPaymentAuthorizationClaims(JSON.stringify([RAR]));
-    expect(claims?.authorization_details).toHaveLength(1);
-    expect(claims?.authorization_details[0]?.intent_hash).toBe(RAR.intent_hash);
-  });
-
-  it("returns null when the stored RAR is not a payment grant", () => {
-    expect(
-      buildPaymentAuthorizationClaims(JSON.stringify([{ type: "other" }]))
-    ).toBeNull();
-  });
-
-  it("fails loud on a corrupt stored RAR", () => {
-    expect(() =>
-      buildPaymentAuthorizationClaims(JSON.stringify([{ ...RAR, amount: {} }]))
-    ).toThrow();
   });
 });
 

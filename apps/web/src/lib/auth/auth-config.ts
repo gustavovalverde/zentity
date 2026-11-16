@@ -79,13 +79,10 @@ import {
 import { getHardenedJWKSet } from "@/lib/auth/jwt";
 import { authorizeChallengePlugin } from "@/lib/auth/oidc/authorize-challenge";
 import {
-  captureBackchannelExtras,
   cibaApprovalPlugin,
   cibaApprovalUrl,
   createCibaApproval,
   getPendingCibaToken,
-  parseStoredAuthorizationDetails,
-  persistBackchannelExtras,
   setPendingCibaToken,
 } from "@/lib/auth/oidc/ciba";
 import { clientMetadataExtension } from "@/lib/auth/oidc/client-metadata";
@@ -148,7 +145,6 @@ import {
 } from "@/lib/auth/oidc/pairwise";
 import { deletePairwiseSubjectsForUser } from "@/lib/auth/oidc/pairwise-subject-index";
 import {
-  buildPaymentAuthorizationClaims,
   PAYMENT_AUTHORIZATION_SCOPE,
   PAYMENT_TOKEN_SCOPE_EXPIRATIONS,
   pinPaymentRequest,
@@ -798,10 +794,10 @@ function oauthProviderOptions(ctx: HookCtx): OAuthOptions<Scope[]> {
 /**
  * Loads what a CIBA token poll needs from the request row before the plugin
  * consumes (deletes) it: the step-up re-check, the staged identity release,
- * the canonical payment RAR, the verified agent context, and the approval-time
- * authentication context. The result is stashed for the claim contributors,
- * the token response, and the after-hook of the same request. A refusal here
- * leaves the approved request in place for another poll.
+ * the verified agent context, and the approval-time authentication context.
+ * The result is stashed for the claim contributors and the after-hook of the
+ * same request. A refusal here leaves the approved request in place for
+ * another poll.
  */
 async function beforeCibaTokenLoadRequest(ctx: HookCtx) {
   const rawAuthReqId = ctx.body?.auth_req_id;
@@ -837,12 +833,6 @@ async function beforeCibaTokenLoadRequest(ctx: HookCtx) {
     await touchReleaseContext(releaseId, Date.now() + 3600 * 1000);
   }
 
-  // Re-mint the RAR server-side from the persisted (canonical) form (D-1). A
-  // corrupt stored RAR throws, failing the poll rather than minting a token
-  // without it.
-  const paymentClaims = buildPaymentAuthorizationClaims(
-    row.authorizationDetails
-  );
   const contribution = await buildCibaAgentContribution(
     row as unknown as Record<string, unknown>,
     row.clientId
@@ -851,9 +841,6 @@ async function beforeCibaTokenLoadRequest(ctx: HookCtx) {
     agentClaims: contribution?.claims ?? null,
     authContextId: row.authContextId ?? "",
     authReqIdHash,
-    authorizationDetails:
-      paymentClaims?.authorization_details ??
-      parseStoredAuthorizationDetails(row.authorizationDetails),
     snapshot: contribution?.snapshot ?? null,
   });
 }
@@ -1195,9 +1182,9 @@ async function buildAccessTokenDisclosureClaims(
 }
 
 /**
- * Claims a token from the CIBA grant carries besides its actor, which the
- * grant stamps as `act` itself: the verified agent's other AAP claims and the
- * RFC 9396 authorization details, payment ones re-minted in canonical form.
+ * The verified agent's AAP claims a token from the CIBA grant carries besides
+ * its actor, which the grant stamps as `act` itself. The grant also issues the
+ * request's RFC 9396 authorization details, which outrank every claim hook.
  */
 async function buildCibaAccessTokenClaims(
   info: OAuthClaimExtensionInput
@@ -1210,12 +1197,7 @@ async function buildCibaAccessTokenClaims(
     return {};
   }
   const { act: _actor, ...agentClaims } = pending.agentClaims ?? {};
-  return {
-    ...agentClaims,
-    ...(pending.authorizationDetails
-      ? { authorization_details: pending.authorizationDetails }
-      : {}),
-  };
+  return agentClaims;
 }
 
 function exactDisclosureClaimsPlugin(): BetterAuthPlugin {
@@ -1548,10 +1530,9 @@ async function approveFromCapabilityGrant(input: {
 }
 
 /**
- * CIBA `sendNotification`: persists the request's RAR and `acr_values`, binds
- * a verified Agent-Assertion, auto-approves from capability grants when they
- * allow it, and otherwise notifies the user by web push and email with a link
- * to Zentity's approval page.
+ * CIBA `sendNotification`: binds a verified Agent-Assertion, auto-approves
+ * from capability grants when they allow it, and otherwise notifies the user
+ * by web push and email with a link to Zentity's approval page.
  */
 async function notifyCibaRequest(
   notification: CibaNotification,
@@ -1559,9 +1540,8 @@ async function notifyCibaRequest(
 ): Promise<void> {
   const { requestId, user } = notification;
   const scope = notification.scopes.join(" ");
-  const extras = await persistBackchannelExtras(requestId);
   const authDetails = normalizeAuthorizationDetails(
-    extras.authorizationDetails
+    notification.authorizationDetails
   );
   const stored = await db
     .select({ authReqId: cibaRequests.authReqId })
@@ -1912,7 +1892,6 @@ export const auth = betterAuth({
         if (ctx.body) {
           pinPaymentRequest(ctx.body);
           normalizeUserTokenResources(ctx.body);
-          await captureBackchannelExtras(ctx.body);
         }
         return;
       }
@@ -2073,15 +2052,7 @@ export const auth = betterAuth({
         walletAudience: env.WALLET_AUDIENCE,
       }),
       enforcePerClientResources: false,
-      customTokenResponseFields: async ({ grantType, verificationValue }) => {
-        // RFC 9396 §7: a CIBA token response reports the authorization details
-        // the token carries.
-        if (grantType === CIBA_GRANT_TYPE) {
-          const pending = await getPendingCibaToken();
-          return pending?.authorizationDetails
-            ? { authorization_details: pending.authorizationDetails }
-            : {};
-        }
+      customTokenResponseFields: ({ grantType, verificationValue }) => {
         // First-party-app step-up: when the authorization code was issued from
         // a DPoP-bound auth_session (authorization challenge endpoint), echo it
         // back so the FPA client can re-authenticate on a later acr step-up

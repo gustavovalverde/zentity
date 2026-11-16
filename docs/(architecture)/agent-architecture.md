@@ -870,7 +870,7 @@ Two convergence points tie the five concerns together rather than letting them e
 
 The `assertionVerified` flag on the CIBA request row is the first. It is set when the `Agent-Assertion` from the control plane passes verification inside the consent channel. If verification fails, four downstream effects cascade: the AAP profile builder returns nothing (no agent claims enter the token), introspection returns `active: false` for agent consumers, token exchange cannot rebind for non-agent audiences (no `act.sub` to resolve), and the token reverts to a standard CIBA token without agent semantics.
 
-The `authorization_details` payload is the second. It enters at the structured intent layer, drives capability matching in the consent channel, and survives into the CIBA access token. Token exchange does not copy it into the exchanged token. The same structured data flows from intent to issued token without transformation, which is evidence that the specs compose cleanly rather than fighting over data representation.
+The `authorization_details` payload is the second. It enters at the structured intent layer, drives capability matching in the consent channel, and survives into the CIBA access token and its token response, where the CIBA plugin issues the details it stored at bc-authorize. Token exchange does not copy it into the exchanged token. The same structured data flows across these specs without transformation, which is evidence that the specs compose cleanly rather than fighting over data representation.
 
 ### Standards map
 

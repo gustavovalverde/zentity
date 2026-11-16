@@ -52,13 +52,15 @@ function extractTierFromAcr(acr: string): number | null {
 /**
  * Find the first requested ACR that the user's tier satisfies.
  * Higher tiers satisfy lower requirements (tier-3 satisfies tier-2).
- * Returns the first satisfiable ACR URI, or null if none are satisfied.
+ * Takes the space-separated `acr_values` parameter or the values already
+ * split. Returns the first satisfiable ACR URI, or null if none are satisfied.
  */
 export function findSatisfiedAcr(
-  acrValuesParam: string,
+  acrValues: string | readonly string[],
   userTier: AccountTier
 ): string | null {
-  const requested = parseAcrValues(acrValuesParam);
+  const requested =
+    typeof acrValues === "string" ? parseAcrValues(acrValues) : acrValues;
   for (const acr of requested) {
     const requestedTier = extractTierFromAcr(acr);
     if (requestedTier !== null && userTier >= requestedTier) {
@@ -290,7 +292,10 @@ export async function enforceAuthorizeAcr(ctx: any, db: LibSQLDatabase<any>) {
 // CIBA enforcement
 // ---------------------------------------------------------------------------
 
-/** The CIBA request fields the token-time step-up check reads. */
+/**
+ * The CIBA request fields the token-time step-up check reads, as stored:
+ * the plugin writes `acrValues` and `resources` as JSON arrays.
+ */
 export interface CibaStepUpRecord {
   acrValues: string | null;
   resources: string | null;
@@ -314,14 +319,16 @@ export async function enforceCibaTokenAcr(
   db: LibSQLDatabase<any>,
   record: CibaStepUpRecord
 ) {
-  if (!record.acrValues || record.status !== "approved") {
+  const acrValues = parseStoredStringArray(record.acrValues);
+  if (acrValues.length === 0 || record.status !== "approved") {
     return;
   }
 
   const assurance = await getAccountAssurance(record.userId, {
     isAuthenticated: true,
   });
-  const satisfied = findSatisfiedAcr(record.acrValues, assurance.tier);
+  const satisfied = findSatisfiedAcr(acrValues, assurance.tier);
+  const requested = acrValues.join(" ");
 
   if (!satisfied) {
     const clientId =
@@ -347,7 +354,8 @@ export async function enforceCibaTokenAcr(
           userId: record.userId,
           scope: record.scope,
           resource: parseStoredStringArray(record.resources)[0] ?? null,
-          acrValues: record.acrValues,
+          // The authorization challenge reads the space-separated form.
+          acrValues: requested,
           dpopJkt: dpopJkt ?? null,
           state: "pending",
           expiresAt: new Date(Date.now() + SESSION_LIFETIME_MS),
@@ -362,7 +370,7 @@ export async function enforceCibaTokenAcr(
           {
             error: "insufficient_authorization",
             auth_session: authSession,
-            error_description: `User assurance is tier-${assurance.tier}, does not satisfy acr_values: ${record.acrValues}`,
+            error_description: `User assurance is tier-${assurance.tier}, does not satisfy acr_values: ${requested}`,
           },
           ctx.responseHeaders
         );
@@ -371,7 +379,7 @@ export async function enforceCibaTokenAcr(
 
     throw new APIError("BAD_REQUEST", {
       error: "interaction_required",
-      error_description: `User assurance is tier-${assurance.tier}, does not satisfy acr_values: ${record.acrValues}`,
+      error_description: `User assurance is tier-${assurance.tier}, does not satisfy acr_values: ${requested}`,
     });
   }
 }

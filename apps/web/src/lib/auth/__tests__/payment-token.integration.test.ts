@@ -1,9 +1,23 @@
 import { eq } from "drizzle-orm";
 import { decodeJwt } from "jose";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-vi.hoisted(() => {
+const mockEnv = vi.hoisted(() => {
   process.env.WALLET_AUDIENCE = "urn:zentity:wallet:payment-token-test";
+  return { walletAudience: process.env.WALLET_AUDIENCE as string | undefined };
+});
+vi.mock("@/env", async (importOriginal) => {
+  const mod = await importOriginal<typeof import("@/env")>();
+  return {
+    ...mod,
+    env: new Proxy(mod.env, {
+      get(target, prop) {
+        return prop === "WALLET_AUDIENCE"
+          ? mockEnv.walletAudience
+          : Reflect.get(target, prop);
+      },
+    }),
+  };
 });
 
 import { GET as listRevocations } from "@/app/api/auth/oauth2/revoked/route";
@@ -71,7 +85,11 @@ describe("payment_authorization token", () => {
       .run();
   });
 
-  async function issuePaymentToken(): Promise<string> {
+  afterEach(() => {
+    mockEnv.walletAudience = WALLET_AUDIENCE;
+  });
+
+  async function issuePaymentToken(): Promise<Record<string, unknown>> {
     const authorize = await postBcAuthorize({
       client_id: CLIENT_ID,
       scope: `openid ${PAYMENT_AUTHORIZATION_SCOPE}`,
@@ -110,20 +128,69 @@ describe("payment_authorization token", () => {
     if (token.status !== 200) {
       throw new Error(`token request answered ${token.status}`);
     }
-    return token.json.access_token as string;
+    return token.json;
   }
 
   it("is issued for the wallet audience whatever resource the client requested", async () => {
-    const claims = decodeJwt(await issuePaymentToken());
+    const response = await issuePaymentToken();
+    const claims = decodeJwt(response.access_token as string);
     const audience = [claims.aud].flat();
     expect(audience).toContain(WALLET_AUDIENCE);
     expect(audience).not.toContain(CLIENT_REQUESTED_RESOURCE);
     expect((claims.exp ?? 0) - (claims.iat ?? 0)).toBe(120);
     expect(claims.authorization_details).toEqual([PAYMENT_RAR]);
+    // RFC 9396 §7: the token response reports the details the token carries.
+    expect(response.authorization_details).toEqual([PAYMENT_RAR]);
+  });
+
+  it("rejects a request with more than one payment entry", async () => {
+    const authorize = await postBcAuthorize({
+      client_id: CLIENT_ID,
+      scope: `openid ${PAYMENT_AUTHORIZATION_SCOPE}`,
+      login_hint: userId,
+      authorization_details: JSON.stringify([
+        PAYMENT_RAR,
+        { ...PAYMENT_RAR, payment_id: "pay_456" },
+      ]),
+    });
+
+    expect(authorize.status).toBe(400);
+    expect(authorize.json.error).toBe("invalid_request");
+    expect(await db.select().from(cibaRequests).all()).toHaveLength(0);
+  });
+
+  it.each([
+    ["is not JSON", "not-json"],
+    ["has an unregistered type", JSON.stringify([{ type: "purchase" }])],
+  ])("rejects authorization_details that %s", async (_case, details) => {
+    const authorize = await postBcAuthorize({
+      client_id: CLIENT_ID,
+      scope: "openid",
+      login_hint: userId,
+      authorization_details: details,
+    });
+
+    expect(authorize.status).toBe(400);
+    expect(authorize.json.error).toBe("invalid_authorization_details");
+  });
+
+  it("fails closed when WALLET_AUDIENCE is unset", async () => {
+    mockEnv.walletAudience = undefined;
+
+    const authorize = await postBcAuthorize({
+      client_id: CLIENT_ID,
+      scope: `openid ${PAYMENT_AUTHORIZATION_SCOPE}`,
+      login_hint: userId,
+      authorization_details: JSON.stringify([PAYMENT_RAR]),
+    });
+
+    expect(authorize.status).toBe(500);
+    expect(authorize.json.error).toBe("server_error");
+    expect(await db.select().from(cibaRequests).all()).toHaveLength(0);
   });
 
   it("reaches the wallet's revocation feed when its client revokes it", async () => {
-    const token = await issuePaymentToken();
+    const token = (await issuePaymentToken()).access_token as string;
 
     const revocation = await auth.handler(
       new Request(REVOKE_URL, {
