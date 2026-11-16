@@ -156,8 +156,10 @@ export async function upsertSecretWrapper(data: {
   wrappedDek: string;
   prfSalt?: string | null | undefined;
   kekSource?: string | undefined;
+  verifierHash?: string | null | undefined;
 }): Promise<SecretWrapperRecord> {
   const kekSource = data.kekSource ?? "prf";
+  const verifierHash = data.verifierHash ?? null;
 
   const row = await db
     .insert(secretWrappers)
@@ -168,6 +170,7 @@ export async function upsertSecretWrapper(data: {
       wrappedDek: data.wrappedDek,
       prfSalt: data.prfSalt ?? null,
       kekSource,
+      verifierHash,
     })
     .onConflictDoUpdate({
       target: [secretWrappers.secretId, secretWrappers.credentialId],
@@ -175,6 +178,7 @@ export async function upsertSecretWrapper(data: {
         wrappedDek: data.wrappedDek,
         prfSalt: data.prfSalt ?? null,
         kekSource,
+        verifierHash,
       },
     })
     .returning()

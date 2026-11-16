@@ -12,6 +12,7 @@ import { eq } from "drizzle-orm";
 import { z } from "zod";
 
 import { auth } from "@/lib/auth/auth-config";
+import { getRecoveryOptions } from "@/lib/auth/recovery-factors";
 import { db } from "@/lib/db/connection";
 import { getUserCreatedAt, userHasPassword } from "@/lib/db/queries/auth";
 import { passkeys } from "@/lib/db/schema/auth";
@@ -24,6 +25,20 @@ import {
 } from "../server";
 
 export const accountRouter = router({
+  /**
+   * What this session can still prove toward account recovery, and whether
+   * it may add a passkey now. Reveals nothing before sign-in.
+   */
+  recoveryOptions: protectedProcedure.query(({ ctx }) =>
+    getRecoveryOptions({
+      sessionId:
+        ctx.authenticatedWith === "session_cookie"
+          ? ctx.session.session.id
+          : null,
+      userId: ctx.userId,
+    })
+  ),
+
   /**
    * Check if user has any registered passkeys.
    * Used to determine if "Unlock with Passkey" UI should be shown.

@@ -8,20 +8,26 @@ import {
 } from "@serenity-kit/opaque";
 import { createEmailVerificationToken } from "better-auth/api";
 import { makeSignature } from "better-auth/crypto";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
+import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { env } from "@/env";
 import { auth } from "@/lib/auth/auth-config";
-import { createSessionAuthenticationContext } from "@/lib/auth/auth-context";
+import {
+  createSessionAuthenticationContext,
+  replaceSessionAuthenticationContext,
+} from "@/lib/auth/auth-context";
 import { REVERIFICATION_REQUIRED } from "@/lib/auth/recovery-factors";
 import { db } from "@/lib/db/connection";
 import {
   accounts,
+  authenticationContexts,
   passkeys,
   sessions,
   users,
   verifications,
+  walletAddresses,
 } from "@/lib/db/schema/auth";
 import { encryptedSecrets, secretWrappers } from "@/lib/db/schema/privacy";
 import { computeSecretBlobRef } from "@/lib/privacy/secrets/storage.server";
@@ -375,6 +381,7 @@ const RECOVERY_KEY_WRAPPER = {
   credentialId: "recovery_key",
   wrappedDek: WRAPPED_DEK,
   kekSource: "recovery_key" as const,
+  verifierHash: "d".repeat(64),
 };
 
 async function refusal(response: Response) {
@@ -385,6 +392,7 @@ async function refusal(response: Response) {
 }
 
 const REFUSED = { status: 403, code: REVERIFICATION_REQUIRED };
+const LAST_PASSKEY_REFUSED = { status: 400, code: "LAST_PASSKEY" };
 const GITHUB_AUTHORIZE = "https://github.com/login/oauth/authorize";
 
 function linkGithub(cookie: string) {
@@ -562,7 +570,7 @@ describe("recovery factor changes on a passkey account", () => {
             session.cookie
           )
         )
-      ).toEqual(REFUSED);
+      ).toEqual(LAST_PASSKEY_REFUSED);
       expect(await passkeyCount(userId)).toBe(1);
       expect(
         await refusal(
@@ -666,6 +674,7 @@ describe("recovery factor changes on a passkey account", () => {
 
     it("allows a passkey to be removed and the password unlinked", async () => {
       const ids = await addAccounts(userId, ["eip712", "opaque"]);
+      const other = await new TestAuthenticator().register(userId);
 
       const unlinked = await post(
         "/unlink-account",
@@ -675,13 +684,26 @@ describe("recovery factor changes on a passkey account", () => {
       expect(unlinked.status).toBe(200);
       const removed = await post(
         "/passkey/delete-passkey",
-        { id: authenticator.passkeyId },
+        { id: other.passkeyId },
         session.cookie
       );
       expect(removed.status).toBe(200);
 
       expect(await providerIds(userId)).toEqual(["eip712"]);
-      expect(await passkeyCount(userId)).toBe(0);
+      expect(await passkeyCount(userId)).toBe(1);
+    });
+
+    it("keeps the last passkey, which only an account recovery removes", async () => {
+      expect(
+        await refusal(
+          await post(
+            "/passkey/delete-passkey",
+            { id: authenticator.passkeyId },
+            session.cookie
+          )
+        )
+      ).toEqual(LAST_PASSKEY_REFUSED);
+      expect(await passkeyCount(userId)).toBe(1);
     });
 
     it("allows a social sign-in account to be linked and unlinked", async () => {
@@ -699,6 +721,42 @@ describe("recovery factor changes on a passkey account", () => {
       );
       expect(unlinked.status).toBe(200);
       expect(await providerIds(userId)).toEqual(["opaque"]);
+    });
+
+    it("keeps the only passkey opening the vault when it refuses to remove it", async () => {
+      const rootId = await createVault(userId);
+      await db
+        .update(secretWrappers)
+        .set({ credentialId: authenticator.credentialId })
+        .where(eq(secretWrappers.credentialId, "passkey-credential"))
+        .run();
+
+      await expect(
+        secrets(userId, session).removeCredential({
+          credentialId: authenticator.credentialId,
+        })
+      ).rejects.toMatchObject({
+        code: "BAD_REQUEST",
+        message: "Add another passkey before you remove this one.",
+      });
+      expect(
+        await refusal(
+          await post(
+            "/passkey/delete-passkey",
+            { id: authenticator.passkeyId },
+            session.cookie
+          )
+        )
+      ).toEqual(LAST_PASSKEY_REFUSED);
+      expect(await wrapperIds(rootId)).toEqual(
+        [authenticator.credentialId, "recovery_key"].sort()
+      );
+
+      await new TestAuthenticator().register(userId);
+      await secrets(userId, session).removeCredential({
+        credentialId: authenticator.credentialId,
+      });
+      expect(await wrapperIds(rootId)).toEqual(["recovery_key"]);
     });
 
     it("allows a passkey to be detached from the vault", async () => {
@@ -800,7 +858,7 @@ describe("recovery factor changes on a passkey account", () => {
     ).toEqual(REFUSED);
   });
 
-  it("allows a magic-link sign-in to the verified address", async () => {
+  it("allows a magic-link sign-in to an account with nothing else", async () => {
     const session = await magicLinkSignIn(email);
 
     const response = await post(
@@ -812,7 +870,8 @@ describe("recovery factor changes on a passkey account", () => {
     expect(response.status).toBe(200);
   });
 
-  it("lets a magic-link sign-in remove a lost passkey", async () => {
+  it("lets a magic-link sign-in remove a lost passkey, but not the last one", async () => {
+    const replacement = await new TestAuthenticator().register(userId);
     const session = await magicLinkSignIn(email);
 
     const response = await post(
@@ -820,9 +879,32 @@ describe("recovery factor changes on a passkey account", () => {
       { id: authenticator.passkeyId },
       session.cookie
     );
-
     expect(response.status).toBe(200);
-    expect(await passkeyCount(userId)).toBe(0);
+    expect(
+      await refusal(
+        await post(
+          "/passkey/delete-passkey",
+          { id: replacement.passkeyId },
+          session.cookie
+        )
+      )
+    ).toEqual(LAST_PASSKEY_REFUSED);
+    expect(await passkeyCount(userId)).toBe(1);
+  });
+
+  it("refuses a magic-link sign-in alone once the account has a password", async () => {
+    await addAccounts(userId, ["opaque"]);
+    const session = await magicLinkSignIn(email);
+
+    expect(
+      await refusal(
+        await post(
+          "/change-email",
+          { newEmail: "new@example.com" },
+          session.cookie
+        )
+      )
+    ).toEqual(REFUSED);
   });
 
   it("refuses a magic-link sign-in that verified the address itself", async () => {
@@ -982,32 +1064,51 @@ describe("recovery factor changes on an account without a passkey", () => {
   });
 });
 
+const PASSWORD = "correct horse battery";
+
+/** Sets the password from a session, or by email reset with `token`. */
+async function setPassword(cookie: string | undefined, token?: string) {
+  await opaqueReady;
+  const { clientRegistrationState, registrationRequest } =
+    opaqueClient.startRegistration({ password: PASSWORD });
+  const [challengePath, completePath] = token
+    ? ["/password-reset/opaque/challenge", "/password-reset/opaque/complete"]
+    : [
+        "/password/opaque/registration/challenge",
+        "/password/opaque/registration/complete",
+      ];
+  const challenge = (await (
+    await post(challengePath, { token, registrationRequest }, cookie)
+  ).json()) as { challenge: string };
+  const { registrationRecord } = opaqueClient.finishRegistration({
+    clientRegistrationState,
+    registrationResponse: challenge.challenge,
+    password: PASSWORD,
+  });
+  return post(completePath, { token, registrationRecord }, cookie);
+}
+
+/** A password reset link for the user, as `/password-reset/opaque/request` stores it. */
+async function passwordResetToken(userId: string): Promise<string> {
+  const token = crypto.randomUUID();
+  await db
+    .insert(verifications)
+    .values({
+      id: crypto.randomUUID(),
+      identifier: `opaque-reset:${token}`,
+      value: userId,
+      expiresAt: new Date(Date.now() + 300_000),
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    })
+    .run();
+  return token;
+}
+
 describe("recovery factor notices", () => {
   const email = "owner@example.com";
-  const password = "correct horse battery";
   let userId: string;
   let session: TestSession;
-
-  async function setPassword(cookie: string | undefined, token?: string) {
-    await opaqueReady;
-    const { clientRegistrationState, registrationRequest } =
-      opaqueClient.startRegistration({ password });
-    const [challengePath, completePath] = token
-      ? ["/password-reset/opaque/challenge", "/password-reset/opaque/complete"]
-      : [
-          "/password/opaque/registration/challenge",
-          "/password/opaque/registration/complete",
-        ];
-    const challenge = (await (
-      await post(challengePath, { token, registrationRequest }, cookie)
-    ).json()) as { challenge: string };
-    const { registrationRecord } = opaqueClient.finishRegistration({
-      clientRegistrationState,
-      registrationResponse: challenge.challenge,
-      password,
-    });
-    return post(completePath, { token, registrationRecord }, cookie);
-  }
 
   function notices() {
     return mockSendEmail.mock.calls.map(([message]) => ({
@@ -1192,18 +1293,8 @@ describe("recovery factor notices", () => {
   });
 
   it("tells the user their password was reset", async () => {
-    const token = crypto.randomUUID();
-    await db
-      .insert(verifications)
-      .values({
-        id: crypto.randomUUID(),
-        identifier: `opaque-reset:${token}`,
-        value: userId,
-        expiresAt: new Date(Date.now() + 300_000),
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      })
-      .run();
+    await addAccounts(userId, ["opaque"]);
+    const token = await passwordResetToken(userId);
 
     expect((await setPassword(undefined, token)).status).toBe(200);
 
@@ -1244,5 +1335,743 @@ describe("recovery factor notices", () => {
     expect((await setPassword(session.cookie)).status).toBe(200);
 
     expect(mockSendEmail).not.toHaveBeenCalled();
+  });
+});
+
+const EIGHT_DAYS_MS = 8 * 24 * 60 * 60 * 1000;
+
+/** Registers a new passkey through the plugin's two registration requests. */
+async function registerPasskey(
+  session: TestSession,
+  options: { beforeVerify?: () => Promise<void> } = {}
+): Promise<{ authenticator: TestAuthenticator; response: Response }> {
+  const authenticator = new TestAuthenticator();
+  const registerOptions = await auth.handler(
+    new Request(`${AUTH}/passkey/generate-register-options`, {
+      headers: { cookie: session.cookie },
+    })
+  );
+  if (registerOptions.status !== 200) {
+    return { authenticator, response: registerOptions };
+  }
+  const { challenge } = (await registerOptions.json()) as {
+    challenge: string;
+  };
+  const challengeCookie = (registerOptions.headers.getSetCookie?.() ?? [])
+    .map((value) => value.split(";")[0])
+    .join("; ");
+  await options.beforeVerify?.();
+  const response = await auth.handler(
+    new Request(`${AUTH}/passkey/verify-registration`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        cookie: `${session.cookie}; ${challengeCookie}`,
+        origin: APP,
+      },
+      body: JSON.stringify({
+        response: authenticator.attest({ challenge }),
+        name: "New passkey",
+      }),
+    })
+  );
+  return { authenticator, response };
+}
+
+async function passwordSetMethod(userId: string) {
+  const row = await db
+    .select({ method: accounts.passwordSetMethod })
+    .from(accounts)
+    .where(and(eq(accounts.userId, userId), eq(accounts.providerId, "opaque")))
+    .get();
+  return row?.method;
+}
+
+async function enrollmentMethods(userId: string) {
+  const rows = await db
+    .select({ method: passkeys.enrollmentMethod })
+    .from(passkeys)
+    .where(eq(passkeys.userId, userId))
+    .all();
+  return rows.map((row) => row.method);
+}
+
+/** A password set long enough ago to count toward account recovery. */
+async function addSettledPassword(userId: string): Promise<void> {
+  const setAt = new Date(Date.now() - EIGHT_DAYS_MS);
+  await db
+    .insert(accounts)
+    .values({
+      id: crypto.randomUUID(),
+      accountId: userId,
+      providerId: "opaque",
+      userId,
+      createdAt: setAt,
+      updatedAt: setAt,
+    })
+    .run();
+}
+
+type Wallet = ReturnType<typeof privateKeyToAccount>;
+
+/** A wallet the user signed up with `linkedAt`, 8 days ago by default. */
+async function linkWallet(
+  userId: string,
+  linkedAt = new Date(Date.now() - EIGHT_DAYS_MS)
+): Promise<Wallet> {
+  const wallet = privateKeyToAccount(generatePrivateKey());
+  await db
+    .insert(accounts)
+    .values({
+      id: crypto.randomUUID(),
+      accountId: userId,
+      providerId: "eip712",
+      userId,
+      createdAt: linkedAt,
+      updatedAt: linkedAt,
+    })
+    .run();
+  await db
+    .insert(walletAddresses)
+    .values({
+      userId,
+      address: wallet.address,
+      chainId: 1,
+      isPrimary: true,
+      createdAt: linkedAt.toISOString(),
+    })
+    .run();
+  return wallet;
+}
+
+/** Confirms the wallet inside the session through `/wallet/siwe/verify/*`. */
+async function confirmWallet(session: TestSession, wallet: Wallet) {
+  const challenge = await post(
+    "/wallet/siwe/verify/challenge",
+    { address: wallet.address, chainId: 1 },
+    session.cookie
+  );
+  if (challenge.status !== 200) {
+    return challenge;
+  }
+  const { message } = (await challenge.json()) as { message: string };
+  return post(
+    "/wallet/siwe/verify/complete",
+    { message, signature: await wallet.signMessage({ message }) },
+    session.cookie
+  );
+}
+
+/** What `/password/opaque/verify/complete` records for this session. */
+function verifyPasswordInSession(userId: string, session: TestSession) {
+  return replaceSessionAuthenticationContext({
+    userId,
+    loginMethod: "opaque",
+    sourceKind: "better_auth",
+    sessionId: session.sessionId,
+  });
+}
+
+/** A vault the passkey and a recovery key with a known verifier open. */
+async function createVaultWithVerifier(
+  userId: string
+): Promise<{ rootId: string; verifier: string }> {
+  const rootId = await createVault(userId);
+  const verifier = crypto.randomBytes(32);
+  await db
+    .update(secretWrappers)
+    .set({
+      verifierHash: crypto.createHash("sha256").update(verifier).digest("hex"),
+    })
+    .where(eq(secretWrappers.credentialId, "recovery_key"))
+    .run();
+  return { rootId, verifier: verifier.toString("base64url") };
+}
+
+function proveRecoveryKey(session: TestSession, verifier: string) {
+  return post("/recovery-key/verify", { verifier }, session.cookie);
+}
+
+async function recoveryKeyVerifierHash(userId: string) {
+  const row = await db
+    .select({ verifierHash: secretWrappers.verifierHash })
+    .from(secretWrappers)
+    .where(
+      and(
+        eq(secretWrappers.userId, userId),
+        eq(secretWrappers.credentialId, "recovery_key")
+      )
+    )
+    .get();
+  return row?.verifierHash ?? null;
+}
+
+function noticeLines() {
+  return mockSendEmail.mock.calls.map(
+    ([message]) => (message as { text: string }).text.split("\n")[0]
+  );
+}
+
+describe("adding a passkey", () => {
+  const email = "owner@example.com";
+  let userId: string;
+
+  beforeEach(async () => {
+    await resetDatabase();
+    mockSendEmail.mockResolvedValue("sent");
+    mockSendWebPush.mockResolvedValue(undefined);
+    userId = await createTestUser({ email, emailVerified: true });
+  });
+
+  it("lets a fresh session add the first passkey, and tells the user", async () => {
+    const session = await sessionSignedInWith(userId, "opaque");
+
+    const { response } = await registerPasskey(session);
+
+    expect(response.status).toBe(200);
+    expect(await enrollmentMethods(userId)).toEqual(["first_passkey"]);
+    expect(noticeLines()).toEqual([
+      "A passkey was added to your Zentity account.",
+    ]);
+    expect(mockSendWebPush.mock.calls[0]?.[1]).toMatchObject({
+      data: { url: "/recovery/passkey?intent=remove" },
+    });
+  });
+
+  describe("to an account that holds a passkey", () => {
+    let authenticator: TestAuthenticator;
+
+    beforeEach(async () => {
+      authenticator = await new TestAuthenticator().register(userId);
+    });
+
+    it("refuses a password session before the authenticator prompts", async () => {
+      await addSettledPassword(userId);
+      const session = await sessionSignedInWith(userId, "opaque");
+
+      const { response } = await registerPasskey(session);
+
+      expect(await refusal(response)).toEqual(REFUSED);
+      expect(await passkeyCount(userId)).toBe(1);
+      expect(mockSendEmail).not.toHaveBeenCalled();
+    });
+
+    it("adds one after a user-verified passkey sign-in", async () => {
+      const session = await passkeySignIn(authenticator, true);
+
+      const { response } = await registerPasskey(session);
+
+      expect(response.status).toBe(200);
+      expect(await enrollmentMethods(userId)).toContain("passkey_reverified");
+      expect(noticeLines()).toEqual([
+        "A passkey was added to your Zentity account, confirmed with one of your passkeys.",
+      ]);
+    });
+
+    it("refuses at verification once the sign-in is older than 5 minutes", async () => {
+      const session = await passkeySignIn(authenticator, true);
+
+      const { response } = await registerPasskey(session, {
+        beforeVerify: async () => {
+          await db
+            .update(authenticationContexts)
+            .set({ authenticatedAt: new Date(Date.now() - SIX_MINUTES_MS) })
+            .where(
+              eq(authenticationContexts.sourceSessionId, session.sessionId)
+            )
+            .run();
+        },
+      });
+
+      expect(await refusal(response)).toEqual(REFUSED);
+      expect(await passkeyCount(userId)).toBe(1);
+      expect(mockSendEmail).not.toHaveBeenCalled();
+    });
+
+    it("recovers with the password and the recovery key, once", async () => {
+      await addSettledPassword(userId);
+      const { verifier } = await createVaultWithVerifier(userId);
+      const session = await sessionSignedInWith(userId, "opaque");
+
+      const proved = await proveRecoveryKey(session, verifier);
+      expect(proved.status).toBe(200);
+      expect(await proved.json()).toMatchObject({ proof: "recovery_key" });
+      const { response } = await registerPasskey(session);
+
+      expect(response.status).toBe(200);
+      expect(await enrollmentMethods(userId)).toContain("account_recovery");
+      // The key confirmed one recovery, and opens the vault still.
+      expect(await recoveryKeyVerifierHash(userId)).toBeNull();
+      expect(await refusal((await registerPasskey(session)).response)).toEqual(
+        REFUSED
+      );
+      expect(await refusal(await proveRecoveryKey(session, verifier))).toEqual({
+        status: 400,
+        code: "RECOVERY_KEY_NOT_SET",
+      });
+      expect(noticeLines()).toEqual([
+        "Your recovery key was used to confirm a recovery of your Zentity account.",
+        "A passkey was added to your Zentity account through account recovery.",
+      ]);
+    });
+
+    it("spends the recovery key for every session that proved it", async () => {
+      await addSettledPassword(userId);
+      const { verifier } = await createVaultWithVerifier(userId);
+      const first = await sessionSignedInWith(userId, "opaque");
+      const second = await sessionSignedInWith(userId, "opaque");
+
+      expect((await proveRecoveryKey(first, verifier)).status).toBe(200);
+      expect((await proveRecoveryKey(second, verifier)).status).toBe(200);
+      expect((await registerPasskey(first)).response.status).toBe(200);
+
+      expect(await refusal((await registerPasskey(second)).response)).toEqual(
+        REFUSED
+      );
+      expect(
+        await refusal(
+          await post(
+            "/passkey/delete-passkey",
+            { id: authenticator.passkeyId },
+            second.cookie
+          )
+        )
+      ).toEqual(REFUSED);
+      expect(await passkeyCount(userId)).toBe(2);
+
+      // The recovery that spent the key still retires the lost passkey.
+      const retired = await post(
+        "/passkey/delete-passkey",
+        { id: authenticator.passkeyId },
+        first.cookie
+      );
+      expect(retired.status).toBe(200);
+      expect(await passkeyCount(userId)).toBe(1);
+    });
+
+    it("recovers with an email link and the password", async () => {
+      await addSettledPassword(userId);
+      const session = await magicLinkSignIn(email);
+
+      expect(await refusal((await registerPasskey(session)).response)).toEqual(
+        REFUSED
+      );
+      await verifyPasswordInSession(userId, session);
+      const { response } = await registerPasskey(session);
+
+      expect(response.status).toBe(200);
+      expect(await enrollmentMethods(userId)).toContain("account_recovery");
+    });
+
+    it("does not count a password the same mailbox just reset", async () => {
+      await addAccounts(userId, ["opaque"]);
+      const session = await magicLinkSignIn(email);
+      await verifyPasswordInSession(userId, session);
+
+      const { response } = await registerPasskey(session);
+
+      expect(await refusal(response)).toEqual(REFUSED);
+      expect(await passkeyCount(userId)).toBe(1);
+    });
+
+    it("recovers with an email link and a wallet confirmed in the session", async () => {
+      const wallet = await linkWallet(userId);
+      const session = await magicLinkSignIn(email);
+
+      expect(await refusal((await registerPasskey(session)).response)).toEqual(
+        REFUSED
+      );
+      await expect(
+        account(userId, session).recoveryOptions()
+      ).resolves.toMatchObject({
+        available: { wallet: true },
+        proofs: ["magic_link"],
+      });
+      expect((await confirmWallet(session, wallet)).status).toBe(200);
+      await expect(
+        account(userId, session).recoveryOptions()
+      ).resolves.toMatchObject({
+        enrollment: "allowed",
+        proofs: ["magic_link", "wallet"],
+      });
+      const { response } = await registerPasskey(session);
+
+      expect(response.status).toBe(200);
+      expect(await enrollmentMethods(userId)).toContain("account_recovery");
+    });
+
+    it("does not count a wallet linked in the last 7 days", async () => {
+      const wallet = await linkWallet(userId, new Date());
+      const session = await magicLinkSignIn(email);
+
+      expect((await confirmWallet(session, wallet)).status).toBe(200);
+      const { response } = await registerPasskey(session);
+
+      expect(await refusal(response)).toEqual(REFUSED);
+    });
+
+    it("never lets an email reset add a password", async () => {
+      const response = await setPassword(
+        undefined,
+        await passwordResetToken(userId)
+      );
+
+      expect(await refusal(response)).toEqual({
+        status: 400,
+        code: "PASSWORD_NOT_SET",
+      });
+      expect(await providerIds(userId)).toEqual([]);
+      expect(mockSendEmail).not.toHaveBeenCalled();
+    });
+
+    it("never counts a password an email reset set, however old", async () => {
+      await addSettledPassword(userId);
+      expect(
+        (await setPassword(undefined, await passwordResetToken(userId))).status
+      ).toBe(200);
+      expect(await passwordSetMethod(userId)).toBe("password_reset");
+      await db
+        .update(accounts)
+        .set({ updatedAt: new Date(Date.now() - EIGHT_DAYS_MS) })
+        .where(eq(accounts.providerId, "opaque"))
+        .run();
+      const session = await magicLinkSignIn(email);
+      await verifyPasswordInSession(userId, session);
+
+      await expect(
+        account(userId, session).recoveryOptions()
+      ).resolves.toMatchObject({
+        available: { password: false },
+        hasPassword: true,
+        proofs: ["magic_link"],
+      });
+      const { response } = await registerPasskey(session);
+
+      expect(await refusal(response)).toEqual(REFUSED);
+      expect(await passkeyCount(userId)).toBe(1);
+    });
+
+    it("counts a password set with a passkey confirmation at once", async () => {
+      const passkeySession = await passkeySignIn(authenticator, true);
+      expect((await setPassword(passkeySession.cookie)).status).toBe(200);
+      expect(await passwordSetMethod(userId)).toBe("passkey_reverified");
+      const session = await magicLinkSignIn(email);
+      await verifyPasswordInSession(userId, session);
+
+      const { response } = await registerPasskey(session);
+
+      expect(response.status).toBe(200);
+      expect(await enrollmentMethods(userId)).toContain("account_recovery");
+    });
+
+    it("recovers an account that has only its email with an email link", async () => {
+      const session = await magicLinkSignIn(email);
+
+      const { response } = await registerPasskey(session);
+
+      expect(response.status).toBe(200);
+      expect(await enrollmentMethods(userId)).toContain("email_only_recovery");
+      expect(await refusal((await registerPasskey(session)).response)).toEqual(
+        REFUSED
+      );
+    });
+
+    it("refuses an address that a password session tried to swap in", async () => {
+      await db
+        .update(users)
+        .set({ emailVerified: false })
+        .where(eq(users.id, userId))
+        .run();
+      const passwordSession = await sessionSignedInWith(userId, "opaque");
+
+      expect(
+        await refusal(
+          await post(
+            "/change-email",
+            { newEmail: "attacker@example.com" },
+            passwordSession.cookie
+          )
+        )
+      ).toEqual(REFUSED);
+      // A link that verifies the address proves nothing for a recovery.
+      const session = await magicLinkSignIn(email);
+      const { response } = await registerPasskey(session);
+
+      expect(await refusal(response)).toEqual(REFUSED);
+      expect(await passkeyCount(userId)).toBe(1);
+    });
+  });
+
+  it("lets a session take back the passkey it just added, and no other session", async () => {
+    const session = await sessionSignedInWith(userId, "opaque");
+    const { response } = await registerPasskey(session);
+    const { id } = (await response.json()) as { id: string };
+    const otherSession = await sessionSignedInWith(userId, "opaque");
+
+    expect(
+      await refusal(
+        await post("/passkey/delete-passkey", { id }, otherSession.cookie)
+      )
+    ).toEqual(LAST_PASSKEY_REFUSED);
+    const removed = await post(
+      "/passkey/delete-passkey",
+      { id },
+      session.cookie
+    );
+
+    expect(removed.status).toBe(200);
+    expect(await passkeyCount(userId)).toBe(0);
+  });
+});
+
+describe("the recovery key", () => {
+  const email = "owner@example.com";
+  let userId: string;
+  let authenticator: TestAuthenticator;
+
+  beforeEach(async () => {
+    await resetDatabase();
+    mockSendEmail.mockResolvedValue("sent");
+    mockSendWebPush.mockResolvedValue(undefined);
+    userId = await createTestUser({ email, emailVerified: true });
+    authenticator = await new TestAuthenticator().register(userId);
+  });
+
+  it("needs a verifier, which the server keeps to itself", async () => {
+    const rootId = await createVault(userId);
+    const caller = secrets(userId, await passkeySignIn(authenticator, true));
+    const { verifierHash, ...withoutVerifier } = RECOVERY_KEY_WRAPPER;
+
+    await expect(
+      caller.addWrapper({ secretId: rootId, ...withoutVerifier })
+    ).rejects.toMatchObject({ code: "BAD_REQUEST" });
+    await expect(
+      caller.addWrapper({
+        secretId: rootId,
+        credentialId: "opaque",
+        wrappedDek: WRAPPED_DEK,
+        kekSource: "opaque",
+        verifierHash,
+      })
+    ).rejects.toMatchObject({ code: "BAD_REQUEST" });
+    const { wrapper } = await caller.addWrapper({
+      secretId: rootId,
+      ...RECOVERY_KEY_WRAPPER,
+    });
+
+    expect(wrapper).not.toHaveProperty("verifierHash");
+    expect(await recoveryKeyVerifierHash(userId)).toBe(verifierHash);
+    const bundle = await caller.getSecretBundle({ secretType: "fhe_keys" });
+    for (const stored of bundle.wrappers) {
+      expect(stored).not.toHaveProperty("verifierHash");
+    }
+  });
+
+  it("checks the key without learning it", async () => {
+    const session = await sessionSignedInWith(userId, "opaque");
+
+    expect(
+      await refusal(
+        await proveRecoveryKey(
+          session,
+          crypto.randomBytes(32).toString("base64url")
+        )
+      )
+    ).toEqual({ status: 400, code: "RECOVERY_KEY_NOT_SET" });
+    const { verifier } = await createVaultWithVerifier(userId);
+    for (const wrong of [
+      crypto.randomBytes(32).toString("base64url"),
+      crypto.randomBytes(16).toString("base64url"),
+    ]) {
+      expect(await refusal(await proveRecoveryKey(session, wrong))).toEqual({
+        status: 401,
+        code: "INVALID_RECOVERY_KEY",
+      });
+    }
+    expect(mockSendEmail).not.toHaveBeenCalled();
+
+    expect((await proveRecoveryKey(session, verifier)).status).toBe(200);
+    const proof = await db
+      .select({ value: verifications.value })
+      .from(verifications)
+      .where(
+        eq(verifications.identifier, `account-recovery:${session.sessionId}`)
+      )
+      .get();
+    expect(JSON.parse(proof?.value ?? "{}")).toEqual({
+      proof: "recovery_key",
+      userId,
+      verifierHash: await recoveryKeyVerifierHash(userId),
+    });
+  });
+
+  it("removes the last passkey only from an account recovery", async () => {
+    await addSettledPassword(userId);
+    const { verifier } = await createVaultWithVerifier(userId);
+    const session = await sessionSignedInWith(userId, "opaque");
+
+    expect(
+      await refusal(
+        await post(
+          "/passkey/delete-passkey",
+          { id: authenticator.passkeyId },
+          session.cookie
+        )
+      )
+    ).toEqual(LAST_PASSKEY_REFUSED);
+    await proveRecoveryKey(session, verifier);
+    const removed = await post(
+      "/passkey/delete-passkey",
+      { id: authenticator.passkeyId },
+      session.cookie
+    );
+
+    expect(removed.status).toBe(200);
+    expect(await passkeyCount(userId)).toBe(0);
+  });
+
+  it("tells the page what the session can still prove", async () => {
+    await addSettledPassword(userId);
+    await createVaultWithVerifier(userId);
+    const session = await sessionSignedInWith(userId, "opaque");
+
+    await expect(account(userId, session).recoveryOptions()).resolves.toEqual({
+      available: {
+        email: true,
+        password: true,
+        recoveryKey: true,
+        wallet: false,
+      },
+      enrollment: "reverification_required",
+      hasPasskey: true,
+      hasPassword: true,
+      passkeyReverified: false,
+      proofs: ["password"],
+      signedInWithPasskey: false,
+    });
+  });
+
+  it("tells the page when a passkey, not a recovery, allows a new one", async () => {
+    await addSettledPassword(userId);
+    await createVaultWithVerifier(userId);
+
+    await expect(
+      account(
+        userId,
+        await passkeySignIn(authenticator, true)
+      ).recoveryOptions()
+    ).resolves.toMatchObject({
+      enrollment: "allowed",
+      passkeyReverified: true,
+      proofs: [],
+      signedInWithPasskey: true,
+    });
+    await expect(
+      account(
+        userId,
+        await passkeySignIn(authenticator, false)
+      ).recoveryOptions()
+    ).resolves.toMatchObject({
+      enrollment: "reverification_required",
+      passkeyReverified: false,
+      signedInWithPasskey: true,
+    });
+  });
+
+  it("tells the page an account recovery allows a new passkey", async () => {
+    await addSettledPassword(userId);
+    const { verifier } = await createVaultWithVerifier(userId);
+    const session = await sessionSignedInWith(userId, "opaque");
+    await proveRecoveryKey(session, verifier);
+
+    await expect(
+      account(userId, session).recoveryOptions()
+    ).resolves.toMatchObject({
+      enrollment: "allowed",
+      passkeyReverified: false,
+      proofs: ["recovery_key", "password"],
+      signedInWithPasskey: false,
+    });
+  });
+});
+
+describe("confirming a wallet in the session", () => {
+  let userId: string;
+  let wallet: Wallet;
+
+  beforeEach(async () => {
+    await resetDatabase();
+    userId = await createTestUser({ email: "owner@example.com" });
+    wallet = await linkWallet(userId);
+  });
+
+  async function sessionContext(sessionId: string) {
+    const row = await db
+      .select({ loginMethod: authenticationContexts.loginMethod })
+      .from(sessions)
+      .innerJoin(
+        authenticationContexts,
+        eq(authenticationContexts.id, sessions.authContextId)
+      )
+      .where(eq(sessions.id, sessionId))
+      .get();
+    return row?.loginMethod;
+  }
+
+  async function sessionCount() {
+    const rows = await db
+      .select({ id: sessions.id })
+      .from(sessions)
+      .where(eq(sessions.userId, userId))
+      .all();
+    return rows.length;
+  }
+
+  it("records a wallet sign-in on this session without starting another", async () => {
+    const session = await sessionSignedInWith(userId, "opaque");
+
+    const response = await confirmWallet(session, wallet);
+
+    expect(response.status).toBe(200);
+    expect(await sessionContext(session.sessionId)).toBe("eip712");
+    expect(await sessionCount()).toBe(1);
+  });
+
+  it("refuses a wallet the account does not hold", async () => {
+    const session = await sessionSignedInWith(userId, "opaque");
+    const stranger = privateKeyToAccount(generatePrivateKey());
+
+    expect(await refusal(await confirmWallet(session, stranger))).toEqual({
+      status: 400,
+      code: "WALLET_NOT_LINKED",
+    });
+    expect(await sessionContext(session.sessionId)).toBe("opaque");
+  });
+
+  it("refuses a request without a session", async () => {
+    const response = await post("/wallet/siwe/verify/challenge", {
+      address: wallet.address,
+      chainId: 1,
+    });
+
+    expect(response.status).toBe(401);
+  });
+
+  it("does not take a signature made to sign in", async () => {
+    const session = await sessionSignedInWith(userId, "opaque");
+    const challenge = await post("/sign-in/siwe/challenge", {
+      address: wallet.address,
+      chainId: 1,
+    });
+    const { message } = (await challenge.json()) as { message: string };
+
+    const response = await post(
+      "/wallet/siwe/verify/complete",
+      { message, signature: await wallet.signMessage({ message }) },
+      session.cookie
+    );
+
+    expect(response.status).toBe(401);
+    expect(await sessionContext(session.sessionId)).toBe("opaque");
   });
 });

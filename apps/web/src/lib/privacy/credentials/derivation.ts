@@ -8,13 +8,14 @@
  * through the HKDF salt.
  */
 
-import { toArrayBuffer } from "@/lib/privacy/primitives/symmetric";
+import { hkdfBits, toArrayBuffer } from "@/lib/privacy/primitives/symmetric";
 
 const HKDF_INFO = {
   PASSKEY_KEK: "zentity:kek:passkey",
   OPAQUE_KEK: "zentity:kek:opaque",
   WALLET_KEK: "zentity:kek:wallet",
   RECOVERY_KEY_KEK: "zentity:kek:recovery-key",
+  RECOVERY_KEY_VERIFIER: "zentity:verifier:recovery-key",
   VAULT_KEK: "zentity:kek:vault",
 } as const;
 
@@ -124,6 +125,31 @@ export function deriveKekFromRecoveryKey(
     userId,
     info: HKDF_INFO.RECOVERY_KEY_KEK,
     expected: { length: 32, label: "Recovery key" },
+  });
+}
+
+/**
+ * Derive the 32-byte value that proves possession of the recovery key to the
+ * server. Its own HKDF info keeps it independent of the recovery key's KEK,
+ * so the server, which stores only its SHA-256, learns nothing that opens
+ * the vault.
+ */
+export async function deriveRecoveryKeyVerifier(
+  recoveryKey: Uint8Array,
+  userId: string
+): Promise<Uint8Array> {
+  if (!userId) {
+    throw new Error("userId is required for the recovery key verifier.");
+  }
+  if (recoveryKey.byteLength !== 32) {
+    throw new Error(
+      `Recovery key must be 32 bytes, got ${recoveryKey.byteLength}`
+    );
+  }
+  return await hkdfBits(recoveryKey, {
+    bits: 256,
+    info: HKDF_INFO.RECOVERY_KEY_VERIFIER,
+    salt: new TextEncoder().encode(userId),
   });
 }
 

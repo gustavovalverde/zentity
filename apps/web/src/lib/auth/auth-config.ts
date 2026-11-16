@@ -186,6 +186,8 @@ import {
 import { opaque } from "@/lib/auth/opaque/server";
 import { getTrustedOrigins, PASSKEY_RP_ID } from "@/lib/auth/origin";
 import {
+  authorizePasskeyEnrollment,
+  authorizePasswordChange,
   notifyRecoveryFactorChange,
   readMagicLinkEmail,
   recoveryFactorsPlugin,
@@ -1869,6 +1871,10 @@ export const auth = betterAuth({
               window: 60,
               max: 10,
             },
+            "/recovery-key/verify": {
+              window: 60,
+              max: 5,
+            },
           },
         },
   disabledPaths: [
@@ -2122,6 +2128,9 @@ export const auth = betterAuth({
     }),
     opaque({
       serverSetup: () => env.OPAQUE_SERVER_SETUP,
+      // Records how each password was set, and keeps a reset by email from
+      // adding a password to a passkey account (`recovery-factors.ts`).
+      authorizePasswordChange,
       sendResetPassword: async ({ user, url }) => {
         const { sendResetPasswordEmail } = await import("@/lib/email/auth");
         await sendResetPasswordEmail({ user, url });
@@ -2154,11 +2163,14 @@ export const auth = betterAuth({
         afterVerification: ({ verification }) =>
           passkeyUserVerified.set(verification.authenticationInfo.userVerified),
       },
+      // A passkey on an account that holds one needs a recent user-verified
+      // passkey sign-in or an account recovery (`recovery-factors.ts`).
       registration: {
-        afterVerification: async ({ verification }) => {
-          await passkeyUserVerified.set(
-            verification.registrationInfo?.userVerified === true
-          );
+        afterVerification: async ({ ctx, verification }) => {
+          const credentialId = verification.registrationInfo?.credential.id;
+          if (credentialId) {
+            await authorizePasskeyEnrollment(ctx, credentialId);
+          }
         },
       },
     }),

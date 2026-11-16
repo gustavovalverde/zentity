@@ -25,7 +25,11 @@ export interface VaultAccess {
     name: string | null;
   }>;
   password: { connected: boolean } | null;
-  recoveryKey: { createdAt: string } | null;
+  /**
+   * `confirmsRecovery` is false for a key that already confirmed a recovery,
+   * or one created before keys could; either still opens the vault.
+   */
+  recoveryKey: { confirmsRecovery: boolean; createdAt: string } | null;
   secretId: string;
   /** Sign-in credentials plus the recovery key that can open the vault. */
   unlockingCount: number;
@@ -101,7 +105,10 @@ export async function getVaultAccess(
       ? { ...wallet, connected: hasWalletWrapper(wrapperIds, wallet) }
       : null,
     recoveryKey: recoveryWrapper
-      ? { createdAt: recoveryWrapper.updatedAt }
+      ? {
+          confirmsRecovery: recoveryWrapper.verifierHash !== null,
+          createdAt: recoveryWrapper.updatedAt,
+        }
       : null,
     unlockingCount: 0,
   };

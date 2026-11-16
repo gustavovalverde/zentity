@@ -33,7 +33,9 @@ import {
 } from "@/lib/auth/oidc/resource-challenge";
 import { verifyResourceRequest } from "@/lib/auth/oidc/resource-principal";
 import {
+  checkPasskeyRemoval,
   checkRecoveryFactorChange,
+  LAST_PASSKEY_MESSAGE,
   REVERIFICATION_REQUIRED,
   REVERIFICATION_REQUIRED_MESSAGE,
   type RecoveryFactorChange,
@@ -591,31 +593,64 @@ export function requireFeature(feature: FeatureName) {
   });
 }
 
+type RecoveryFactorChangeContext = Pick<TrpcContext, "authenticatedWith"> & {
+  session: Session;
+  userId: string;
+};
+
+function browserSessionId(ctx: RecoveryFactorChangeContext): string | null {
+  return ctx.authenticatedWith === "session_cookie"
+    ? ctx.session.session.id
+    : null;
+}
+
+function reverificationRequired(): TRPCError {
+  return new TRPCError({
+    code: "FORBIDDEN",
+    message: REVERIFICATION_REQUIRED_MESSAGE,
+    cause: new RecoveryFactorChangeRefused(REVERIFICATION_REQUIRED),
+  });
+}
+
 /**
  * Refuses a recovery factor change the account's state does not allow (see
  * `recovery-factors.ts`). Only a browser session counts toward it: an access
  * token's sign-in authorized an OAuth client, not this change.
  */
 export async function requireRecoveryFactorChange(
-  ctx: Pick<TrpcContext, "authenticatedWith"> & {
-    session: Session;
-    userId: string;
-  },
+  ctx: RecoveryFactorChangeContext,
   change: RecoveryFactorChange
 ): Promise<void> {
   const decision = await checkRecoveryFactorChange({
     change,
-    sessionId:
-      ctx.authenticatedWith === "session_cookie"
-        ? ctx.session.session.id
-        : null,
+    sessionId: browserSessionId(ctx),
     userId: ctx.userId,
   });
   if (!decision.allowed) {
-    throw new TRPCError({
-      code: "FORBIDDEN",
-      message: REVERIFICATION_REQUIRED_MESSAGE,
-      cause: new RecoveryFactorChangeRefused(REVERIFICATION_REQUIRED),
-    });
+    throw reverificationRequired();
+  }
+}
+
+/**
+ * Refuses to detach a passkey's vault wrapper unless the passkey itself may
+ * be deleted, so a refused deletion leaves the passkey able to open the vault.
+ */
+export async function requirePasskeyRemoval(
+  ctx: RecoveryFactorChangeContext,
+  credentialId: string
+): Promise<void> {
+  const decision = await checkPasskeyRemoval({
+    passkey: { credentialId },
+    sessionId: browserSessionId(ctx),
+    userId: ctx.userId,
+  });
+  if (!decision) {
+    await requireRecoveryFactorChange(ctx, "passkey");
+    return;
+  }
+  if (!decision.allowed) {
+    throw decision.reason === "last_passkey"
+      ? new TRPCError({ code: "BAD_REQUEST", message: LAST_PASSKEY_MESSAGE })
+      : reverificationRequired();
   }
 }

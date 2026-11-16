@@ -117,3 +117,47 @@ describe("siweAuthClient signIn", () => {
     });
   });
 });
+
+describe("siweAuthClient verifyWallet", () => {
+  it("confirms the wallet in the current session with one signature", async () => {
+    const fetchMock = respondWith({
+      "/wallet/siwe/verify/challenge": { message: MESSAGE },
+      "/wallet/siwe/verify/complete": { success: true },
+    });
+    const signMessage = vi
+      .fn<(message: string) => Promise<string>>()
+      .mockResolvedValue("0xsig");
+
+    const result = await createActions(fetchMock).siwe.verifyWallet({
+      address: ADDRESS,
+      chainId: 1,
+      signMessage,
+    });
+
+    expect(result).toEqual({ success: true });
+    expect(signMessage).toHaveBeenCalledExactlyOnceWith(MESSAGE);
+    expect(fetchMock).toHaveBeenLastCalledWith("/wallet/siwe/verify/complete", {
+      method: "POST",
+      body: { message: MESSAGE, signature: "0xsig" },
+    });
+  });
+
+  it("asks for no signature when the server refuses the wallet", async () => {
+    const fetchMock = vi.fn<FetchMock>(() =>
+      Promise.resolve({
+        data: null,
+        error: { message: "This wallet isn't linked to your account." },
+      })
+    );
+    const signMessage = vi.fn<(message: string) => Promise<string>>();
+
+    await expect(
+      createActions(fetchMock).siwe.verifyWallet({
+        address: ADDRESS,
+        chainId: 1,
+        signMessage,
+      })
+    ).rejects.toThrow("This wallet isn't linked to your account.");
+    expect(signMessage).not.toHaveBeenCalled();
+  });
+});

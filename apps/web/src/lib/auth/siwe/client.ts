@@ -100,6 +100,37 @@ export const siweAuthClient = () => ({
           return registerRes.data;
         },
       },
+      siwe: {
+        /**
+         * Confirms in the current session that the user holds this wallet,
+         * without signing in again.
+         */
+        verifyWallet: async (params: {
+          address: string;
+          chainId: number;
+          signMessage: SignMessageFn;
+        }) => {
+          const message = await requestChallenge(
+            $fetch,
+            "/wallet/siwe/verify/challenge",
+            params
+          );
+          const signature = await params.signMessage(message);
+
+          const verifyRes = await $fetch<{ success: boolean }>(
+            "/wallet/siwe/verify/complete",
+            { method: "POST", body: { message, signature } }
+          );
+
+          if (verifyRes.error || !verifyRes.data) {
+            throw new Error(
+              extractError(verifyRes.error, "Wallet confirmation failed")
+            );
+          }
+
+          return verifyRes.data;
+        },
+      },
       signIn: {
         siwe: async (params: {
           address: string;

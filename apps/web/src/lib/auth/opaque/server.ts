@@ -1,4 +1,5 @@
-import type { OpaquePluginOptions } from "./types";
+import type { AuthContext } from "@better-auth/core";
+import type { OpaquePluginOptions, PasswordChangeVia } from "./types";
 
 import { randomBytes } from "node:crypto";
 
@@ -35,42 +36,6 @@ const DEFAULT_SIGNUP_TOKEN_EXPIRY = 15 * 60; // 15 minutes for sign-up
 const normalizeIdentifier = (identifier: string) =>
   identifier.trim().toLowerCase();
 
-async function upsertOpaqueAccount(params: {
-  // biome-ignore lint/suspicious/noExplicitAny: better-auth internal types are too strict
-  internalAdapter: any;
-  // biome-ignore lint/suspicious/noExplicitAny: better-auth internal types are too strict
-  generateId: any;
-  userId: string;
-  registrationRecord: string;
-}) {
-  const accounts = (await params.internalAdapter.findAccounts(
-    params.userId
-  )) as Array<{ id: string; providerId: string; registrationRecord?: string }>;
-  const existing = accounts.find((a) => a.providerId === "opaque");
-  const now = new Date();
-
-  if (!existing) {
-    const accountId = params.generateId({ model: "account" });
-    if (!accountId) {
-      throw new Error("Failed to generate account ID");
-    }
-    await params.internalAdapter.createAccount({
-      accountId,
-      providerId: "opaque",
-      userId: params.userId,
-      registrationRecord: params.registrationRecord,
-      createdAt: now,
-      updatedAt: now,
-    });
-    return;
-  }
-
-  await params.internalAdapter.updateAccount(existing.id, {
-    registrationRecord: params.registrationRecord,
-    updatedAt: now,
-  });
-}
-
 function buildResetUrl(params: {
   baseURL: string;
   token: string;
@@ -98,6 +63,59 @@ export const opaque = (options: OpaquePluginOptions) => {
     return setup;
   };
 
+  /**
+   * Stores the password's registration record, asking
+   * `authorizePasswordChange` first; what it returns is stored as
+   * `passwordSetMethod`.
+   */
+  const storePassword = async (
+    ctx: { context: AuthContext },
+    params: {
+      registrationRecord: string;
+      sessionId: string | null;
+      userId: string;
+      via: PasswordChangeVia;
+    }
+  ) => {
+    // biome-ignore lint/suspicious/noExplicitAny: better-auth internal types omit plugin account fields
+    const internalAdapter: any = ctx.context.internalAdapter;
+    const accounts = (await internalAdapter.findAccounts(
+      params.userId
+    )) as Array<{ id: string; providerId: string }>;
+    const existing = accounts.find((a) => a.providerId === "opaque");
+    const passwordSetMethod =
+      (await options.authorizePasswordChange?.({
+        hasPassword: Boolean(existing),
+        sessionId: params.sessionId,
+        userId: params.userId,
+        via: params.via,
+      })) ?? null;
+    const now = new Date();
+
+    if (!existing) {
+      const accountId = ctx.context.generateId({ model: "account" });
+      if (!accountId) {
+        throw new Error("Failed to generate account ID");
+      }
+      await internalAdapter.createAccount({
+        accountId,
+        providerId: "opaque",
+        userId: params.userId,
+        registrationRecord: params.registrationRecord,
+        passwordSetMethod,
+        createdAt: now,
+        updatedAt: now,
+      });
+      return;
+    }
+
+    await internalAdapter.updateAccount(existing.id, {
+      registrationRecord: params.registrationRecord,
+      passwordSetMethod,
+      updatedAt: now,
+    });
+  };
+
   return {
     id: "opaque",
     init: async () => {
@@ -110,6 +128,10 @@ export const opaque = (options: OpaquePluginOptions) => {
             type: "string",
             required: false,
             unique: true,
+          },
+          passwordSetMethod: {
+            type: "string",
+            required: false,
           },
         },
       },
@@ -258,14 +280,14 @@ export const opaque = (options: OpaquePluginOptions) => {
             });
           }
 
-          await upsertOpaqueAccount({
-            internalAdapter: ctx.context.internalAdapter,
-            generateId: ctx.context.generateId,
-            userId,
+          const sessionId = ctx.context.session?.session?.id;
+          await storePassword(ctx, {
             registrationRecord: ctx.body.registrationRecord,
+            sessionId: sessionId ?? null,
+            userId,
+            via: "registration",
           });
 
-          const sessionId = ctx.context.session?.session?.id;
           if (sessionId) {
             await replaceSessionAuthenticationContext({
               userId,
@@ -543,11 +565,11 @@ export const opaque = (options: OpaquePluginOptions) => {
             });
           }
 
-          await upsertOpaqueAccount({
-            internalAdapter: ctx.context.internalAdapter,
-            generateId: ctx.context.generateId,
-            userId: verification.value,
+          await storePassword(ctx, {
             registrationRecord: ctx.body.registrationRecord,
+            sessionId: null,
+            userId: verification.value,
+            via: "reset",
           });
 
           if (options.onPasswordReset) {
@@ -701,11 +723,11 @@ export const opaque = (options: OpaquePluginOptions) => {
           };
 
           // Store OPAQUE registration record
-          await upsertOpaqueAccount({
-            internalAdapter: ctx.context.internalAdapter,
-            generateId: ctx.context.generateId,
-            userId,
+          await storePassword(ctx, {
             registrationRecord: ctx.body.registrationRecord,
+            sessionId: null,
+            userId,
+            via: "sign_up",
           });
 
           // Mark user as non-anonymous

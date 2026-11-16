@@ -5,11 +5,13 @@ import {
   deriveKekFromPrf,
   deriveKekFromRecoveryKey,
   deriveKekFromWalletSignature,
+  deriveRecoveryKeyVerifier,
   generatePrfSalt,
 } from "@/lib/privacy/credentials/derivation";
 import {
   decryptAesGcm,
   encryptAesGcm,
+  hkdfBits,
 } from "@/lib/privacy/primitives/symmetric";
 
 describe("key-derivation", () => {
@@ -326,6 +328,42 @@ describe("key-derivation", () => {
       const encrypted = await encryptAesGcm(defaultKek, testData);
 
       await expect(decryptAesGcm(customKek, encrypted)).rejects.toThrow();
+    });
+  });
+
+  describe("deriveRecoveryKeyVerifier", () => {
+    const recoveryKey = new Uint8Array(32).fill(0x24);
+
+    it("derives the same 32 bytes for the same key and user", async () => {
+      const first = await deriveRecoveryKeyVerifier(recoveryKey, "user-123");
+      const second = await deriveRecoveryKeyVerifier(recoveryKey, "user-123");
+
+      expect(first).toHaveLength(32);
+      expect(first).toEqual(second);
+    });
+
+    it("binds the verifier to the user", async () => {
+      expect(
+        await deriveRecoveryKeyVerifier(recoveryKey, "user-123")
+      ).not.toEqual(await deriveRecoveryKeyVerifier(recoveryKey, "user-456"));
+    });
+
+    it("differs from the key material behind the recovery key's KEK", async () => {
+      const kekBits = await hkdfBits(recoveryKey, {
+        bits: 256,
+        info: "zentity:kek:recovery-key",
+        salt: new TextEncoder().encode("user-123"),
+      });
+
+      expect(
+        await deriveRecoveryKeyVerifier(recoveryKey, "user-123")
+      ).not.toEqual(kekBits);
+    });
+
+    it("refuses a key that is not 32 bytes", async () => {
+      await expect(
+        deriveRecoveryKeyVerifier(new Uint8Array(16), "user-123")
+      ).rejects.toThrow("32 bytes");
     });
   });
 

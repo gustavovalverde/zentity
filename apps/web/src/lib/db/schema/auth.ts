@@ -80,6 +80,8 @@ export const accounts = sqliteTable(
     scope: text("scope"),
     password: text("password"),
     registrationRecord: text("registrationRecord"),
+    /** How the password was last set (`recovery-factors.ts`). */
+    passwordSetMethod: text("passwordSetMethod"),
     createdAt: integer("createdAt", { mode: "timestamp_ms" }).notNull(),
     updatedAt: integer("updatedAt", { mode: "timestamp_ms" }).notNull(),
   },
@@ -127,6 +129,8 @@ export const passkeys = sqliteTable(
       .notNull()
       .default(sql`(unixepoch() * 1000)`),
     aaguid: text("aaguid"),
+    /** How the recovery factor rule allowed the passkey (`recovery-factors.ts`). */
+    enrollmentMethod: text("enrollment_method"),
   },
   (table) => [
     index("passkey_user_id_idx").on(table.userId),
