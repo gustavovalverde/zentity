@@ -15,14 +15,19 @@
  *
  * Runs with `--conditions=react-server`, so modules marked `server-only`
  * load outside Next. It needs the web app's environment (`.env` locally, or
- * `railway run --service web` against production).
+ * `railway run --service web` against production). It prints the MCP
+ * resource and the database it writes to first, and in production it refuses
+ * a loopback `MCP_PUBLIC_URL`.
  */
 
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { parseArgs } from "node:util";
 
-import { provisionMcpClient } from "@/lib/auth/oidc/mcp-client";
+import {
+  mcpProvisioningTarget,
+  provisionMcpClient,
+} from "@/lib/auth/oidc/mcp-client";
 
 const ENV_LINE = /^([A-Z0-9_]+)=(.*)$/;
 const ENV_KEY = /^([A-Z0-9_]+)=/;
@@ -76,6 +81,10 @@ async function main(): Promise<void> {
     process.env.MCP_CLIENT_ID ||
     (envPath ? readEnvFile(envPath).get("MCP_CLIENT_ID") : undefined) ||
     undefined;
+
+  const target = mcpProvisioningTarget();
+  console.log(`MCP resource: ${target.resource}`);
+  console.log(`Database: ${target.database || "(TURSO_DATABASE_URL unset)"}`);
 
   const credentials = await provisionMcpClient({
     clientId,

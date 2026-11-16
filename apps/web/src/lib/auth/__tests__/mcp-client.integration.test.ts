@@ -4,7 +4,7 @@ import crypto from "node:crypto";
 
 import { beginCibaApproval, pollCibaTokenOnce } from "@zentity/sdk";
 import { and, eq } from "drizzle-orm";
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { env } from "@/env";
 import { createAuthenticationContext } from "@/lib/auth/auth-context";
@@ -12,6 +12,7 @@ import { stageFinalCibaDisclosure } from "@/lib/auth/oidc/disclosure/context";
 import { createScopeHash } from "@/lib/auth/oidc/disclosure/delivery";
 import {
   MCP_CLIENT_SCOPES,
+  mcpProvisioningTarget,
   provisionMcpClient,
 } from "@/lib/auth/oidc/mcp-client";
 import { resolveSubForClientId } from "@/lib/auth/oidc/pairwise";
@@ -105,6 +106,28 @@ describe("MCP HTTP client provisioning", () => {
     ).toEqual([{ resourceId: env.MCP_PUBLIC_URL }]);
     // The owner's provisioning sessions do not outlive a run.
     expect(await db.select().from(sessions).all()).toEqual([]);
+  });
+
+  // T3 leftover: an unset MCP_PUBLIC_URL defaults to a loopback URL, and a
+  // production client linked to it serves no remote host.
+  it("refuses a loopback MCP resource in production", async () => {
+    vi.stubEnv("NODE_ENV", "production");
+    try {
+      expect(() => mcpProvisioningTarget()).toThrow(
+        `MCP_PUBLIC_URL is ${env.MCP_PUBLIC_URL}; set it to the MCP server's public URL before provisioning in production`
+      );
+      await expect(provisionMcpClient({})).rejects.toThrow("MCP_PUBLIC_URL");
+    } finally {
+      vi.unstubAllEnvs();
+    }
+    expect(await storedClients()).toEqual([]);
+  });
+
+  it("names the resource and database it writes to", () => {
+    expect(mcpProvisioningTarget()).toEqual({
+      resource: env.MCP_PUBLIC_URL,
+      database: expect.stringContaining("test.db"),
+    });
   });
 
   it("creates a new client when the given one does not exist", async () => {

@@ -35,6 +35,49 @@ export const MCP_CLIENT_SCOPES = [
   "poh",
 ];
 
+const LOOPBACK_HOSTS = new Set(["localhost", "127.0.0.1", "[::1]"]);
+
+/** What a provisioning run writes to: the MCP resource and the database. */
+export interface McpProvisioningTarget {
+  database: string;
+  resource: string;
+}
+
+/** The database URL without credentials or query parameters. */
+function describeDatabase(url: string): string {
+  if (!URL.canParse(url) || url.startsWith("file:")) {
+    return url;
+  }
+  const parsed = new URL(url);
+  parsed.username = "";
+  parsed.password = "";
+  parsed.search = "";
+  return parsed.toString();
+}
+
+/**
+ * The resource and database a provisioning run targets. A production run
+ * refuses a loopback `MCP_PUBLIC_URL`, which is what an unset variable
+ * defaults to, because the client would be linked to a resource no remote
+ * host can reach.
+ */
+export function mcpProvisioningTarget(): McpProvisioningTarget {
+  const resource = env.MCP_PUBLIC_URL;
+  const { hostname } = new URL(resource);
+  if (
+    process.env.NODE_ENV === "production" &&
+    (LOOPBACK_HOSTS.has(hostname) || hostname.endsWith(".localhost"))
+  ) {
+    throw new Error(
+      `MCP_PUBLIC_URL is ${resource}; set it to the MCP server's public URL before provisioning in production`
+    );
+  }
+  return {
+    resource,
+    database: describeDatabase(process.env.TURSO_DATABASE_URL ?? ""),
+  };
+}
+
 export interface McpClientCredentials {
   clientId: string;
   /** Present when the client was created or its secret rotated. */
@@ -136,6 +179,7 @@ export async function provisionMcpClient(options: {
   clientId?: string | undefined;
   rotateSecret?: boolean;
 }): Promise<McpClientCredentials> {
+  mcpProvisioningTarget();
   const { clientId } = options;
   const ownerId = clientId ? await findProvisionedOwner(clientId) : null;
   if (!(clientId && ownerId)) {
