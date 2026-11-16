@@ -1,6 +1,6 @@
 # Terms of Service
 
-Last updated: March 2, 2026.
+Last updated: November 16, 2026.
 
 ## 1. Acceptance
 
@@ -14,7 +14,7 @@ As a pre-audit beta, features may change, break, or be removed without notice.
 
 ## 3. Account Registration
 
-- You may create an account using a passkey, password (OPAQUE), or wallet signature (EIP-712)
+- You may create an account using a passkey, password (OPAQUE), or wallet signature (Sign-In with Ethereum)
 - Social sign-in (Google, GitHub) is available for **account linking only** — it cannot be used to create a new account
 - You are responsible for maintaining the security of your credentials
 - One account per person; do not share credentials
