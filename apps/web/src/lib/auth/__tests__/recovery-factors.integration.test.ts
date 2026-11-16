@@ -30,6 +30,12 @@ import { secretsRouter } from "@/lib/trpc/routers/secrets";
 import { createTestUser, resetDatabase } from "@/test-utils/db-test-utils";
 import { TestAuthenticator } from "@/test-utils/webauthn-test-utils";
 
+// A configured social provider, so `/link-social` reaches the provider.
+vi.hoisted(() => {
+  process.env.GITHUB_CLIENT_ID = "test-github-client";
+  process.env.GITHUB_CLIENT_SECRET = "test-github-secret";
+});
+
 const mockSendEmail = vi.fn();
 const mockSendWebPush = vi.fn();
 
@@ -379,6 +385,19 @@ async function refusal(response: Response) {
 }
 
 const REFUSED = { status: 403, code: REVERIFICATION_REQUIRED };
+const GITHUB_AUTHORIZE = "https://github.com/login/oauth/authorize";
+
+function linkGithub(cookie: string) {
+  return post(
+    "/link-social",
+    {
+      provider: "github",
+      callbackURL: "/dashboard/settings?tab=account",
+      disableRedirect: true,
+    },
+    cookie
+  );
+}
 
 describe("recovery factor changes on a passkey account", () => {
   const email = "owner@example.com";
@@ -557,8 +576,8 @@ describe("recovery factor changes on a passkey account", () => {
       expect(mockSendEmail).not.toHaveBeenCalled();
     });
 
-    it("refuses to unlink the password or a wallet", async () => {
-      const ids = await addAccounts(userId, ["eip712", "opaque"]);
+    it("refuses to unlink the password, a wallet, or a social sign-in account", async () => {
+      const ids = await addAccounts(userId, ["eip712", "github", "opaque"]);
 
       for (const accountId of Object.values(ids)) {
         expect(
@@ -567,7 +586,11 @@ describe("recovery factor changes on a passkey account", () => {
           )
         ).toEqual(REFUSED);
       }
-      expect(await providerIds(userId)).toEqual(["eip712", "opaque"]);
+      expect(await providerIds(userId)).toEqual(["eip712", "github", "opaque"]);
+    });
+
+    it("refuses to link a social sign-in account", async () => {
+      expect(await refusal(await linkGithub(session.cookie))).toEqual(REFUSED);
     });
 
     it("refuses to reset or replace the vault root", async () => {
@@ -659,6 +682,23 @@ describe("recovery factor changes on a passkey account", () => {
 
       expect(await providerIds(userId)).toEqual(["eip712"]);
       expect(await passkeyCount(userId)).toBe(0);
+    });
+
+    it("allows a social sign-in account to be linked and unlinked", async () => {
+      const linked = await linkGithub(session.cookie);
+      expect(linked.status).toBe(200);
+      expect(((await linked.json()) as { url: string }).url).toMatch(
+        GITHUB_AUTHORIZE
+      );
+
+      const ids = await addAccounts(userId, ["github", "opaque"]);
+      const unlinked = await post(
+        "/unlink-account",
+        { accountId: ids.github },
+        session.cookie
+      );
+      expect(unlinked.status).toBe(200);
+      expect(await providerIds(userId)).toEqual(["opaque"]);
     });
 
     it("allows a passkey to be detached from the vault", async () => {
@@ -888,6 +928,7 @@ describe("recovery factor changes on an account without a passkey", () => {
     await secrets(userId, session).removeCredential({
       credentialId: "passkey-credential",
     });
+    expect((await linkGithub(session.cookie)).status).toBe(200);
   });
 
   it("keeps the vault when Better Auth refuses a stale session's deletion", async () => {
@@ -1066,7 +1107,7 @@ describe("recovery factor notices", () => {
     expect(mockSendWebPush).toHaveBeenCalledTimes(2);
   });
 
-  it("tells the user a passkey, the password, and a wallet were removed", async () => {
+  it("tells the user a passkey, the password, a wallet, and a social sign-in account were removed", async () => {
     const ids = await addAccounts(userId, [
       "eip712",
       "github",
@@ -1085,6 +1126,10 @@ describe("recovery factor notices", () => {
     }
 
     expect(notices()).toEqual([
+      {
+        to: [email],
+        text: "A Google account was unlinked from your Zentity account.",
+      },
       { to: [email], text: "A passkey was removed from your Zentity account." },
       {
         to: [email],
@@ -1092,7 +1137,30 @@ describe("recovery factor notices", () => {
       },
       { to: [email], text: "A wallet was removed from your Zentity account." },
     ]);
-    expect(mockSendWebPush).toHaveBeenCalledTimes(3);
+    expect(mockSendWebPush).toHaveBeenCalledTimes(4);
+  });
+
+  it("tells the user a social sign-in account was linked", async () => {
+    // The OAuth callback and `/link-social` link through the adapter.
+    const { internalAdapter } = await auth.$context;
+    await internalAdapter.linkAccount({
+      providerId: "github",
+      accountId: "github-user",
+      userId,
+    });
+    await internalAdapter.createAccount({
+      providerId: "opaque",
+      accountId: userId,
+      userId,
+    });
+
+    expect(notices()).toEqual([
+      {
+        to: [email],
+        text: "A GitHub account was linked to your Zentity account and can now sign in to it.",
+      },
+    ]);
+    expect(mockSendWebPush).toHaveBeenCalledOnce();
   });
 
   it("sends nothing when the passkey to remove belongs to someone else", async () => {
