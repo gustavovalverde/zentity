@@ -21,7 +21,8 @@ import { passkeys } from "@/lib/db/schema/auth";
  * A passkey confirmation bound to one CIBA request and one session, verified
  * without creating a session (the passkey plugin's own verification always
  * signs the user in). The challenge is a single-use verification row that
- * lives 120 seconds; a new options call replaces it.
+ * lives 120 seconds; a new options call replaces it. Interim until the plugin
+ * verifies without a session (U1 in docs/adr/platform/0002-better-auth-patches.md).
  */
 
 const STEP_UP_TTL_MS = 120_000;
