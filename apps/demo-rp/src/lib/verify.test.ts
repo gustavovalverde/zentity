@@ -1,36 +1,53 @@
+// @vitest-environment node
+
+import { deflateSync } from "node:zlib";
+
 import { SDJwtInstance } from "@sd-jwt/core";
 import {
   type CryptoKey,
   exportJWK,
   generateKeyPair,
   type JWK,
+  type JWTVerifyOptions,
   jwtVerify,
   SignJWT,
 } from "jose";
-import { beforeAll, describe, expect, it, vi } from "vitest";
+import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 const issuerKey = vi.hoisted(() => ({ current: null as CryptoKey | null }));
 
 vi.mock("@zentity/sdk/rp", () => ({
-  createJwksTokenVerifier: () => ({
-    verify: (token: string) => {
+  createJwksTokenVerifier: (options: { issuer?: string }) => ({
+    verify: (token: string, verifyOptions: JWTVerifyOptions = {}) => {
       if (!issuerKey.current) {
         throw new Error("issuer key not initialized");
       }
-      return jwtVerify(token, issuerKey.current);
+      return jwtVerify(
+        token,
+        issuerKey.current,
+        options.issuer
+          ? { ...verifyOptions, issuer: options.issuer }
+          : verifyOptions
+      );
     },
   }),
 }));
 vi.mock("server-only", () => ({}));
 vi.mock("@/lib/env", () => ({
-  env: { ZENTITY_URL: "http://zentity-internal:3000" },
+  env: {
+    NEXT_PUBLIC_ZENTITY_URL: "https://app.zentity.xyz",
+    ZENTITY_URL: "http://zentity-internal:3000",
+  },
 }));
 
 import type { DcqlQuery } from "@/scenarios/veripass/verifier-scenario";
 import { sha256Hasher } from "./sd-jwt";
 import { type VpTokenExpectations, verifyVpToken } from "./verify";
 
-const ISSUER = "https://app.zentity.xyz";
+const ISSUER = "https://app.zentity.xyz/api/auth";
+const STATUS_LIST_URI = `${ISSUER}/oidc4vci/status-list`;
+const VALID_IDX = 0;
+const REVOKED_IDX = 1;
 const VCT = "urn:credential:identity-verification:v1";
 const NONCE = "session-nonce";
 const AUDIENCE = "x509_hash:verifier-leaf-thumbprint";
@@ -65,6 +82,8 @@ let holderKeys: KeyPair;
 let holderJwk: JWK;
 let credential: string;
 
+const fetchMock = vi.fn<typeof fetch>();
+
 function nowSeconds(): number {
   return Math.floor(Date.now() / 1000);
 }
@@ -77,7 +96,18 @@ async function sha256Base64url(input: string): Promise<string> {
   return base64url(await sha256Hasher(input, "sha-256"));
 }
 
-function issueCredential(cnfJwk: JWK): Promise<string> {
+function statusReference(idx = VALID_IDX, uri = STATUS_LIST_URI) {
+  return { status_list: { idx, uri } };
+}
+
+interface CredentialOptions {
+  cnfJwk?: JWK;
+  iss?: string;
+  /** null issues the credential without a status claim. */
+  status?: ReturnType<typeof statusReference> | null;
+}
+
+function issueCredential(options: CredentialOptions = {}): Promise<string> {
   const issuer = new SDJwtInstance({
     hasher: sha256Hasher,
     hashAlg: "sha-256",
@@ -94,18 +124,62 @@ function issueCredential(cnfJwk: JWK): Promise<string> {
         )
       ),
   });
+  const status =
+    options.status === undefined ? statusReference() : options.status;
   return issuer.issue(
     {
-      iss: ISSUER,
+      iss: options.iss ?? ISSUER,
       vct: VCT,
       iat: nowSeconds(),
-      cnf: { jwk: cnfJwk },
+      cnf: { jwk: options.cnfJwk ?? holderJwk },
+      ...(status ? { status } : {}),
       verified: true,
       age_verification: false,
       nationality_group: "EU",
     },
     { _sd: ["verified", "age_verification", "nationality_group"] }
   );
+}
+
+/**
+ * The issuer's Token Status List token: one bit per credential, with the
+ * credential at REVOKED_IDX revoked.
+ */
+function signStatusList(
+  overrides: {
+    iss?: string;
+    key?: CryptoKey;
+    /** Pads the token with a claim of this many characters. */
+    paddingLength?: number;
+    sub?: string;
+  } = {}
+): Promise<string> {
+  const lst = base64url(deflateSync(Uint8Array.of(2 ** REVOKED_IDX)));
+  return new SignJWT({
+    iss: overrides.iss ?? ISSUER,
+    sub: overrides.sub ?? STATUS_LIST_URI,
+    ttl: 3600,
+    status_list: { bits: 1, lst },
+    ...(overrides.paddingLength
+      ? { padding: "a".repeat(overrides.paddingLength) }
+      : {}),
+  })
+    .setProtectedHeader({ alg: "ES256", typ: "statuslist+jwt" })
+    .setIssuedAt()
+    .setExpirationTime("1h")
+    .sign(overrides.key ?? issuerKeys.privateKey);
+}
+
+function statusListResponse(
+  body: string,
+  init: { contentType?: string; status?: number } = {}
+): Response {
+  return new Response(body, {
+    status: init.status ?? 200,
+    headers: {
+      "content-type": init.contentType ?? "application/statuslist+jwt",
+    },
+  });
 }
 
 /** Holder-side presentation without a KB-JWT, as the wallet builds it. */
@@ -149,7 +223,14 @@ describe("verifyVpToken", () => {
     holderKeys = await generateKeyPair("EdDSA", { extractable: true });
     holderJwk = { ...(await exportJWK(holderKeys.publicKey)), alg: "EdDSA" };
     issuerKey.current = issuerKeys.publicKey;
-    credential = await issueCredential(holderJwk);
+    credential = await issueCredential();
+  });
+
+  beforeEach(() => {
+    fetchMock.mockImplementation(async () =>
+      statusListResponse(await signStatusList())
+    );
+    vi.stubGlobal("fetch", fetchMock);
   });
 
   it("returns only the claims the holder disclosed, including ones beyond the query", async () => {
@@ -161,6 +242,129 @@ describe("verifyVpToken", () => {
       verified: true,
       nationality_group: "EU",
     });
+  });
+
+  it.each([
+    ["a bare presentation string", (vp: string) => vp],
+    [
+      "an object keyed by the credential query id",
+      (vp: string) => ({ [QUERY_ID]: [vp] }),
+    ],
+  ])("accepts a valid credential sent as %s", async (_label, shape) => {
+    const vpToken = await bind(await presentDisclosures(["verified"]));
+
+    await expect(verifyVpToken(shape(vpToken), EXPECTED)).resolves.toEqual({
+      verified: true,
+    });
+  });
+
+  it("reads the status list afresh from the issuer, without redirects", async () => {
+    const vpToken = await bind(await presentDisclosures(["verified"]));
+
+    await verifyVpToken(vpToken, EXPECTED);
+
+    expect(fetchMock).toHaveBeenCalledOnce();
+    const [url, init] = fetchMock.mock.calls[0] ?? [];
+    expect(String(url)).toBe(STATUS_LIST_URI);
+    expect(init).toMatchObject({ cache: "no-store", redirect: "error" });
+    expect(init?.signal).toBeInstanceOf(AbortSignal);
+  });
+
+  it("rejects a credential the status list marks revoked", async () => {
+    const revoked = await issueCredential({
+      status: statusReference(REVOKED_IDX),
+    });
+    const vpToken = await bind(await presentDisclosures(["verified"], revoked));
+
+    await expect(verifyVpToken(vpToken, EXPECTED)).resolves.toBeNull();
+    expect(fetchMock).toHaveBeenCalledOnce();
+  });
+
+  it("rejects a credential without a status claim", async () => {
+    const unrevocable = await issueCredential({ status: null });
+    const vpToken = await bind(
+      await presentDisclosures(["verified"], unrevocable)
+    );
+
+    await expect(verifyVpToken(vpToken, EXPECTED)).resolves.toBeNull();
+  });
+
+  it.each([
+    ["another host", "https://status.example/oidc4vci/status-list"],
+    ["the internal Zentity URL", "http://zentity-internal:3000/status-list"],
+    ["another port", "https://app.zentity.xyz:8443/api/auth/status-list"],
+  ])("rejects a status list on %s without fetching it", async (_label, uri) => {
+    const foreign = await issueCredential({
+      status: statusReference(VALID_IDX, uri),
+    });
+    const vpToken = await bind(await presentDisclosures(["verified"], foreign));
+
+    await expect(verifyVpToken(vpToken, EXPECTED)).resolves.toBeNull();
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    [
+      "the status list is unreachable",
+      () => Promise.reject(new TypeError("fetch failed")),
+    ],
+    [
+      "the status list request fails",
+      async () => statusListResponse(await signStatusList(), { status: 503 }),
+    ],
+    [
+      "the response is not a status list",
+      async () =>
+        statusListResponse(await signStatusList(), {
+          contentType: "application/json",
+        }),
+    ],
+    [
+      "the response exceeds the size limit",
+      async () =>
+        statusListResponse(await signStatusList({ paddingLength: 64 * 1024 })),
+    ],
+    [
+      "another key signed the status list",
+      async () =>
+        statusListResponse(
+          await signStatusList({
+            key: (await generateKeyPair("ES256")).privateKey,
+          })
+        ),
+    ],
+    [
+      "the status list names another issuer",
+      async () =>
+        statusListResponse(
+          await signStatusList({ iss: "https://app.zentity.xyz" })
+        ),
+    ],
+    [
+      "the status list was published for another uri",
+      async () =>
+        statusListResponse(
+          await signStatusList({ sub: `${STATUS_LIST_URI}?list_id=other` })
+        ),
+    ],
+  ])("rejects a credential when %s", async (_label, respond) => {
+    fetchMock.mockImplementation(respond);
+    const vpToken = await bind(await presentDisclosures(["verified"]));
+
+    await expect(verifyVpToken(vpToken, EXPECTED)).resolves.toBeNull();
+  });
+
+  it.each([
+    ["the bare origin", "https://app.zentity.xyz"],
+    ["the internal Zentity URL", "http://zentity-internal:3000/api/auth"],
+    ["another issuer", "https://issuer.example/api/auth"],
+  ])("rejects a credential whose iss is %s", async (_label, iss) => {
+    const wrongIssuer = await issueCredential({ iss });
+    const vpToken = await bind(
+      await presentDisclosures(["verified"], wrongIssuer)
+    );
+
+    await expect(verifyVpToken(vpToken, EXPECTED)).resolves.toBeNull();
   });
 
   it("rejects a presentation missing a claim the query names", async () => {
@@ -183,14 +387,6 @@ describe("verifyVpToken", () => {
         dcqlQuery: dcqlQuery(["verified"], "urn:credential:other:v1"),
       })
     ).resolves.toBeNull();
-  });
-
-  it("accepts a vp_token keyed by the credential query id", async () => {
-    const vpToken = await bind(await presentDisclosures(["verified"]));
-
-    await expect(
-      verifyVpToken({ [QUERY_ID]: [vpToken] }, EXPECTED)
-    ).resolves.toEqual({ verified: true });
   });
 
   it.each([
@@ -230,7 +426,9 @@ describe("verifyVpToken", () => {
     ["names Ed25519", "Ed25519"],
   ])("accepts a holder JWK that %s", async (_label, alg) => {
     const { alg: _omitted, ...bareJwk } = holderJwk;
-    const sdJwt = await issueCredential(alg ? { ...bareJwk, alg } : bareJwk);
+    const sdJwt = await issueCredential({
+      cnfJwk: alg ? { ...bareJwk, alg } : bareJwk,
+    });
     const vpToken = await bind(await presentDisclosures(["verified"], sdJwt));
 
     await expect(verifyVpToken(vpToken, EXPECTED)).resolves.toEqual({
@@ -263,6 +461,7 @@ describe("verifyVpToken", () => {
       iss: ISSUER,
       vct: VCT,
       cnf: { jwk: holderJwk },
+      status: statusReference(),
       _sd: [await sha256Base64url(disclosure)],
       _sd_alg: "sha-256",
     })
