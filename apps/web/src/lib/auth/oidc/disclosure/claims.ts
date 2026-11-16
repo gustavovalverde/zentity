@@ -138,10 +138,11 @@ function startOfUtcDay(timestamp: string): string | undefined {
 }
 
 /**
- * The proof claims of an OID4VCI credential. Its timestamps are the same in
- * every credential of one user, so they are rounded down to the start of the
- * UTC day (OID4VCI 1.0 §15.4.1) to keep them from linking the user's
- * credentials across verifiers.
+ * The proof claims of an OID4VCI credential. Its timestamps are rounded down
+ * to the start of the UTC day (OID4VCI 1.0 §15.4.1), which hides the user
+ * among everyone verified that day. They still match in every credential of
+ * one user, so they still link those credentials; batch issuance or leaving
+ * the claims out would remove that link.
  */
 export async function buildCredentialClaims(
   userId: string
