@@ -295,8 +295,8 @@ export async function generateBaseCommitmentNoir(
 /**
  * Today's UTC date as a YYYYMMDD integer.
  *
- * The server requires an exact match with the client's `current_date`, so both
- * sides must use UTC rather than their own time zones.
+ * The server accepts a `current_date` of its own UTC day or the day before, so
+ * both sides must use UTC rather than their own time zones.
  */
 export function getTodayAsInt(): number {
   return Number(new Date().toISOString().slice(0, 10).replaceAll("-", ""));

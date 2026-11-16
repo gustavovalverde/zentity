@@ -129,6 +129,7 @@ See [Tamper Model](<../(architecture)/tamper-model.md>) for integrity rules and 
 - **Claim binding** ties proofs to server‑signed measurements (OCR, liveness, face match).
 - **Range checks** avoid wrap‑around and invalid inputs (dates, scores, thresholds).
 - **Date input sanity checks** enforce plausible ranges (`current_days`, `min_age_days`, `current_date`) at both circuit and server validation layers.
+- **Proof date window**: the client dates `age_verification` (`current_days`) and `doc_validity` (`current_date`) proofs from its UTC clock. The server accepts a date equal to its own UTC day or the day before, compared in days, so a proof generated just before UTC midnight still stores after it. A later date is rejected, because it would let a client claim to be older than it is. A rejected proof asks the user to correct the device clock and try again.
 
 ## BN254 Field Constraints
 
