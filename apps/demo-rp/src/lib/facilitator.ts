@@ -7,8 +7,11 @@ import type {
   SettleResponse,
   VerifyResponse,
 } from "@x402/core/types";
+import { env } from "@/lib/env";
 
-const facilitator = new HTTPFacilitatorClient();
+const facilitator = new HTTPFacilitatorClient(
+  env.X402_FACILITATOR_URL ? { url: env.X402_FACILITATOR_URL } : undefined
+);
 
 function failureMessage(error: unknown, fallback: string): string {
   return error instanceof Error ? error.message : fallback;

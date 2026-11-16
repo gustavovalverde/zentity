@@ -19,6 +19,10 @@ export const x402Scenario: RouteScenario = {
   dcr: {
     clientName: "x402 Demo",
     requestedScopes: buildRequestedScopes(signInScopes, stepUpScopes),
+    // An agent acting for the signed-in user asks for a Proof-of-Human for
+    // one merchant through CIBA.
+    authorizationDetailsTypes: ["x402_purchase"],
+    grantTypes: ["authorization_code", "urn:openid:params:grant-type:ciba"],
   },
   compliance: [
     {

@@ -66,6 +66,9 @@ export const env = createEnv({
     VERIFIER_CA_PEM: z.string().optional(),
     VERIFIER_LEAF_KEY_PEM: z.string().optional(),
     ZENTITY_JWKS_URL: z.string().optional(),
+    // The x402 facilitator that verifies and settles payments; @x402/core's
+    // public facilitator when unset.
+    X402_FACILITATOR_URL: z.string().url().optional(),
 
     BASE_SEPOLIA_RPC_URL: z.string().default("https://sepolia.base.org"),
     BASE_SEPOLIA_IDENTITY_REGISTRY_MIRROR: z.string().optional(),
@@ -99,6 +102,7 @@ export const env = createEnv({
     VERIFIER_CA_PEM: process.env.VERIFIER_CA_PEM,
     VERIFIER_LEAF_KEY_PEM: process.env.VERIFIER_LEAF_KEY_PEM,
     ZENTITY_JWKS_URL: process.env.ZENTITY_JWKS_URL,
+    X402_FACILITATOR_URL: process.env.X402_FACILITATOR_URL,
     BASE_SEPOLIA_RPC_URL: process.env.BASE_SEPOLIA_RPC_URL,
     BASE_SEPOLIA_IDENTITY_REGISTRY_MIRROR:
       process.env.BASE_SEPOLIA_IDENTITY_REGISTRY_MIRROR,

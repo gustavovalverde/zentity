@@ -109,6 +109,29 @@ export async function signInToScenario(page: Page, options: SignInOptions) {
   await completeConsent(page, options.path);
 }
 
+/**
+ * Signs in to a scenario through demo-rp's auth API, as its page would, for a
+ * scenario page the E2E dev server cannot build (the x402 page's wallet
+ * dependencies need `@x402/svm`, which webpack does not resolve).
+ */
+export async function signInToScenarioThroughApi(
+  page: Page,
+  providerId: string
+) {
+  await page.goto("/");
+  const response = await page.request.post("/api/auth/sign-in/social", {
+    data: { provider: providerId, callbackURL: `${demoRpBaseURL}/` },
+    headers: { Origin: demoRpBaseURL.replace(TRAILING_SLASH_RE, "") },
+  });
+  expect(response.ok(), await response.text()).toBeTruthy();
+  const { url } = (await response.json()) as { url?: string };
+  if (!url) {
+    throw new Error(`Sign-in for ${providerId} returned no authorization URL`);
+  }
+  await page.goto(url);
+  await completeConsent(page, "/");
+}
+
 export async function completeConsent(page: Page, path: string) {
   const allowButton = page.getByRole("button", { name: "Allow" });
   await allowButton.waitFor({ state: "visible", timeout: 60_000 });
