@@ -59,9 +59,10 @@ vi.mock("@/lib/privacy/secrets/profile", () => ({
 
 vi.mock("@/components/vault-unlock", () => ({
   buildIdentityPayload: vi.fn(() => ({
-    firstName: "Ada",
-    lastName: "Lovelace",
-    dateOfBirth: "1815-12-10",
+    given_name: "Ada",
+    family_name: "Lovelace",
+    name: "Ada Lovelace",
+    birthdate: "1815-12-10",
   })),
   buildScopeKey: vi.fn(
     () => "identity.address identity.dob identity.name openid"
@@ -276,6 +277,48 @@ describe("AgentApprovalView", () => {
         body: expect.stringContaining('"intent_token":"fresh-intent"'),
       })
     );
+  });
+
+  it("warns about missing fields after the passkey opens the vault, before anything is shared", async () => {
+    passkeyMocks.getStoredProfileWithPasskeyStepUp.mockResolvedValue({
+      assertion: passkeyMocks.assertion,
+      profile: vaultMocks.profileRef.current,
+    });
+    renderView({
+      scope: "openid identity.name identity.address",
+      requirement: userVerification,
+    });
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Approve with passkey" })
+    );
+
+    await waitFor(() => {
+      expect(screen.getByRole("alert").textContent).toContain(
+        "Residential address"
+      );
+    });
+    expect(fetch).not.toHaveBeenCalledWith(
+      "/api/ciba/identity/stage",
+      expect.anything()
+    );
+    expect(fetch).not.toHaveBeenCalledWith(DECISION_URL, expect.anything());
+
+    fireEvent.click(screen.getByRole("button", { name: "Approve" }));
+
+    await waitFor(() => {
+      expect(fetch).toHaveBeenCalledWith(
+        DECISION_URL,
+        decisionBody("approved", { webauthn: passkeyMocks.assertion })
+      );
+    });
+    expect(fetch).toHaveBeenCalledWith(
+      "/api/ciba/identity/stage",
+      expect.objectContaining({ method: "POST" })
+    );
+    expect(
+      passkeyMocks.getStoredProfileWithPasskeyStepUp
+    ).toHaveBeenCalledTimes(1);
   });
 
   it("runs a standalone assertion when a password opened the vault", async () => {

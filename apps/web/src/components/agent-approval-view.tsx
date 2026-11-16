@@ -358,6 +358,13 @@ export function AgentApprovalView({
     initialRequest ?? null
   );
   const [error, setError] = useState<string | null>(null);
+  // A passkey that opened the vault at Approve, held while the user decides
+  // whether to share a profile that lacks requested fields.
+  const [partialApproval, setPartialApproval] = useState<{
+    assertion?: ApprovalAssertion;
+    missingFields: string[];
+    profile: ProfileSecretPayload;
+  } | null>(null);
   const [timeLeft, setTimeLeft] = useState<number>(initialDerived.secondsLeft);
 
   const hasInitialRequest = initialRequest != null;
@@ -615,6 +622,9 @@ export function AgentApprovalView({
       const intentToken = hasValidIdentityIntent ? identityIntent?.token : null;
 
       let didStage = false;
+      if (action === "reject") {
+        setPartialApproval(null);
+      }
       try {
         let assertion: ApprovalAssertion | undefined;
         if (action === "authorize") {
@@ -625,8 +635,30 @@ export function AgentApprovalView({
           ) {
             throw new Error("Unlock your vault to approve this request.");
           }
-          const confirmed = await confirmApproval(unlockedProfile);
+          const confirmed =
+            partialApproval ?? (await confirmApproval(unlockedProfile));
+          setPartialApproval(null);
           assertion = confirmed.assertion;
+          if (!partialApproval && unlockAtApprove && confirmed.profile) {
+            // The challenge is spent only by the decision, so the user can
+            // still review the gaps before anything is shared.
+            const missingFields = findMissingIdentityFields(
+              buildIdentityPayload(confirmed.profile) as Record<
+                string,
+                unknown
+              >,
+              scopes
+            );
+            if (missingFields.length > 0) {
+              setPartialApproval({
+                assertion,
+                missingFields,
+                profile: confirmed.profile,
+              });
+              setState("ready");
+              return;
+            }
+          }
           if (hasIdentityScopes) {
             if (!confirmed.profile) {
               throw new Error("Unlock your vault to approve this request.");
@@ -690,6 +722,8 @@ export function AgentApprovalView({
       vault.vaultState.status,
       hasValidIdentityIntent,
       identityIntent,
+      partialApproval,
+      scopes,
       confirmApproval,
       fetchIntentToken,
       stageIdentity,
@@ -705,6 +739,8 @@ export function AgentApprovalView({
   };
 
   const isActing = state === "approving" || state === "rejecting";
+  const shownMissingFields =
+    partialApproval?.missingFields ?? missingIdentityFields;
   const containerClass = onClose ? "" : "mx-auto max-w-md py-10";
 
   if (state === "loading") {
@@ -968,12 +1004,12 @@ export function AgentApprovalView({
             </Alert>
           )}
 
-          {missingIdentityFields.length > 0 && (
+          {shownMissingFields.length > 0 && (
             <Alert>
               <AlertTriangle className="size-4" />
               <AlertDescription>
                 Some requested data is not available in your profile:{" "}
-                {missingIdentityFields.join(", ")}. If you continue, only the
+                {shownMissingFields.join(", ")}. If you continue, only the
                 available data will be shared.
               </AlertDescription>
             </Alert>
@@ -1016,7 +1052,9 @@ export function AgentApprovalView({
             >
               {state === "approving" && "Approving..."}
               {state !== "approving" &&
-                (needsPasskey ? "Approve with passkey" : "Approve")}
+                (needsPasskey && !partialApproval
+                  ? "Approve with passkey"
+                  : "Approve")}
             </Button>
           </div>
         </CardFooter>
