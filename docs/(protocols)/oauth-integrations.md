@@ -790,7 +790,7 @@ The credential endpoint answers `{ "credentials": [{ "credential": "<SD-JWT VC>"
 
 Credentials contain only derived claims (e.g., `verified`, `verification_level`, `age_verified`), never raw PII.
 
-**Linkability**: a credential is one value that its holder presents everywhere. Its issuer signature, `cnf.jwk`, status list index, and `iat` and `exp` let colluding verifiers link the presentations of that one credential, as with any single SD-JWT VC. A disclosed `verification_time` or `attestation_expires_at` is the same in every credential of one user, so it links that user's credentials too. Batch issuance with one key per credential would remove that link; the issuer accepts one proof per request today.
+**Linkability**: a credential is one value that its holder presents everywhere. Its issuer signature, `cnf.jwk`, status list index, and `iat` and `exp` let colluding verifiers link the presentations of that one credential, as with any single SD-JWT VC. A disclosed `verification_time` or `attestation_expires_at` is the same in every credential of one user, so credentials carry both rounded down to the start of the UTC day (OID4VCI 1.0 §15.4.1). Batch issuance with one key per credential would remove that link; the issuer accepts one proof per request today.
 
 ---
 

@@ -8,8 +8,12 @@ vi.doMock("@/lib/identity/verification/read-model", () => ({
   getVerificationReadModel: mockGetVerificationReadModel,
 }));
 
-const { buildOidcVerifiedClaims, buildProofClaims, computeConsentReferenceId } =
-  await import("../claims");
+const {
+  buildCredentialClaims,
+  buildOidcVerifiedClaims,
+  buildProofClaims,
+  computeConsentReferenceId,
+} = await import("../claims");
 
 function makeModel(overrides: Record<string, unknown> = {}) {
   return {
@@ -92,6 +96,41 @@ describe("oidc claim mapping", () => {
       attestation_expires_at: "2030-01-01T00:00:00.000Z",
     });
     expect(claims).not.toHaveProperty("issuer_id");
+  });
+
+  it("rounds a credential's timestamps down to the start of the UTC day", async () => {
+    mockGetVerificationReadModel.mockResolvedValueOnce(
+      makeModel({
+        verifiedAt: "2026-01-02T17:45:12.345Z",
+        bundle: {
+          exists: true,
+          fheKeyId: "fhe-1",
+          policyVersion: "policy-1",
+          attestationExpiresAt: "2030-06-30T23:59:59.999Z",
+          updatedAt: "2026-01-01T00:00:00.000Z",
+        },
+      })
+    );
+
+    const claims = await buildCredentialClaims("user-1");
+
+    expect(claims).toMatchObject({
+      verified: true,
+      verification_time: "2026-01-02T00:00:00.000Z",
+      attestation_expires_at: "2030-06-30T00:00:00.000Z",
+    });
+    expect(claims).not.toHaveProperty("sub");
+  });
+
+  it("leaves out a credential timestamp that does not parse", async () => {
+    mockGetVerificationReadModel.mockResolvedValueOnce(
+      makeModel({ verifiedAt: "not a date" })
+    );
+
+    const claims = await buildCredentialClaims("user-1");
+
+    expect(claims).not.toHaveProperty("verification_time");
+    expect(claims).toHaveProperty("attestation_expires_at");
   });
 
   it("returns verified_claims for OIDC4IDA when verified", async () => {

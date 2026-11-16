@@ -96,6 +96,7 @@ import {
 } from "@/lib/auth/oidc/ciba";
 import { clientMetadataExtension } from "@/lib/auth/oidc/client-metadata";
 import {
+  buildCredentialClaims,
   buildProofClaims,
   computeConsentHmac,
   computeConsentReferenceId,
@@ -2450,7 +2451,7 @@ export const auth = betterAuth({
         ? { resolveCredentialHeaders: createX5cHeaders(x5cChain) }
         : {}),
       resolveClaims: async ({ user }: { user: { id: string } }) =>
-        buildProofClaims(user.id),
+        buildCredentialClaims(user.id),
       ...(oidc4vciDeferredIssuance
         ? { deferredIssuance: oidc4vciDeferredIssuance }
         : {}),
