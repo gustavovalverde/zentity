@@ -28,9 +28,10 @@
  *    releases recorded JWT revocations only in `revoked_token`, which no check
  *    reads any more, so without a marker such a token is accepted until `exp`.
  * 5. Copies Zentity's `exchange_claims` into `access_token_claims` for opaque
- *    exchanged tokens, so chained exchanges keep the parent's delegation depth
- *    and agent claims, and bootstrap tokens keep `zentity_token_use`. Skipped
- *    once `pnpm db:push` has dropped the column.
+ *    exchanged tokens issued before the deploy, so bootstrap tokens keep
+ *    `zentity_token_use` and the provider's introspection keeps returning
+ *    their stored claims until they expire. Skipped once `pnpm db:push` has
+ *    dropped the column.
  * 6. Decodes `access_token_claims` rows written while drizzle's json mode
  *    encoded the adapter's JSON a second time.
  * 7. Adds `agent_capability.grantable` with the DDL `pnpm db:push` would emit.
