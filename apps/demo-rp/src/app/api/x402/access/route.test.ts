@@ -1,5 +1,4 @@
 import {
-  buildPaymentRequiredPayload,
   PAYMENT_REQUIRED_HEADER,
   PAYMENT_SIGNATURE_HEADER,
 } from "@zentity/sdk/rp";
@@ -216,22 +215,21 @@ describe("/api/x402/access POST", () => {
     const body = await response.json();
     const header = response.headers.get(PAYMENT_REQUIRED_HEADER);
 
-    expect(body).toEqual(
-      buildPaymentRequiredPayload({
-        accepts: [
-          {
-            scheme: "exact",
-            network: "eip155:84532",
-            payTo: "0x000000000000000000000000000000000000dEaD",
-            amount: "1",
-            maxTimeoutSeconds: 300,
-            asset: "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
-            extra: {},
-          },
-        ],
-        resource: { url: "/api/x402/access" },
-      })
-    );
+    expect(body).toEqual({
+      x402Version: 2,
+      accepts: [
+        {
+          scheme: "exact",
+          network: "eip155:84532",
+          payTo: "0x000000000000000000000000000000000000dEaD",
+          amount: "1",
+          maxTimeoutSeconds: 300,
+          asset: "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
+          extra: {},
+        },
+      ],
+      resource: { url: "/api/x402/access" },
+    });
     expect(header).toBe(Buffer.from(JSON.stringify(body)).toString("base64"));
   });
 

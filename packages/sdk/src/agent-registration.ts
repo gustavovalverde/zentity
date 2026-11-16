@@ -221,7 +221,7 @@ export async function registerHost(
   };
 }
 
-export async function signHostAttestationJwt(
+async function signHostAttestationJwt(
   hostKey: Pick<HostKeyMaterial, "privateKey">,
   hostId: string
 ): Promise<string> {

@@ -10,7 +10,6 @@ vi.mock("jose", () => joseMocks);
 import {
   createJwksTokenVerifier,
   createOpenIdTokenVerifier,
-  verifyAccessToken,
 } from "./token-verifier";
 
 function createDiscoveryResponse(cacheControl: string): Response {
@@ -123,16 +122,15 @@ describe("token verifiers", () => {
     expect(fetch).toHaveBeenCalledTimes(2);
   });
 
-  it("verifies access tokens against discovered issuer metadata", async () => {
+  it("verifies tokens against discovered issuer metadata", async () => {
     joseMocks.jwtVerify.mockResolvedValue({ payload: { sub: "user-1" } });
     vi.spyOn(globalThis, "fetch").mockImplementation(() =>
       Promise.resolve(createDiscoveryResponse("public, max-age=60"))
     );
 
-    const result = await verifyAccessToken("access-token", {
-      audience: "https://rp.example",
+    const result = await createOpenIdTokenVerifier({
       issuerUrl: "https://issuer.example",
-    });
+    }).verify("access-token", { audience: "https://rp.example" });
 
     expect(result).toEqual({ payload: { sub: "user-1" } });
     expect(joseMocks.jwtVerify).toHaveBeenCalledWith(

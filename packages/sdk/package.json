@@ -1,6 +1,17 @@
 {
   "name": "@zentity/sdk",
   "version": "0.1.0",
+  "description": "Zentity SDK for agents, relying parties, and installed apps: first-party OAuth, DPoP, CIBA approvals, proof-of-human, and x402 payments.",
+  "license": "SEE LICENSE IN LICENSE",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/gustavovalverde/zentity.git",
+    "directory": "packages/sdk"
+  },
+  "homepage": "https://github.com/gustavovalverde/zentity/tree/main/packages/sdk#readme",
+  "bugs": {
+    "url": "https://github.com/gustavovalverde/zentity/issues"
+  },
   "type": "module",
   "sideEffects": false,
   "engines": {
@@ -14,11 +25,12 @@
     "!dist/**/*.map",
     "README.md",
     "CHANGELOG.md",
-    "LICENSE"
+    "LICENSE",
+    "PATENTS"
   ],
   "scripts": {
-    "build": "tsup src/index.ts src/agent-contract.ts src/fpa/index.ts src/node/index.ts src/protocol/index.ts src/rp/index.ts src/testing/index.ts --format esm,cjs --dts --sourcemap --clean --out-dir dist",
-    "build:watch": "tsup src/index.ts src/agent-contract.ts src/fpa/index.ts src/node/index.ts src/protocol/index.ts src/rp/index.ts src/testing/index.ts --format esm,cjs --dts --sourcemap --watch --out-dir dist",
+    "build": "tsup src/index.ts src/agent-contract.ts src/fpa/index.ts src/node/index.ts src/protocol/index.ts src/rp/index.ts src/testing/index.ts --format esm,cjs --dts --clean --out-dir dist",
+    "build:watch": "tsup src/index.ts src/agent-contract.ts src/fpa/index.ts src/node/index.ts src/protocol/index.ts src/rp/index.ts src/testing/index.ts --format esm,cjs --dts --watch --out-dir dist",
     "clean": "rm -rf dist",
     "prepack": "pnpm run build",
     "test": "vitest run",

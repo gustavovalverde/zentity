@@ -51,7 +51,7 @@ export interface DpopClient {
   fetch(url: string | URL, init?: DpopRequestInit): Promise<Response>;
   /**
    * Signs one DPoP proof without sending a request. `htu` is the URL
-   * without its query, and a URL with a fragment is rejected.
+   * without its query and fragment (RFC 9449 §4.2).
    */
   proofFor(
     method: string,
