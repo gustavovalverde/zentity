@@ -149,6 +149,7 @@ import {
 import {
   findPairwiseClient,
   keepsSector,
+  rememberAccessTokenIssuance,
   resolveSubForClientId,
   resolveUserIdFromSub,
 } from "@/lib/auth/oidc/pairwise";
@@ -659,6 +660,32 @@ async function validateDcrRegistration(
 
 type HookCtx = Parameters<Parameters<typeof createAuthMiddleware>[0]>[0];
 
+const FORM_CONTENT_TYPE = "application/x-www-form-urlencoded";
+
+/**
+ * Gives a before-hook every `resource` value of a form body. Hooks see one
+ * value per key, and the endpoint restores the repeated values afterwards
+ * unless a hook replaced the value, so a check on the collapsed body would
+ * miss all but the last indicator (RFC 8707 §2 allows repeats).
+ */
+async function readRepeatedFormResources(ctx: HookCtx): Promise<void> {
+  const request = ctx.request;
+  if (
+    !(
+      ctx.body &&
+      request?.headers.get("content-type")?.includes(FORM_CONTENT_TYPE)
+    )
+  ) {
+    return;
+  }
+  const values = new URLSearchParams(await request.clone().text())
+    .getAll("resource")
+    .filter(Boolean);
+  if (values.length > 1) {
+    ctx.body.resource = values;
+  }
+}
+
 const ACCESS_TOKEN_SCHEME_RE = /^(Bearer|DPoP)\s+/i;
 
 const USER_TOKEN_GRANT_TYPES = new Set<unknown>([
@@ -806,7 +833,8 @@ async function readReturnedResponseBody(
   return returned as Record<string, unknown>;
 }
 
-// JWT access tokens already carry the issuing client's subject; the provider would project it a second time.
+// A JWT access token carries its own audience-scoped subject; the provider
+// would present the issuing client's subject instead.
 async function afterIntrospectKeepJwtSubject(ctx: HookCtx) {
   const token =
     typeof ctx.body?.token === "string"
@@ -1127,6 +1155,15 @@ async function buildAccessTokenDisclosureClaims(
   if (!userId) {
     return {};
   }
+  // signJwt reads it to give a JWT its audience's subject.
+  await rememberAccessTokenIssuance({
+    userId,
+    client: {
+      clientId: info.client.clientId,
+      redirectUris: info.client.redirectUris ?? [],
+      sectorIdentifier: info.client.sectorIdentifier ?? null,
+    },
+  });
   const clientId = info.client?.clientId;
   const referenceId = info.referenceId;
   const sessionId = info.sessionId;
@@ -1266,12 +1303,15 @@ function beforeConsentStripIdentityScopes(ctx: HookCtx) {
 }
 
 function beforeValidateResourceUri(ctx: HookCtx) {
-  const result = validateResourceUri(ctx.body?.resource);
-  if (!result.valid) {
-    throw new APIError("BAD_REQUEST", {
-      error: "invalid_request",
-      error_description: result.error,
-    });
+  const resource: unknown = ctx.body?.resource;
+  for (const value of Array.isArray(resource) ? resource : [resource]) {
+    const result = validateResourceUri(value);
+    if (!result.valid) {
+      throw new APIError("BAD_REQUEST", {
+        error: "invalid_request",
+        error_description: result.error,
+      });
+    }
   }
 }
 
@@ -1933,6 +1973,7 @@ export const auth = betterAuth({
         return beforeMagicLinkProtectCredentials(ctx);
       }
       if (ctx.path === "/oauth2/bc-authorize") {
+        await readRepeatedFormResources(ctx);
         if (ctx.body) {
           pinPaymentRequest(ctx.body);
           normalizeUserTokenResources(ctx.body, { allowWalletAudience: true });
@@ -1943,6 +1984,7 @@ export const auth = betterAuth({
         await deleteExpiredFirstPartyRows().catch((error: unknown) =>
           logError(error, { operation: "first-party-row-cleanup" })
         );
+        await readRepeatedFormResources(ctx);
         if (ctx.body) {
           normalizeUserTokenResources(ctx.body, { allowWalletAudience: false });
         }
@@ -1952,6 +1994,7 @@ export const auth = betterAuth({
         // Before any hook stages state for the grant, so the client's retry
         // with the nonce redeems the same grant (RFC 9449 §8).
         await oauthProviderApi(ctx).challengeDpopNonce();
+        await readRepeatedFormResources(ctx);
         const isCibaGrant = ctx.body?.grant_type === CIBA_GRANT_TYPE;
         // Only a CIBA payment approval yields a wallet-audience token. The
         // per-grant checks below do not see every grant (client_credentials
@@ -1987,6 +2030,7 @@ export const auth = betterAuth({
               "resource parameter is required for PAR requests",
           });
         }
+        await readRepeatedFormResources(ctx);
         refuseWalletAudience(ctx.body.resource);
         beforeValidateResourceUri(ctx);
         normalizeUserTokenResources(ctx.body, { allowWalletAudience: false });
@@ -2078,7 +2122,8 @@ export const auth = betterAuth({
       jwt: {
         issuer: authIssuer,
         // signJwt signs with the plugin's keys and adds what the provider
-        // cannot: EdDSA and pairwise subjects for every access token.
+        // cannot: EdDSA access tokens whose subject is pairwise for their
+        // audience (upstream ask U4).
         sign: signJwt,
       },
     }),
@@ -2108,9 +2153,10 @@ export const auth = betterAuth({
         (process.env.NEXT_PHASE === PHASE_PRODUCTION_BUILD
           ? "next-build-placeholder-pairwise-secret"
           : undefined),
-      // A pairwise client's JWT access tokens carry its ID-token `sub`, and
-      // the provider adds the user id encrypted in `ba_sub`, which UserInfo,
-      // introspection, and every `validateAccessToken` caller read back.
+      // A pairwise client's JWT access tokens get a pairwise `sub`, which
+      // signJwt scopes to the token's audience, and the provider adds the
+      // user id encrypted in `ba_sub`, which UserInfo, introspection, and
+      // every `validateAccessToken` caller read back.
       accessTokenSubject: "pairwise",
       scopes: [...OAUTH_SCOPES],
       grantTypes: [

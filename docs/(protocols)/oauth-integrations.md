@@ -438,7 +438,9 @@ The `ath` claim is only included when presenting the access token at a resource 
 | ID token | JWT | RS256 |
 | Token type | `"DPoP"` | n/a |
 
-Opaque access tokens keep the user and the DPoP binding server-side. A JWT access token carries the client's own subject identifier as `sub`, the same value as its ID tokens: the pairwise subject for a pairwise client. The OAuth provider writes that subject under `accessTokenSubject: "pairwise"` and adds `ba_sub`, the user id encrypted with a key only the provider holds. UserInfo, `/oauth2/introspect`, and Zentity's own endpoints that validate a JWT access token read the user from `ba_sub`. The ciphertext is randomized per token, so it does not link a user across clients.
+Opaque access tokens keep the user and the DPoP binding server-side. A JWT access token names at most one audience outside Zentity: a request for two such resources is refused with `invalid_target`, at the authorization, PAR, challenge, backchannel, and token endpoints alike. For a pairwise client, the token's `sub` is pairwise for that client and audience together, so the MCP server, the agent wallet, and the client's own ID tokens each see a different value for the same user (see [Pairwise subject identifiers](#pairwise-subject-identifiers)). The OAuth provider makes the subject pairwise under `accessTokenSubject: "pairwise"` and adds `ba_sub`, the user id encrypted with a key only the provider holds; Zentity's signer then replaces the provider's client-level `sub` with the audience's value. A token whose audiences are all Zentity-hosted, such as one for the OID4VCI credential endpoint, keeps the client-level value. UserInfo, `/oauth2/introspect`, and Zentity's own endpoints that validate a JWT access token read the user from `ba_sub`, so UserInfo still answers with the ID-token `sub`. The ciphertext is randomized per token, so it does not link a user across clients or audiences.
+
+Some values still repeat across one client's tokens for different audiences: `azp` and `client_id` (RFC 9068 requires them), `grant_id`, `reference_id`, the release binding claim, `cnf.jkt` when the client reuses its DPoP key, and the provider's `sid`. A client registered once per installation is identified by its `client_id` alone, so per-audience subjects separate audiences only for clients that serve many users.
 
 ### Token revocation
 
@@ -826,7 +828,15 @@ All DCR clients use `subject_type: "pairwise"`. Each (user, client) pair gets a 
 sub = Base64(HMAC-SHA256(PAIRWISE_SECRET, sectorId + "." + userId))
 ```
 
-`sectorId` is the sector the OAuth provider stores on the client at registration, and Zentity reads the same stored value everywhere it derives a subject (CIBA login hints, agent actors, validity notices). The provider's rule:
+`sectorId` is the sector the OAuth provider stores on the client at registration, and Zentity reads the same stored value everywhere it derives a subject (CIBA login hints, agent actors, validity notices). ID tokens, UserInfo, logout tokens, and CIBA login hints use it as is. A JWT access token for one audience `A` outside Zentity uses the token sector `sectorId + " " + A`, with `A` the resource identifier without a trailing slash:
+
+```text
+access-token sub = Base64(HMAC-SHA256(PAIRWISE_SECRET, sectorId + " " + A + "." + userId))
+```
+
+A space cannot occur in a host, a `client/<client_id>` sector, or a normalized resource, so a token sector never equals a client sector and an access-token `sub` never equals any client's ID-token `sub`. Token sectors are never indexed: a client names a user back only by its ID-token `sub`.
+
+The provider's rule for `sectorId`:
 
 | Client | `sectorId` |
 |---|---|

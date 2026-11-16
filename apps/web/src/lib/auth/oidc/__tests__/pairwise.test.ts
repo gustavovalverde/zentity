@@ -4,10 +4,15 @@ import { describe, expect, it } from "vitest";
 import {
   clientSector,
   computePairwiseSub,
+  pairwiseValue,
   resolveSubForClient,
+  scopeSubjectToAudience,
+  tokenSector,
 } from "@/lib/auth/oidc/pairwise";
+import { getAuthIssuer } from "@/lib/auth/oidc/well-known";
 
 const TEST_SECRET = "test-secret-at-least-32-characters-long";
+const MCP_AUDIENCE = "https://mcp.example";
 
 describe("clientSector", () => {
   it("uses the stored sector over the redirect hosts", () => {
@@ -102,5 +107,101 @@ describe("resolveSubForClient", () => {
         process.env.PAIRWISE_SECRET ?? ""
       )
     );
+  });
+});
+
+describe("tokenSector", () => {
+  const client = { sectorIdentifier: "rp.example", redirectUris: [] };
+
+  it("joins the client sector and the normalized audience", () => {
+    expect(tokenSector(client, `${MCP_AUDIENCE}/`)).toBe(
+      `rp.example ${MCP_AUDIENCE}`
+    );
+  });
+
+  // R5: a token sector cannot collide with a client sector, whose hosts and
+  // `client/<client_id>` form never contain a space.
+  it("never equals a client sector, so its subjects differ from ID-token subjects", async () => {
+    const clients = [
+      client,
+      { sectorIdentifier: "client/agent-1", redirectUris: [] },
+      { sectorIdentifier: null, redirectUris: ["https://rp.example/cb"] },
+    ];
+    const clientSubjects = await Promise.all(
+      clients.map((c) => pairwiseValue(clientSector(c), "user-1"))
+    );
+    for (const c of clients) {
+      const sector = tokenSector(c, MCP_AUDIENCE);
+      expect(clients.map(clientSector)).not.toContain(sector);
+      expect(clientSubjects).not.toContain(
+        await pairwiseValue(sector, "user-1")
+      );
+    }
+  });
+});
+
+describe("scopeSubjectToAudience", () => {
+  const issuance = {
+    userId: "user-1",
+    client: {
+      clientId: "agent-1",
+      sectorIdentifier: "client/agent-1",
+      redirectUris: [],
+    },
+  };
+  const userInfoAudience = `${getAuthIssuer()}/oauth2/userinfo`;
+
+  async function providerPayload(aud: unknown) {
+    return {
+      sub: await pairwiseValue("client/agent-1", "user-1"),
+      ba_sub: "ciphertext",
+      aud,
+      client_id: "agent-1",
+      scope: "openid",
+    };
+  }
+
+  it("gives one external audience its own subject", async () => {
+    const payload = await providerPayload([MCP_AUDIENCE, userInfoAudience]);
+
+    const scoped = await scopeSubjectToAudience(payload, issuance);
+
+    expect(scoped).toEqual({
+      ...payload,
+      sub: await pairwiseValue(`client/agent-1 ${MCP_AUDIENCE}`, "user-1"),
+    });
+  });
+
+  // R17: a token for Zentity's own endpoints keeps the client's subject.
+  it("keeps the client subject when every audience is Zentity-hosted", async () => {
+    const payload = await providerPayload([
+      `${getAuthIssuer()}/oidc4vci/credential`,
+      userInfoAudience,
+    ]);
+
+    expect(await scopeSubjectToAudience(payload, issuance)).toBe(payload);
+  });
+
+  it("refuses a payload with two external audiences", async () => {
+    await expect(
+      scopeSubjectToAudience(
+        await providerPayload([MCP_AUDIENCE, "https://wallet.example"]),
+        issuance
+      )
+    ).rejects.toThrow("An access token names one audience outside Zentity");
+  });
+
+  it("refuses a payload issued to another user or client", async () => {
+    const payload = await providerPayload(MCP_AUDIENCE);
+
+    await expect(
+      scopeSubjectToAudience(payload, { ...issuance, userId: "user-2" })
+    ).rejects.toThrow("The access token is not the one this request issues");
+    await expect(
+      scopeSubjectToAudience(payload, {
+        ...issuance,
+        client: { ...issuance.client, clientId: "agent-2" },
+      })
+    ).rejects.toThrow("The access token is not the one this request issues");
   });
 });

@@ -132,7 +132,7 @@ For DCR clients, Zentity defaults to pairwise subject identifiers (`subject_type
 - Consent records deleted after authorization code issuance (transient linkage)
 - Access token DB records deleted after JWT issuance
 - Session IP/UA metadata scrubbed
-- Opaque access tokens for Zentity's own endpoints; JWT access tokens for outside resource servers carry the client's pairwise `sub`
+- Opaque access tokens for Zentity's own endpoints; a JWT access token for an outside resource server carries a `sub` that is pairwise for its client and audience together
 
 ---
 
