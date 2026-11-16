@@ -312,11 +312,51 @@ describe("CIMD: Client ID Metadata Document Resolution", () => {
     }
 
     // The document names the other relying party's host first and its own
-    // second; neither is bound to the origin serving the document.
+    // second.
     function claimingMetadata() {
       return validMetadata({
         redirect_uris: [RP_REDIRECT_URI, REDIRECT_URI],
       });
+    }
+
+    /** A discovery-owned row whose document is due for a refresh. */
+    async function insertStaleClient(sectorIdentifier: string) {
+      const pastTtl = new Date(Date.now() - 25 * 60 * 60 * 1000);
+      await db.insert(oauthClients).values({
+        clientId: cimdClientId,
+        name: "MCP Test Client",
+        redirectUris: JSON.stringify([REDIRECT_URI]),
+        grantTypes: JSON.stringify(["authorization_code"]),
+        responseTypes: JSON.stringify(["code"]),
+        tokenEndpointAuthMethod: "none",
+        applicationType: "native",
+        clientDiscoveryId: "cimd",
+        subjectType: "pairwise",
+        sectorIdentifier,
+        trustLevel: 1,
+        metadataUrl: cimdClientId,
+        metadataFetchedAt: pastTtl,
+        createdAt: pastTtl,
+        updatedAt: pastTtl,
+      });
+    }
+
+    /** Makes Zentity's posture write fail; the provider's own writes pass. */
+    function failPostureWrite() {
+      const update = db.update.bind(db);
+      vi.spyOn(db, "update").mockImplementation(((
+        table: typeof oauthClients
+      ) => {
+        const builder = update(table);
+        const set = builder.set.bind(builder);
+        builder.set = ((values: Record<string, unknown>) => {
+          if ("trustLevel" in values) {
+            throw new Error("posture write failed");
+          }
+          return set(values);
+        }) as typeof builder.set;
+        return builder;
+      }) as typeof db.update);
     }
 
     let userId: string;
@@ -336,7 +376,7 @@ describe("CIMD: Client ID Metadata Document Resolution", () => {
     });
 
     it("gives a created client its own sector, not the first redirect host", async () => {
-      mockFetchMetadata(claimingMetadata());
+      mockFetchMetadata(validMetadata());
       const { status } = await postPar({
         client_id: cimdClientId,
         response_type: "code",
@@ -348,34 +388,48 @@ describe("CIMD: Client ID Metadata Document Resolution", () => {
       });
       expect(status).toBe(201);
       expect(await storedSector()).toBe(`client/${cimdClientId}`);
+    });
 
-      const rpSub = await idTokenSub(RP_CLIENT_ID, RP_REDIRECT_URI, userId);
-      const cimdSub = await idTokenSub(cimdClientId, REDIRECT_URI, userId);
-      expect(cimdSub).not.toBe(rpSub);
+    it("refuses a document that names another origin's redirect URI", async () => {
+      mockFetchMetadata(claimingMetadata());
+      const { status, json } = await postPar({
+        client_id: cimdClientId,
+        response_type: "code",
+        redirect_uri: REDIRECT_URI,
+        scope: "openid",
+        resource: "http://localhost:3000",
+        code_challenge: "test-challenge",
+        code_challenge_method: "S256",
+      });
+      expect(status).toBe(400);
+      expect(json.error).toBe("invalid_client");
+      expect(json.error_description).toContain("same origin as client_id");
+      expect(await storedSector()).toBeUndefined();
+    });
+
+    it("accepts loopback redirect URIs beside its own origin", async () => {
+      mockFetchMetadata(
+        validMetadata({
+          redirect_uris: ["http://127.0.0.1:8123/callback", REDIRECT_URI],
+        })
+      );
+      const { status } = await postPar({
+        client_id: cimdClientId,
+        response_type: "code",
+        redirect_uri: REDIRECT_URI,
+        scope: "openid",
+        resource: "http://localhost:3000",
+        code_challenge: "test-challenge",
+        code_challenge_method: "S256",
+      });
+      expect(status).toBe(201);
+      expect(await storedSector()).toBe(`client/${cimdClientId}`);
     });
 
     it("keeps its own sector through a refresh during a token request", async () => {
-      // A row whose sector the provider re-derived from the document, with no
-      // validated response cache, so the token request refreshes it.
-      const pastTtl = new Date(Date.now() - 25 * 60 * 60 * 1000);
-      await db.insert(oauthClients).values({
-        clientId: cimdClientId,
-        name: "MCP Test Client",
-        redirectUris: JSON.stringify([RP_REDIRECT_URI, REDIRECT_URI]),
-        grantTypes: JSON.stringify(["authorization_code"]),
-        responseTypes: JSON.stringify(["code"]),
-        tokenEndpointAuthMethod: "none",
-        applicationType: "native",
-        clientDiscoveryId: "cimd",
-        subjectType: "pairwise",
-        sectorIdentifier: "rp.example",
-        trustLevel: 1,
-        metadataUrl: cimdClientId,
-        metadataFetchedAt: pastTtl,
-        createdAt: pastTtl,
-        updatedAt: pastTtl,
-      });
-      mockFetchMetadata(claimingMetadata());
+      // The provider's derivation, stored by the refresh before the posture.
+      await insertStaleClient("mcp-client.test");
+      mockFetchMetadata(validMetadata());
 
       const cimdSub = await idTokenSub(cimdClientId, REDIRECT_URI, userId);
       expect(globalThis.fetch).toHaveBeenCalledWith(
@@ -386,6 +440,41 @@ describe("CIMD: Client ID Metadata Document Resolution", () => {
       expect(cimdSub).not.toBe(
         await idTokenSub(RP_CLIENT_ID, RP_REDIRECT_URI, userId)
       );
+    });
+
+    it("refuses a refreshed document that names another origin's redirect URI", async () => {
+      await insertStaleClient(`client/${cimdClientId}`);
+      mockFetchMetadata(claimingMetadata());
+
+      const { status, json } = await redeemTestAuthorizationCode({
+        clientId: cimdClientId,
+        redirectUri: REDIRECT_URI,
+        userId,
+      });
+      expect(status).toBe(400);
+      expect(json.error_description).toContain("same origin as client_id");
+      expect(await storedSector()).toBe(`client/${cimdClientId}`);
+    });
+
+    it("refuses the request when the posture cannot be stored", async () => {
+      await insertStaleClient(`client/${cimdClientId}`);
+      mockFetchMetadata(validMetadata());
+      failPostureWrite();
+
+      const { status, json } = await redeemTestAuthorizationCode({
+        clientId: cimdClientId,
+        redirectUri: REDIRECT_URI,
+        userId,
+      });
+      expect({ status, json }).toEqual({
+        status: 400,
+        json: {
+          error: "invalid_client",
+          error_description: "client is disabled",
+        },
+      });
+      // What the provider stored is the document's own host.
+      expect(await storedSector()).toBe("mcp-client.test");
     });
   });
 

@@ -337,13 +337,15 @@ const cimdLog = rootLogger.child({ component: "cimd" });
 // The CIMD plugin persists only the standard OAuth client fields. CIMD clients
 // are dynamic and untrusted, so stamp Zentity's posture columns: a pairwise
 // subject (per-RP privacy), the discovery trust tier, and the metadata
-// source/timestamp for audit and staleness. The sector is the client's own:
-// a document's redirect URIs are not bound to the origin that serves it, and
-// the provider refuses multi-host pairwise sets only for clients that are
-// pairwise at registration, so a first-host sector would let a document claim
-// another relying party's host. A refresh re-derives the stored sector and
-// returns this same client object to the request that resolved it, which may
-// mint an ID token, so the posture is applied to the object as well as the row.
+// source/timestamp for audit and staleness. The sector is the client's own,
+// `client/<client_id>`, because one host can serve many tenants' documents.
+// The plugin calls this only after the provider commits a refresh, and each
+// refresh first stores the provider's own derivation, the first redirect host
+// when every redirect URI is https. `originBoundFields` keeps that host on the
+// document's own origin meanwhile, so the interval never names another
+// relying party. The refreshed object goes back to the request that resolved
+// it, which may mint an ID token, so the posture is applied to the object as
+// well as the row, and a write that fails refuses that request.
 async function applyCimdClientPosture(client: { clientId: string }) {
   const posture = {
     metadataUrl: client.clientId,
@@ -352,17 +354,28 @@ async function applyCimdClientPosture(client: { clientId: string }) {
     subjectType: "pairwise",
     sectorIdentifier: `client/${client.clientId}`,
   };
-  await db
-    .update(oauthClients)
-    .set(posture)
-    .where(eq(oauthClients.clientId, client.clientId))
-    .run();
+  try {
+    await db
+      .update(oauthClients)
+      .set(posture)
+      .where(eq(oauthClients.clientId, client.clientId))
+      .run();
+  } catch (error) {
+    Object.assign(client, { disabled: true });
+    throw error;
+  }
   Object.assign(client, posture);
 }
 
 const cimdOptions = {
   fetchClientMetadataResource,
   metadataProfile: "mcp-2026-07-28" as const,
+  // Loopback and private-use redirect URIs stay exempt (RFC 8252).
+  originBoundFields: [
+    "redirect_uris",
+    "post_logout_redirect_uris",
+    "client_uri",
+  ],
   onClientCreated: async ({ client }: { client: { clientId: string } }) => {
     await applyCimdClientPosture(client);
     cimdLog.info(
