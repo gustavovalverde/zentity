@@ -327,9 +327,8 @@ export function SignUpForm() {
           <AlertDescription>
             {prfUnsupportedMessage}
             <div className="mt-2 text-muted-foreground text-xs">
-              Supported: Chrome or Edge on Windows/Mac/Android, Safari on iOS
-              17+ or macOS Sonoma+. Firefox does not currently support the
-              required PRF extension.
+              Supported: Chrome or Edge 116+, Safari 18+, and Firefox 139+, with
+              a passkey provider that supports the PRF extension.
             </div>
           </AlertDescription>
         </Alert>
