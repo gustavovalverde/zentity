@@ -114,13 +114,44 @@ describe("MCP HTTP client provisioning", () => {
     vi.stubEnv("NODE_ENV", "production");
     try {
       expect(() => mcpProvisioningTarget()).toThrow(
-        `MCP_PUBLIC_URL is ${env.MCP_PUBLIC_URL}; set it to the MCP server's public URL before provisioning in production`
+        `MCP_PUBLIC_URL is ${env.MCP_PUBLIC_URL} and must use HTTPS; set it to the MCP server's public URL before provisioning in production`
       );
       await expect(provisionMcpClient({})).rejects.toThrow("MCP_PUBLIC_URL");
     } finally {
       vi.unstubAllEnvs();
     }
     expect(await storedClients()).toEqual([]);
+  });
+
+  it.each([
+    "https://127.0.0.2:3300",
+    "https://0.0.0.0:3300",
+    "https://[::ffff:127.0.0.1]:3300",
+    "https://[::1]:3300",
+    "https://mcp.localhost",
+    "https://10.0.0.5",
+    "https://mcp.railway.internal",
+    "http://mcp.example.com",
+  ])("refuses %s as the production MCP resource", (resource) => {
+    vi.stubEnv("NODE_ENV", "production");
+    try {
+      expect(() => mcpProvisioningTarget(resource)).toThrow(
+        `MCP_PUBLIC_URL is ${resource} and`
+      );
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
+  it("accepts a public HTTPS MCP resource in production", () => {
+    vi.stubEnv("NODE_ENV", "production");
+    try {
+      expect(mcpProvisioningTarget("https://mcp.example.com").resource).toBe(
+        "https://mcp.example.com"
+      );
+    } finally {
+      vi.unstubAllEnvs();
+    }
   });
 
   it("names the resource and database it writes to", () => {

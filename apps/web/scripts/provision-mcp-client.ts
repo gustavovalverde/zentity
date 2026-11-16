@@ -17,7 +17,7 @@
  * load outside Next. It needs the web app's environment (`.env` locally, or
  * `railway run --service web` against production). It prints the MCP
  * resource and the database it writes to first, and in production it refuses
- * a loopback `MCP_PUBLIC_URL`.
+ * an `MCP_PUBLIC_URL` that is not HTTPS to a public host.
  */
 
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
