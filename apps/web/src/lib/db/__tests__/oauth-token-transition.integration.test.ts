@@ -104,23 +104,29 @@ describe("deploy backfill", () => {
     expect(await cibaApprovalSchema()).toEqual(pushed);
   });
 
-  it("adds the token columns to a ciba_approval created without them", async () => {
+  it("adds the token and Proof-of-Human columns to a ciba_approval created without them", async () => {
     const pushedColumns = await cibaApprovalColumns();
     const pushedIndexes = (await cibaApprovalSchema()).map((row) => row.name);
     await db.run(sql`DROP INDEX ciba_approval_token_jti_unique`);
-    for (const column of ["token_jti", "token_audience", "token_issued_at"]) {
+    for (const column of [
+      "token_jti",
+      "token_audience",
+      "token_issued_at",
+      "poh_minted_at",
+      "poh_jti",
+    ]) {
       await db.run(sql.raw(`ALTER TABLE ciba_approval DROP COLUMN ${column}`));
     }
 
     expect(await runTransitionScript()).toContain(
-      "ciba_approval token columns added: 3"
+      "ciba_approval columns added: 5"
     );
     expect(await cibaApprovalColumns()).toEqual(pushedColumns);
     expect((await cibaApprovalSchema()).map((row) => row.name)).toEqual(
       pushedIndexes
     );
     expect(await runTransitionScript()).toContain(
-      "ciba_approval token columns added: 0"
+      "ciba_approval columns added: 0"
     );
   });
 

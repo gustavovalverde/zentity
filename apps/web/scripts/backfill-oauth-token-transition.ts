@@ -3,8 +3,8 @@
 /**
  * One-time transition for the move to the OAuth provider's JWT revocation,
  * per-token `accessTokenClaims`, the first-party-apps plugin, the CIBA
- * approval record, and its token columns. Every step is idempotent, and the script applies them in
- * one transaction.
+ * approval record, and its token and Proof-of-Human columns. Every step is
+ * idempotent, and the script applies them in one transaction.
  *
  * 1. Moves the timestamp defaults that #298 and #338 changed from
  *    `datetime('now')` to an ISO 8601 timestamp, and recreates the two partial
@@ -52,10 +52,12 @@
  *    host when every redirect URI is https, else `client/<client_id>`.
  *    Subjects of loopback, custom-scheme, and metadata-document clients
  *    change, so their users sign in again.
- * 10. Adds the `token_jti`, `token_audience`, and `token_issued_at` columns
- *    of `ciba_approval`, and the unique index on `token_jti`, with the DDL
- *    `pnpm db:push` would emit. The new release records every CIBA token on
- *    its approval and finds agent tokens there at introspection.
+ * 10. Adds the `token_jti`, `token_audience`, `token_issued_at`,
+ *    `poh_minted_at`, and `poh_jti` columns of `ciba_approval`, and the
+ *    unique index on `token_jti`, with the DDL `pnpm db:push` would emit. The
+ *    new release records every CIBA token on its approval, finds agent tokens
+ *    there at introspection, and marks an x402 approval's one Proof-of-Human
+ *    mint there.
  * 11. Deletes the `pairwise_subject` rows of type `agent_session`. Agent
  *    actor subjects are no longer indexed, and the schema no longer allows
  *    the type.
@@ -206,6 +208,8 @@ const CIBA_APPROVAL_DDL = [
 	\`token_jti\` text,
 	\`token_audience\` text,
 	\`token_issued_at\` integer,
+	\`poh_minted_at\` integer,
+	\`poh_jti\` text,
 	FOREIGN KEY (\`user_id\`) REFERENCES \`user\`(\`id\`) ON UPDATE no action ON DELETE cascade,
 	FOREIGN KEY (\`agent_session_id\`) REFERENCES \`agent_session\`(\`id\`) ON UPDATE no action ON DELETE set null,
 	FOREIGN KEY (\`host_id\`) REFERENCES \`agent_host\`(\`id\`) ON UPDATE no action ON DELETE set null,
@@ -221,13 +225,15 @@ const CIBA_APPROVAL_DDL = [
 const AGENT_CAPABILITY_GRANTABLE_DDL =
   "ALTER TABLE `agent_capability` ADD `grantable` integer DEFAULT false NOT NULL";
 
-// The columns T4 added to `ciba_approval`, for a table an earlier run of this
-// script created without them. The index statement in CIBA_APPROVAL_DDL runs
-// after these.
-const CIBA_APPROVAL_TOKEN_COLUMNS = [
+// The columns added to `ciba_approval` after this script first created it,
+// for a table an earlier run created without them. The index statement in
+// CIBA_APPROVAL_DDL runs after these.
+const CIBA_APPROVAL_ADDED_COLUMNS = [
   ["token_jti", "text"],
   ["token_audience", "text"],
   ["token_issued_at", "integer"],
+  ["poh_minted_at", "integer"],
+  ["poh_jti", "text"],
 ] as const;
 
 // `drizzle-kit push` output for this column in oauth-provider.ts.
@@ -343,11 +349,11 @@ async function main(): Promise<void> {
     (await hasTable("agent_capability")) &&
     !(await hasColumn("agent_capability", "grantable"));
   const createCibaApproval = !(await hasTable("ciba_approval"));
-  const tokenColumns: string[] = [];
+  const addedColumns: string[] = [];
   if (!createCibaApproval) {
-    for (const [column, type] of CIBA_APPROVAL_TOKEN_COLUMNS) {
+    for (const [column, type] of CIBA_APPROVAL_ADDED_COLUMNS) {
       if (!(await hasColumn("ciba_approval", column))) {
-        tokenColumns.push(
+        addedColumns.push(
           `ALTER TABLE \`ciba_approval\` ADD \`${column}\` ${type}`
         );
       }
@@ -361,7 +367,7 @@ async function main(): Promise<void> {
     ...FIRST_PARTY_APPS_DDL,
     ...(addGrantable ? [AGENT_CAPABILITY_GRANTABLE_DDL] : []),
     ...(createCibaApprovalTable ? [createCibaApprovalTable] : []),
-    ...tokenColumns,
+    ...addedColumns,
     ...cibaApprovalIndexes,
   ];
 
@@ -428,7 +434,7 @@ async function main(): Promise<void> {
   console.log(
     `ciba_approval: ${createCibaApproval ? "created" : "already present"}`
   );
-  console.log(`ciba_approval token columns added: ${tokenColumns.length}`);
+  console.log(`ciba_approval columns added: ${addedColumns.length}`);
   console.log(
     `agent_session pairwise subjects deleted: ${agentSubjects?.rowsAffected ?? 0}`
   );

@@ -93,6 +93,9 @@ export type NewCibaRequest = typeof cibaRequests.$inferInsert;
  * the request row does not survive token issuance. The `token*` columns
  * describe the one access token the approval issued: a JWT's `jti` (null for
  * an opaque token, found by `referenceId`), its audience, and its issue time.
+ * The `poh*` columns record the one merchant Proof-of-Human token an
+ * `x402_purchase` approval mints; the mint sets them only while
+ * `pohMintedAt` is null, so a second mint finds no row to update.
  */
 export const cibaApprovals = sqliteTable(
   "ciba_approval",
@@ -141,6 +144,8 @@ export const cibaApprovals = sqliteTable(
     tokenJti: text("token_jti").unique(),
     tokenAudience: text("token_audience"),
     tokenIssuedAt: integer("token_issued_at", { mode: "timestamp_ms" }),
+    pohMintedAt: integer("poh_minted_at", { mode: "timestamp_ms" }),
+    pohJti: text("poh_jti"),
   },
   (table) => [
     index("ciba_approval_user_decided_idx").on(table.userId, table.decidedAt),
