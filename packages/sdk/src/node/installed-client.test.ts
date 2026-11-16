@@ -1,10 +1,14 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { mockAuthenticateWithLoopbackBrowser, mockCreateFirstPartyAuth } =
-  vi.hoisted(() => ({
-    mockAuthenticateWithLoopbackBrowser: vi.fn(),
-    mockCreateFirstPartyAuth: vi.fn(),
-  }));
+const {
+  mockAuthenticateWithLoopbackBrowser,
+  mockCreateFirstPartyAuth,
+  mockExchangeToken,
+} = vi.hoisted(() => ({
+  mockAuthenticateWithLoopbackBrowser: vi.fn(),
+  mockCreateFirstPartyAuth: vi.fn(),
+  mockExchangeToken: vi.fn(),
+}));
 
 vi.mock("../fpa/index", async () => {
   const actual =
@@ -12,6 +16,7 @@ vi.mock("../fpa/index", async () => {
   return {
     ...actual,
     createFirstPartyAuth: mockCreateFirstPartyAuth,
+    exchangeToken: mockExchangeToken,
   };
 });
 
@@ -49,6 +54,7 @@ describe("createInstalledClientAuth", () => {
   beforeEach(() => {
     mockCreateFirstPartyAuth.mockReset();
     mockAuthenticateWithLoopbackBrowser.mockReset();
+    mockExchangeToken.mockReset();
 
     for (const mockFn of Object.values(mockFirstPartyAuth)) {
       if ("mockReset" in mockFn) {
@@ -124,6 +130,70 @@ describe("createInstalledClientAuth", () => {
       clientId: "client-1",
       scopes: ["openid"],
     });
+  });
+
+  it("limits the session token to the configured exchange scope", async () => {
+    const auth = createInstalledClientAuth({
+      clientRegistrationRequest: { client_name: "Example CLI" },
+      issuerUrl: "http://localhost:3000",
+      loginScope: "openid offline_access agent:host.register",
+      storage: {
+        load: vi.fn(),
+        save: vi.fn(),
+      },
+      tokenExchangeAudience: "http://localhost:3000",
+      tokenExchangeScope: "openid",
+    });
+
+    await auth.ensureOAuthSession();
+
+    expect(mockFirstPartyAuth.exchangeToken).toHaveBeenCalledWith({
+      audience: "http://localhost:3000",
+      clientId: "client-1",
+      scope: "openid",
+      subjectToken: "login-access-token",
+    });
+  });
+
+  it("exchanges the stored login token for a token limited to the requested scope", async () => {
+    mockExchangeToken.mockResolvedValue({
+      accessToken: "bootstrap-access-token",
+      expiresIn: 3600,
+      scope: "agent:host.register",
+      tokenType: "DPoP",
+    });
+    const auth = createInstalledClientAuth({
+      clientRegistrationRequest: { client_name: "Example CLI" },
+      issuerUrl: "http://localhost:3000",
+      loginResource: "http://localhost:3000",
+      loginScope: "openid offline_access agent:host.register",
+      storage: {
+        load: vi.fn(),
+        save: vi.fn(),
+      },
+      tokenExchangeAudience: "http://localhost:3000",
+      tokenExchangeScope: "openid",
+    });
+
+    const token = await auth.exchangeLoginToken({
+      audience: "http://localhost:3000",
+      scope: "agent:host.register",
+    });
+
+    expect(mockFirstPartyAuth.getAccessToken).toHaveBeenCalledWith({
+      clientId: "client-1",
+      resource: "http://localhost:3000",
+    });
+    expect(mockExchangeToken).toHaveBeenCalledWith({
+      audience: "http://localhost:3000",
+      clientId: "client-1",
+      dpopClient: await mockFirstPartyAuth.getOrCreateDpopClient(),
+      scope: "agent:host.register",
+      subjectToken: "login-access-token",
+      tokenEndpoint: "http://localhost:3000/api/auth/oauth2/token",
+    });
+    expect(mockFirstPartyAuth.exchangeToken).not.toHaveBeenCalled();
+    expect(token.accessToken).toBe("bootstrap-access-token");
   });
 
   it("opens the browser when no valid stored credentials exist", async () => {

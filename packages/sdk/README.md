@@ -44,6 +44,42 @@ const agent = createAgent({
 });
 ```
 
+## Agent Bootstrap
+
+Zentity's token exchange issues only scopes the login token was granted. An installed agent therefore requests the agent bootstrap scopes at sign-in and registers them with its client. It keeps them off its session token with `tokenExchangeScope`, then exchanges the login token for a bootstrap token when it registers its host and sessions.
+
+```ts
+import { AGENT_BOOTSTRAP_SCOPES } from "@zentity/sdk/agent-contract";
+
+const sessionScope = "openid email";
+const loginScope = [sessionScope, ...AGENT_BOOTSTRAP_SCOPES].join(" ");
+
+const installedAuth = createInstalledClientAuth({
+  issuerUrl,
+  storage: createFirstPartyAuthFileStorage({
+    issuerUrl,
+    namespace: "example-agent",
+  }),
+  clientRegistrationRequest: buildLoopbackClientRegistration({
+    clientName: "Example agent",
+    grantTypes: [
+      "authorization_code",
+      "refresh_token",
+      "urn:ietf:params:oauth:grant-type:token-exchange",
+    ],
+    scope: loginScope,
+  }),
+  loginScope,
+  tokenExchangeAudience: deriveAppAudience(issuerUrl),
+  tokenExchangeScope: sessionScope,
+});
+
+const bootstrap = await installedAuth.exchangeLoginToken({
+  audience: deriveAppAudience(issuerUrl),
+  scope: AGENT_BOOTSTRAP_SCOPES.join(" "),
+});
+```
+
 ## Sub-paths
 
 - `@zentity/sdk`: agent runtime helpers

@@ -1,5 +1,7 @@
 import {
   createFirstPartyAuth,
+  type ExchangeTokenResult,
+  exchangeToken,
   type FirstPartyAuth,
   type FirstPartyAuthDiscoveryDocument,
   type FirstPartyAuthStorage,
@@ -31,10 +33,16 @@ export interface CreateInstalledClientAuthOptions {
   clientRegistrationRequest: Record<string, unknown>;
   issuerUrl: string | URL;
   loginResource?: string;
+  /** Every scope the app needs, including scopes only `exchangeLoginToken` requests. */
   loginScope: string;
   openUrl?: (url: string) => MaybePromise<void>;
   storage: FirstPartyAuthStorage;
   tokenExchangeAudience: string;
+  /**
+   * The session token's scopes, a subset of `loginScope`. Without it the
+   * session token keeps the login's scopes except `offline_access` and the
+   * agent bootstrap scopes.
+   */
   tokenExchangeScope?: string;
 }
 
@@ -46,6 +54,15 @@ export interface InstalledClientAuth {
     forceClientRegistration?: boolean;
   }): Promise<InstalledClientCredentials>;
   ensureOAuthSession(): Promise<InstalledOAuthSession>;
+  /**
+   * Exchanges the stored login token for a DPoP-bound access token limited to
+   * `scope` for `audience`, such as an agent bootstrap token. The login must
+   * have been granted every scope in `scope`.
+   */
+  exchangeLoginToken(options: {
+    audience: string;
+    scope: string;
+  }): Promise<ExchangeTokenResult>;
   refreshOAuthSession(): Promise<InstalledOAuthSession>;
 }
 
@@ -179,10 +196,9 @@ export function createInstalledClientAuth(
     });
 
     try {
-      const loginAccessToken = await auth.getAccessToken({
-        clientId: clientCredentials.clientId,
-        ...(options.loginResource ? { resource: options.loginResource } : {}),
-      });
+      const loginAccessToken = await getLoginAccessToken(
+        clientCredentials.clientId
+      );
       return await exchangeInstalledSession(
         loginAccessToken,
         clientCredentials
@@ -209,6 +225,13 @@ export function createInstalledClientAuth(
     }
   }
 
+  function getLoginAccessToken(clientId: string): Promise<string> {
+    return auth.getAccessToken({
+      clientId,
+      ...(options.loginResource ? { resource: options.loginResource } : {}),
+    });
+  }
+
   return Object.freeze({
     clearClientRegistration() {
       return auth.clearClientRegistration();
@@ -223,12 +246,27 @@ export function createInstalledClientAuth(
     ensureOAuthSession() {
       return ensureOAuthSessionAttempt();
     },
+    async exchangeLoginToken(exchangeOptions) {
+      const { clientId } = await ensureClientCredentials();
+      const [subjectToken, discovery, dpopClient] = await Promise.all([
+        getLoginAccessToken(clientId),
+        auth.discover(),
+        auth.getOrCreateDpopClient(),
+      ]);
+      return exchangeToken({
+        audience: exchangeOptions.audience,
+        clientId,
+        dpopClient,
+        scope: exchangeOptions.scope,
+        subjectToken,
+        tokenEndpoint: discovery.token_endpoint,
+      });
+    },
     async refreshOAuthSession() {
       const clientCredentials = await ensureClientCredentials();
-      const loginAccessToken = await auth.getAccessToken({
-        clientId: clientCredentials.clientId,
-        ...(options.loginResource ? { resource: options.loginResource } : {}),
-      });
+      const loginAccessToken = await getLoginAccessToken(
+        clientCredentials.clientId
+      );
       return exchangeInstalledSession(loginAccessToken, clientCredentials);
     },
   } satisfies InstalledClientAuth);
