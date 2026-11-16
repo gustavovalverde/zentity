@@ -23,6 +23,8 @@
         "useImportsFirst": "off"
       },
       "performance": {
+        "noBarrelFile": "error",
+        "noNamespaceImport": "error",
         "noAwaitInLoops": "off"
       },
       "suspicious": {

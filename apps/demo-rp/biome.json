@@ -34,6 +34,8 @@
         "useTailwindSortedClasses": "off"
       },
       "performance": {
+        "noBarrelFile": "error",
+        "noNamespaceImport": "error",
         "noJsxPropsBind": "off"
       }
     }
@@ -68,6 +70,9 @@
           },
           "correctness": {
             "noUnusedVariables": "off"
+          },
+          "performance": {
+            "noNamespaceImport": "off"
           },
           "style": {
             "useImportType": "off",

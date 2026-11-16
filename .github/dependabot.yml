@@ -26,8 +26,8 @@ updates:
       - dependency-name: "@better-auth/oidc4ida"
       - dependency-name: "@better-auth/oidc4vci"
       - dependency-name: "@better-auth/oidc4vp"
-    # Noir, Barretenberg, and TFHE versions must match compiled circuit
-    # artifacts and the FHE service wire format, so they move by hand.
+      # Noir, Barretenberg, and TFHE versions must match compiled circuit
+      # artifacts and the FHE service wire format, so they move by hand.
       - dependency-name: "@noir-lang/*"
       - dependency-name: "@aztec/bb.js"
       - dependency-name: "tfhe"
