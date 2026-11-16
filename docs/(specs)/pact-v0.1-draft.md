@@ -560,7 +560,7 @@ This snapshot ties the later token to the actual registered runtime, not a free-
 
 ### 6.4 User-Verification Approval Strength
 
-An agent with browser control (for example, Playwright or an MCP browser tool) can navigate to approval URLs and click buttons, and it may know the user's password. The `user_verification` approval strength defends against self-approval by requiring a WebAuthn assertion with `userVerification: required`: a PIN or biometric gesture on the user's authenticator, which the agent cannot produce. The user-verified flag does not say which of the two the authenticator used, so this profile does not distinguish them.
+An agent with browser control (for example, Playwright or an MCP browser tool) can navigate to approval URLs and click buttons, and it may know the user's password. The `user_verification` approval strength defends against self-approval by requiring a WebAuthn assertion with `userVerification: required`: a PIN or biometric gesture on an authenticator registered on the user's account, which clicking and typing cannot produce. The user-verified flag does not say which of the two the authenticator used, so this profile does not distinguish them. The residuals at the end of this section limit what the strength guarantees.
 
 For a request whose ceremony is `user_verification`:
 
@@ -571,7 +571,10 @@ For a request whose ceremony is `user_verification`:
 
 Manual approvals of `payment_authorization` and purchases need `user_verification`. Identity-scoped approvals need it when the user has a passkey; a user without a passkey approves them with the session.
 
-The `session` strength accepts any in-session interaction an agent with browser access could automate (cookie presence, password re-entry). The `user_verification` strength requires a ceremony that cannot be performed without the registered authenticator. Residual: the passkey prompt itself shows no transaction detail, so the user relies on the approval page for what they approve.
+The `session` strength accepts any in-session interaction an agent with browser access could automate (cookie presence, password re-entry). The `user_verification` strength requires a ceremony that cannot be performed without an authenticator registered on the user's account. Residuals:
+
+- The passkey prompt itself shows no transaction detail, so the user relies on the approval page for what they approve.
+- Any credential registered on the account satisfies the ceremony. An AS that lets a session register a credential without an assertion from an existing one lets an agent that can sign in, or holds a fresh session, enroll an authenticator it controls and then pass user verification. An AS SHOULD require a user-verified assertion from an existing credential before it registers another, and SHOULD notify the user when one is registered.
 
 **Identity scope exception.** When a CIBA request includes identity scopes, push notifications MUST NOT include inline approve actions, even for `session`-strength capabilities. Vault unlock (required by VEIL Section 6 for identity claim delivery) cannot be triggered from a service worker or agent browser context. The user MUST navigate to the approval page in a full browser context, and the AS refuses an identity approval for which no release was staged.
 

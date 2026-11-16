@@ -15,7 +15,7 @@ An agent asks for a user's approval through CIBA. The approval can release proof
 ## Priorities & Constraints
 
 * The server derives what an approval needs from the whole stored request. Agent input cannot lower it, other than by asking for less.
-* An agent with browser control can click buttons and may know the user's password. A payment approval needs a gesture the agent cannot produce.
+* An agent with browser control can click buttons and may know the user's password. A payment approval needs a user-verified assertion from a passkey registered on the user's account, which clicking and typing alone cannot produce.
 * A service worker cannot run a WebAuthn ceremony, and a notification can describe only some scopes with server text.
 * Service workers installed before this change keep running until the browser updates them.
 * What the approval record states must be what happened, and the record must outlive the plugin's deletion of the request.
@@ -71,20 +71,22 @@ The approval page runs one ceremony at the Approve click. When the vault is pass
 
 ### Error codes
 
-Zentity defines four codes for the approval endpoints. Every other refusal uses a registered OAuth or OIDC code.
+Zentity defines three codes for the approval endpoints:
 
 | Code | Status | Meaning |
 | --- | --- | --- |
 | `review_required` | 403 | A notification approval of a request that must be reviewed on the page |
 | `vault_unlock_required` | 403 | An identity approval without a staged release |
 | `passkey_required` | 409 | The approval needs user verification and the user has no passkey |
-| `insufficient_user_authentication` | 403 | RFC 9470: unmet `acr_values`, a missing passkey confirmation (with `approval_requirement: "user_verification"`), or a failed one |
+
+Every other refusal uses a registered OAuth, OIDC, or CIBA code. The one specific to these endpoints is RFC 9470's `insufficient_user_authentication` (403), for unmet `acr_values`, a missing passkey confirmation (with `approval_requirement: "user_verification"`), or a failed one.
 
 ### Expected Consequences
 
 * Manual payment approvals, and identity approvals by users who have a passkey, need a passkey assertion. Users without a passkey cannot approve a payment until they add one.
 * Users without a passkey keep approving identity requests with the session, after unlocking the vault on the page. The server cannot verify a vault unlock, only that a release was staged, so this stays a recorded residual risk.
 * The passkey prompt shows no transaction detail. The user relies on the approval page for what they approve.
+* Any passkey on the account can answer the step-up, and adding a passkey needs only a fresh session. An agent that can sign in with the user's password, or that holds a fresh session, can register an authenticator it controls, such as a browser's virtual authenticator, and then pass user verification. Closing this needs the passkey plugin to require an assertion from an existing passkey before it adds another, and to notify the user when one is added. Until then this is a recorded residual risk.
 * A capability-grant approval states the authentication under which the agent session was registered. It is the user's last authentication, not activity for the request.
 * A resource server learns nothing about the ceremony from an access token, because the OAuth provider keeps `acr`, `amr`, and `auth_time` out of access tokens.
 
