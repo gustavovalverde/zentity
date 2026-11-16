@@ -237,7 +237,10 @@ describe("server-provided DPoP nonces", () => {
     await insertClient(
       EXCHANGE_CLIENT_ID,
       ["authorization_code", TOKEN_EXCHANGE_GRANT_TYPE],
-      { subjectType: "pairwise" }
+      {
+        scopes: JSON.stringify(["openid", AGENT_HOST_REGISTER_SCOPE]),
+        subjectType: "pairwise",
+      }
     );
     await insertClient(FPA_CLIENT_ID, ["authorization_code", CIBA_GRANT_TYPE], {
       firstParty: true,
@@ -406,7 +409,7 @@ describe("server-provided DPoP nonces", () => {
         prepare: async () => {
           const subjectToken = await mintDpopBoundToken(keyPair, {
             clientId: EXCHANGE_CLIENT_ID,
-            scopes: ["openid"],
+            scopes: ["openid", AGENT_HOST_REGISTER_SCOPE],
           });
           return tokenSender(keyPair, {
             grant_type: TOKEN_EXCHANGE_GRANT_TYPE,
