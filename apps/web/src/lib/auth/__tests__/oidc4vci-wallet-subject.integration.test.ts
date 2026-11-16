@@ -5,8 +5,13 @@ import { beforeEach, describe, expect, it } from "vitest";
 
 import { env } from "@/env";
 import { auth } from "@/lib/auth/auth-config";
+import {
+  BUILT_IN_WALLET_CLIENT_ID,
+  ensureWalletClientExists,
+} from "@/lib/auth/oidc/wallet-dcr";
 import { db } from "@/lib/db/connection";
 import { oauthClients } from "@/lib/db/schema/oauth-provider";
+import { oidc4vciIssuedCredentials } from "@/lib/db/schema/oidc-credentials";
 import {
   createTestSession,
   createTestUser,
@@ -25,33 +30,7 @@ const CREDENTIAL_URL = `${AUTH_URL}/oidc4vci/credential`;
 const PRE_AUTHORIZED_GRANT_TYPE =
   "urn:ietf:params:oauth:grant-type:pre-authorized_code";
 const CREDENTIAL_CONFIGURATION_ID = "identity_verification";
-const PUBLIC_WALLET_ID = "public-wallet";
-const PAIRWISE_WALLET_ID = "pairwise-wallet";
-const PAIRWISE_WALLET_REFUSAL =
-  "credentials are issued only to wallet clients with public subjects, and this client is pairwise";
 
-async function insertWallet(
-  clientId: string,
-  subjectType: "pairwise" | null
-): Promise<void> {
-  await db
-    .insert(oauthClients)
-    .values({
-      clientId,
-      name: clientId,
-      grantTypes: JSON.stringify([PRE_AUTHORIZED_GRANT_TYPE]),
-      redirectUris: JSON.stringify(["https://wallet.example/cb"]),
-      scopes: JSON.stringify(["openid", "proof:identity"]),
-      tokenEndpointAuthMethod: "none",
-      skipConsent: true,
-      subjectType,
-    })
-    .run();
-}
-
-// The OIDC4VCI plugin looks the user up by the access token's `sub`, which is
-// pairwise for a pairwise wallet (U25 in
-// docs/adr/platform/0002-better-auth-patches.md).
 describe("OIDC4VCI wallet subjects", () => {
   let userId: string;
   let sessionCookie: string;
@@ -62,29 +41,43 @@ describe("OIDC4VCI wallet subjects", () => {
     const { token } = await createTestSession(userId);
     const signature = await makeSignature(token, env.BETTER_AUTH_SECRET);
     sessionCookie = `better-auth.session_token=${token}.${signature}`;
-    await insertWallet(PUBLIC_WALLET_ID, null);
-    await insertWallet(PAIRWISE_WALLET_ID, "pairwise");
   });
 
-  function postOffer(clientId: string): Promise<Response> {
+  function sessionRequest(path: string, body: Record<string, unknown>) {
     return auth.handler(
-      new Request(`${AUTH_URL}/oidc4vci/credential-offer`, {
+      new Request(`${AUTH_URL}${path}`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           cookie: sessionCookie,
           Origin: APP_URL,
         },
-        body: JSON.stringify({
-          client_id: clientId,
-          credential_configuration_id: CREDENTIAL_CONFIGURATION_ID,
-        }),
+        body: JSON.stringify(body),
       })
     );
   }
 
+  /** A wallet registered through `/oauth2/create-client`, which is pairwise. */
+  async function registerWallet(): Promise<string> {
+    const response = await sessionRequest("/oauth2/create-client", {
+      client_name: "Registered Wallet",
+      redirect_uris: ["https://wallet.example/cb"],
+      token_endpoint_auth_method: "none",
+      grant_types: [PRE_AUTHORIZED_GRANT_TYPE],
+      skip_consent: true,
+    });
+    const body = (await response.json()) as { client_id?: string };
+    if (!body.client_id) {
+      throw new Error(`client registration failed: ${JSON.stringify(body)}`);
+    }
+    return body.client_id;
+  }
+
   async function preAuthorizedCode(clientId: string): Promise<string> {
-    const response = await postOffer(clientId);
+    const response = await sessionRequest("/oidc4vci/credential-offer", {
+      client_id: clientId,
+      credential_configuration_id: CREDENTIAL_CONFIGURATION_ID,
+    });
     const body = (await response.json()) as {
       credential_offer?: {
         grants?: Record<string, { "pre-authorized_code"?: string }>;
@@ -102,13 +95,12 @@ describe("OIDC4VCI wallet subjects", () => {
 
   async function walletToken(
     clientId: string,
-    code: string,
     keyPair: DpopKeyPair
   ): Promise<string> {
     const { status, json } = await postTokenWithDpop(
       {
         grant_type: PRE_AUTHORIZED_GRANT_TYPE,
-        "pre-authorized_code": code,
+        "pre-authorized_code": await preAuthorizedCode(clientId),
         client_id: clientId,
       },
       keyPair
@@ -158,48 +150,105 @@ describe("OIDC4VCI wallet subjects", () => {
     );
   }
 
-  it("issues a credential to a public-subject wallet", async () => {
+  /** Redeems an offer for the wallet and requests its credential. */
+  async function issueToWallet(clientId: string) {
     const keyPair = await createTestDpopKeyPair();
-    const accessToken = await walletToken(
-      PUBLIC_WALLET_ID,
-      await preAuthorizedCode(PUBLIC_WALLET_ID),
-      keyPair
+    const accessToken = await walletToken(clientId, keyPair);
+    const response = await requestCredential(accessToken, keyPair);
+    const body = (await response.json()) as {
+      credentials?: Array<{ credential: string }>;
+    };
+    const credential = body.credentials?.[0]?.credential ?? "";
+    const [sdJwt] = credential.split("~");
+    const records = await db
+      .select({ userId: oidc4vciIssuedCredentials.userId })
+      .from(oidc4vciIssuedCredentials)
+      .all();
+    return {
+      status: response.status,
+      tokenClaims: decodeJwt(accessToken),
+      credential,
+      credentialClaims: decodeJwt(sdJwt ?? ""),
+      records,
+    };
+  }
+
+  async function builtInWallet(): Promise<string> {
+    return await ensureWalletClientExists();
+  }
+
+  it.each([
+    ["a registered wallet", registerWallet],
+    ["the built-in wallet", builtInWallet],
+  ])("issues a credential without a subject to %s", async (_label, wallet) => {
+    const clientId = await wallet();
+    const client = await db
+      .select({ subjectType: oauthClients.subjectType })
+      .from(oauthClients)
+      .where(eq(oauthClients.clientId, clientId))
+      .get();
+    expect(client?.subjectType).toBe("pairwise");
+
+    const issued = await issueToWallet(clientId);
+
+    expect(issued.tokenClaims.sub).toEqual(expect.any(String));
+    expect(issued.tokenClaims.sub).not.toBe(userId);
+    expect(issued.tokenClaims.ba_sub).toEqual(expect.any(String));
+    expect(issued.status).toBe(200);
+    expect(issued.credentialClaims).not.toHaveProperty("sub");
+    expect(issued.credential).not.toContain(userId);
+    expect(issued.credential).not.toContain(String(issued.tokenClaims.sub));
+    // The plugin resolved the real user: the issued record is theirs.
+    expect(issued.records).toEqual([{ userId }]);
+  });
+});
+
+describe("built-in OIDC4VCI wallet client", () => {
+  beforeEach(async () => {
+    await resetDatabase();
+  });
+
+  function walletRows() {
+    return db
+      .select({
+        subjectType: oauthClients.subjectType,
+        sectorIdentifier: oauthClients.sectorIdentifier,
+        redirectUris: oauthClients.redirectUris,
+      })
+      .from(oauthClients)
+      .where(eq(oauthClients.clientId, BUILT_IN_WALLET_CLIENT_ID))
+      .all();
+  }
+
+  const PAIRWISE_WALLET = {
+    subjectType: "pairwise",
+    sectorIdentifier: "client/zentity-wallet",
+    redirectUris: "[]",
+  };
+
+  it("creates a pairwise wallet client", async () => {
+    await expect(ensureWalletClientExists()).resolves.toBe(
+      BUILT_IN_WALLET_CLIENT_ID
     );
 
-    const response = await requestCredential(accessToken, keyPair);
-
-    expect(response.status).toBe(200);
+    expect(await walletRows()).toEqual([PAIRWISE_WALLET]);
   });
 
-  it("refuses a credential offer for a pairwise wallet", async () => {
-    const response = await postOffer(PAIRWISE_WALLET_ID);
-
-    expect(response.status).toBe(400);
-    expect(await response.json()).toEqual({
-      error: "invalid_client",
-      error_description: PAIRWISE_WALLET_REFUSAL,
-    });
-  });
-
-  it("refuses a pairwise wallet's token at the credential endpoint", async () => {
-    // A wallet made pairwise after its offer redeems the code for a token
-    // whose `sub` names no user.
-    const code = await preAuthorizedCode(PUBLIC_WALLET_ID);
+  it("makes a wallet client an earlier release created public pairwise, once", async () => {
     await db
-      .update(oauthClients)
-      .set({ subjectType: "pairwise" })
-      .where(eq(oauthClients.clientId, PUBLIC_WALLET_ID))
+      .insert(oauthClients)
+      .values({
+        clientId: BUILT_IN_WALLET_CLIENT_ID,
+        name: "Zentity Wallet",
+        tokenEndpointAuthMethod: "none",
+        grantTypes: JSON.stringify([PRE_AUTHORIZED_GRANT_TYPE]),
+        redirectUris: JSON.stringify([]),
+      })
       .run();
-    const keyPair = await createTestDpopKeyPair();
-    const accessToken = await walletToken(PUBLIC_WALLET_ID, code, keyPair);
-    expect(decodeJwt(accessToken).sub).not.toBe(userId);
 
-    const response = await requestCredential(accessToken, keyPair);
+    await ensureWalletClientExists();
+    await ensureWalletClientExists();
 
-    expect(response.status).toBe(400);
-    expect(await response.json()).toEqual({
-      error: "credential_request_denied",
-      error_description: PAIRWISE_WALLET_REFUSAL,
-    });
+    expect(await walletRows()).toEqual([PAIRWISE_WALLET]);
   });
 });

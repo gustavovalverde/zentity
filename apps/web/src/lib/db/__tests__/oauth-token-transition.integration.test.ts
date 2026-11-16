@@ -6,6 +6,7 @@ import { describe, expect, it } from "vitest";
 
 import { db } from "@/lib/db/connection";
 import { oauthAccessTokens } from "@/lib/db/schema/oauth-provider";
+import { createTestUser } from "@/test-utils/db-test-utils";
 
 const TRAILING_COMMA_BEFORE_CLOSE = /,\n\)$/;
 
@@ -21,6 +22,12 @@ async function runTransitionScript(): Promise<string> {
 function cibaApprovalSchema() {
   return db.all<{ name: string; sql: string | null }>(
     sql`SELECT name, sql FROM sqlite_master WHERE tbl_name = 'ciba_approval' ORDER BY name`
+  );
+}
+
+function issuedCredentialSchema() {
+  return db.all<{ name: string; sql: string | null }>(
+    sql`SELECT name, sql FROM sqlite_master WHERE tbl_name = 'oidc4vci_issued_credential' ORDER BY name`
   );
 }
 
@@ -127,6 +134,58 @@ describe("deploy backfill", () => {
     );
     expect(await runTransitionScript()).toContain(
       "ciba_approval columns added: 0"
+    );
+  });
+
+  it("lets a release that keeps no SD-JWT record credentials, and revokes the ones that carry a subject", async () => {
+    const pushed = await issuedCredentialSchema();
+    const userId = await createTestUser();
+    // The previous release's table: the SD-JWT column, no unique entry index.
+    await db.run(
+      sql`DROP INDEX oidc4vci_issued_credential_status_entry_unique`
+    );
+    await db.run(
+      sql`ALTER TABLE oidc4vci_issued_credential ADD credential text NOT NULL DEFAULT ''`
+    );
+    const insert = (index: number, status: number, credential: string | null) =>
+      db.run(
+        sql`INSERT INTO oidc4vci_issued_credential
+          (user_id, credential_configuration_id, format, status_list_id, status_list_index, status, credential)
+          VALUES (${userId}, 'identity_verification', 'dc+sd-jwt', 'default', ${index}, ${status}, ${credential})`
+      );
+    await insert(0, 0, "issued-with-sub");
+    await insert(1, 1, "already-revoked");
+
+    const output = await runTransitionScript();
+    expect(output).toContain(
+      "oidc4vci_issued_credential.credential: made nullable"
+    );
+    expect(output).toContain("stored credentials revoked: 1");
+    await insert(2, 0, null);
+    expect(
+      await db.all(
+        sql`SELECT status_list_index AS idx, status, revoked_at IS NOT NULL AS revoked
+          FROM oidc4vci_issued_credential ORDER BY status_list_index`
+      )
+    ).toEqual([
+      { idx: 0, status: 1, revoked: 1 },
+      { idx: 1, status: 1, revoked: 0 },
+      { idx: 2, status: 0, revoked: 0 },
+    ]);
+    await expect(insert(2, 0, null)).rejects.toThrow();
+
+    const again = await runTransitionScript();
+    expect(again).toContain(
+      "oidc4vci_issued_credential.credential: already nullable"
+    );
+    expect(again).toContain("stored credentials revoked: 0");
+
+    await db.run(
+      sql`ALTER TABLE oidc4vci_issued_credential DROP COLUMN credential`
+    );
+    expect(await issuedCredentialSchema()).toEqual(pushed);
+    expect(await runTransitionScript()).toContain(
+      "stored credentials revoked: skipped (column already dropped)"
     );
   });
 

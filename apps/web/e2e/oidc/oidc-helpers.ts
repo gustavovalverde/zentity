@@ -12,12 +12,13 @@ import {
   request as playwrightRequest,
 } from "@playwright/test";
 import { makeSignature } from "better-auth/crypto";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/libsql";
 import {
   base64url,
   calculateJwkThumbprint,
   createLocalJWKSet,
+  decodeJwt,
   exportJWK,
   generateKeyPair,
   type JWK,
@@ -284,9 +285,7 @@ export async function createIssuerSession(_request: APIRequestContext) {
 
 /**
  * The wallet client the server creates for itself, which the dashboard's
- * credential offer targets. It has public subjects, so it receives
- * credentials. U25 in docs/adr/platform/0002-better-auth-patches.md covers
- * pairwise wallets.
+ * credential offer targets by default. It is pairwise like every client.
  */
 export const BUILT_IN_WALLET_CLIENT_ID = "zentity-wallet";
 
@@ -544,7 +543,6 @@ export async function fetchIssuerJwks(request: APIRequestContext) {
 
 export async function verifyIssuedCredential(input: {
   credential: string;
-  userId: string;
   holderJwk: JWK;
   jwks: { keys: JWK[] };
   expectedVct: string;
@@ -556,7 +554,9 @@ export async function verifyIssuedCredential(input: {
   const jwkSet = createLocalJWKSet(input.jwks);
   const verified = await jwtVerify(sdJwt, jwkSet, { issuer: ISSUER });
   const payload = verified.payload as Record<string, unknown>;
-  expect(payload.sub).toBe(input.userId);
+  // Holder binding is `cnf.jwk`; a subject would link the holder across
+  // verifiers.
+  expect(payload).not.toHaveProperty("sub");
   expect(payload.vct).toBe(input.expectedVct);
 
   // SD-JWT VC holder binding carries the key itself (`cnf.jwk`).
@@ -593,7 +593,18 @@ function openE2eDatabase() {
   });
 }
 
+/** The issued-credential row for the status list entry the credential names. */
 export async function findIssuedCredentialRecord(credential: string) {
+  const [sdJwt] = credential.split("~");
+  const { status } = decodeJwt(sdJwt ?? "") as {
+    status?: { status_list?: { idx?: number; uri?: string } };
+  };
+  const entry = status?.status_list;
+  if (typeof entry?.idx !== "number" || !entry.uri) {
+    throw new Error("Credential missing its status list entry");
+  }
+  const statusListId =
+    new URL(entry.uri).searchParams.get("list_id") ?? "default";
   const client = openE2eDatabase();
   const db = drizzle(client, { schema: { oidc4vciIssuedCredentials } });
 
@@ -607,7 +618,12 @@ export async function findIssuedCredentialRecord(credential: string) {
         revokedAt: oidc4vciIssuedCredentials.revokedAt,
       })
       .from(oidc4vciIssuedCredentials)
-      .where(eq(oidc4vciIssuedCredentials.credential, credential))
+      .where(
+        and(
+          eq(oidc4vciIssuedCredentials.statusListId, statusListId),
+          eq(oidc4vciIssuedCredentials.statusListIndex, entry.idx)
+        )
+      )
       .limit(1);
     const row = rows[0];
     if (!row) {

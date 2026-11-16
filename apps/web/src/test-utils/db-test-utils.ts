@@ -47,7 +47,6 @@ import {
 import {
   oidc4vciIssuedCredentials,
   oidc4vciOffers,
-  oidc4vciStatusLists,
 } from "@/lib/db/schema/oidc-credentials";
 import {
   credentialBindingCommitments,
@@ -96,7 +95,6 @@ export async function resetDatabase(): Promise<void> {
     await tx.delete(identityBundles).run();
     await tx.delete(oidc4vciIssuedCredentials).run();
     await tx.delete(oidc4vciOffers).run();
-    await tx.delete(oidc4vciStatusLists).run();
     await tx.delete(zkChallenges).run();
     await tx.delete(revokedTokens).run();
     await tx.delete(usedIntentJtis).run();

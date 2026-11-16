@@ -778,13 +778,19 @@ Zentity acts as a Verifiable Credential Issuer following the OIDC4VCI specificat
 5. Wallet requests a fresh `c_nonce` from `POST /api/auth/oidc4vci/nonce`. The token response carries no `c_nonce`.
 6. Wallet requests the credential by `credential_configuration_id` or `credential_identifier`, with a holder key proof in `proofs.jwt` bound to that nonce
 
-The credential endpoint answers `{ "credentials": [{ "credential": "<SD-JWT VC>" }] }`. The SD-JWT VC carries the holder's public key as `cnf.jwk`. Draft-era requests that send `format` or a singular `proof` are rejected with `invalid_credential_request`.
+The credential endpoint answers `{ "credentials": [{ "credential": "<SD-JWT VC>" }] }`. Draft-era requests that send `format` or a singular `proof` are rejected with `invalid_credential_request`.
+
+**Wallet clients**: an offer is bound to one wallet client, and only that client can redeem its pre-authorized code. A wallet without a registration of its own redeems as the built-in public client `zentity-wallet`. A wallet registered through dynamic registration, `/oauth2/create-client`, or a Client ID Metadata Document receives credentials from offers created for its own client id. Every wallet client is pairwise, including `zentity-wallet`, whose sector is `client/zentity-wallet`. Its pairwise subject is therefore shared by every wallet app that redeems on that client id, but it appears only in access tokens, never in a credential.
+
+**Access tokens**: the credential and deferred endpoints validate the access token through the OAuth provider, which reads the user from the token's encrypted `ba_sub` claim rather than its pairwise `sub`. They refuse with `401 invalid_token` a token whose client is disabled, whose `jti` was revoked, whose `ba_sub` does not decrypt, or that names no user. A pre-authorized code token has no session and no grant id, so signing out does not revoke it; it expires after one hour. A missing token gets `401 invalid_request`, and a missing or stale DPoP nonce gets `401 use_dpop_nonce` with a `DPoP-Nonce` header. DPoP proofs must use ES256.
+
+**Credential contents**: the SD-JWT VC carries `iss`, `vct`, `iat`, `exp`, `status`, and the holder's public key as `cnf.jwk`. It carries no `sub`: holder binding is `cnf.jwk`, and a subject would let every verifier that receives the credential link its holder. The status list index is drawn at random from a list of 131,072 entries (HAIP 1.0 §6.1), and the status list always publishes every entry. Zentity stores the status entry of each credential it issues, not the credential itself.
 
 **Deferred issuance**: When verification is pending, the issuer answers 202 with a `transaction_id` and a polling `interval`. The wallet polls `POST /api/auth/oidc4vci/credential/deferred` until ready.
 
 Credentials contain only derived claims (e.g., `verified`, `verification_level`, `age_verified`), never raw PII.
 
-**Known limitation:** the OIDC4VCI plugin looks the user up by the access token's `sub` and copies it into the credential's `sub`, so only a wallet client with public subjects receives credentials. The server creates its built-in wallet client, `zentity-wallet`, with public subjects, and the dashboard's credential offer targets it, so that journey works without administrator setup; its credentials carry the user id as `sub`. A wallet registered through dynamic registration, `/oauth2/create-client`, or a Client ID Metadata Document is pairwise, and Zentity refuses it with an explicit error: a credential offer for it answers 400 `invalid_client`, and the credential endpoint answers 400 `credential_request_denied` to its access token. Pairwise wallets need the plugin to resolve the user from the provider's `ba_sub` and keep the pairwise `sub` in the credential.
+**Linkability**: a credential is one value that its holder presents everywhere. Its issuer signature, `cnf.jwk`, status list index, and `iat` and `exp` let colluding verifiers link the presentations of that one credential, as with any single SD-JWT VC. A disclosed `verification_time` or `attestation_expires_at` is the same in every credential of one user, so it links that user's credentials too. Batch issuance with one key per credential would remove that link; the issuer accepts one proof per request today.
 
 ---
 

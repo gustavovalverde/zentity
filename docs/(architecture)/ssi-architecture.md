@@ -113,7 +113,7 @@ sequenceDiagram
 4. Wallet exchanges code for access token.
 5. Wallet requests a fresh `c_nonce` from the nonce endpoint.
 6. Wallet requests credential with a holder binding proof (`proofs.jwt`) that carries the nonce.
-7. Server validates proof, generates SD-JWT VC, and returns it as `{ "credentials": [{ "credential": "..." }] }`.
+7. Server validates proof, generates SD-JWT VC, and returns it as `{ "credentials": [{ "credential": "..." }] }`. The credential carries no `sub`; it is bound to the holder through `cnf.jwk`.
 
 ### Credential type
 

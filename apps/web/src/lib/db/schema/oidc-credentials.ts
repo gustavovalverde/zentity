@@ -1,5 +1,11 @@
 import { sql } from "drizzle-orm";
-import { index, integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
+import {
+  index,
+  integer,
+  sqliteTable,
+  text,
+  uniqueIndex,
+} from "drizzle-orm/sqlite-core";
 
 import { defaultId, users } from "./auth";
 
@@ -45,24 +51,18 @@ export const oidc4vciIssuedCredentials = sqliteTable(
     statusListIndex: integer("status_list_index").notNull(),
     status: integer("status").notNull().default(0),
     revokedAt: integer("revoked_at", { mode: "timestamp_ms" }),
-    credential: text("credential").notNull(),
     createdAt: integer("created_at", { mode: "timestamp_ms" })
       .notNull()
       .default(sql`(unixepoch() * 1000)`),
   },
   (table) => [
     index("oidc4vci_issued_credential_user_id_idx").on(table.userId),
-    index("oidc4vci_issued_credential_status_list_id_idx").on(
-      table.statusListId
+    uniqueIndex("oidc4vci_issued_credential_status_entry_unique").on(
+      table.statusListId,
+      table.statusListIndex
     ),
   ]
 );
-
-export const oidc4vciStatusLists = sqliteTable("oidc4vci_status_list", {
-  id: text("id").primaryKey().default(defaultId),
-  listId: text("list_id").notNull().unique(),
-  nextIndex: integer("next_index").notNull().default(0),
-});
 
 export type Oidc4vciOffer = typeof oidc4vciOffers.$inferSelect;
 export type NewOidc4vciOffer = typeof oidc4vciOffers.$inferInsert;
