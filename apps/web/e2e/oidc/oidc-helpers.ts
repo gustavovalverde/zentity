@@ -282,6 +282,14 @@ export async function createIssuerSession(_request: APIRequestContext) {
 
 // --- OAuth/OIDC4VCI Helpers ---
 
+/**
+ * The wallet client the server creates for itself, which the dashboard's
+ * credential offer targets. It has public subjects, so it receives
+ * credentials (upstream ask U25 covers pairwise wallets).
+ */
+export const BUILT_IN_WALLET_CLIENT_ID = "zentity-wallet";
+
+/** A wallet registered through `/oauth2/create-client`, which is pairwise. */
 export async function createWalletClient(
   request: APIRequestContext,
   cookieHeader: string
@@ -302,19 +310,6 @@ export async function createWalletClient(
   const body = (await res.json()) as { client_id?: string };
   if (!body.client_id) {
     throw new Error("Missing client_id from OAuth client creation");
-  }
-  // The OIDC4VCI plugin looks the user up by the access token's `sub`, which
-  // is pairwise for a pairwise client (upstream ask U25), so the wallet is a
-  // public client, as only an administrator can create one.
-  const client = openE2eDatabase();
-  try {
-    await client.execute("PRAGMA busy_timeout = 5000");
-    await client.execute({
-      sql: "UPDATE oauth_client SET subject_type = 'public' WHERE client_id = ?",
-      args: [body.client_id],
-    });
-  } finally {
-    client.close();
   }
   return body.client_id;
 }

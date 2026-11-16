@@ -172,6 +172,10 @@ import { resolveSybilNullifier } from "@/lib/auth/oidc/sybil";
 import { tokenExchangePlugin } from "@/lib/auth/oidc/token-exchange";
 import { recordRevokedAccessToken } from "@/lib/auth/oidc/token-revocation";
 import {
+  authorizeWalletCredentialOffer,
+  refusePairwiseCredentialToken,
+} from "@/lib/auth/oidc/wallet-dcr";
+import {
   discoveryMetadataExtension,
   getAuthIssuer,
   joinAuthIssuerPath,
@@ -2355,6 +2359,8 @@ export const auth = betterAuth({
       accessTokenJwksUrl: joinAuthIssuerPath(authIssuer, "oauth2/jwks"),
       authorizationServer: authIssuer,
       credentialConfigurations: oidc4vciCredentialConfigurations,
+      authorizeCredentialOffer: authorizeWalletCredentialOffer,
+      accessTokenValidator: refusePairwiseCredentialToken,
       // The credential endpoints require DPoP-bound tokens and ES256 proofs
       // through the haip plugin's defaults.
       ...(trustedWalletIssuers

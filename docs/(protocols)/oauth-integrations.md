@@ -746,7 +746,7 @@ The credential endpoint answers `{ "credentials": [{ "credential": "<SD-JWT VC>"
 
 Credentials contain only derived claims (e.g., `verified`, `verification_level`, `age_verified`), never raw PII.
 
-**Known limitation:** the OIDC4VCI plugin looks the user up by the access token's `sub` and copies it into the credential's `sub`. A pairwise client's access token carries its pairwise `sub`, so the credential endpoint answers `user not found` to every pairwise wallet, which includes every dynamically registered one. Only a public client, which only an administrator can create, receives credentials, and their `sub` is the user id. The plugin needs to resolve the user from the provider's `ba_sub` and keep the pairwise `sub` in the credential.
+**Known limitation:** the OIDC4VCI plugin looks the user up by the access token's `sub` and copies it into the credential's `sub`, so only a wallet client with public subjects receives credentials. The server creates its built-in wallet client, `zentity-wallet`, with public subjects, and the dashboard's credential offer targets it, so that journey works without administrator setup; its credentials carry the user id as `sub`. A wallet registered through dynamic registration, `/oauth2/create-client`, or a Client ID Metadata Document is pairwise, and Zentity refuses it with an explicit error: a credential offer for it answers 400 `invalid_client`, and the credential endpoint answers 400 `credential_request_denied` to its access token. Pairwise wallets need the plugin to resolve the user from the provider's `ba_sub` and keep the pairwise `sub` in the credential.
 
 ---
 
