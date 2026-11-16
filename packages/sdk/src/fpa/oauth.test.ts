@@ -9,7 +9,11 @@ vi.mock("../rp/userinfo", () => ({
   fetchUserInfo: mockFetchUserInfo,
 }));
 
-import { exchangeAuthorizationCode, exchangeToken } from "./oauth";
+import {
+  exchangeAuthorizationCode,
+  exchangeToken,
+  resolveOAuthIdentity,
+} from "./oauth";
 
 function createMockDpopClient(): DpopClient {
   return {
@@ -124,9 +128,11 @@ describe("oauth helpers", () => {
     expect(body.has("redirect_uri")).toBe(false);
   });
 
-  it("extracts the subject from an exchanged token", async () => {
+  // R9: the access token names the user for its audience, so reading its
+  // sub would give the client another party's identifier.
+  it("does not read the subject of an exchanged JWT", async () => {
     const accessToken = `${encodeJwtSegment({ alg: "none" })}.${encodeJwtSegment({
-      sub: "user-123",
+      sub: "audience-subject",
     })}.`;
 
     vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
@@ -151,10 +157,42 @@ describe("oauth helpers", () => {
 
     expect(result).toEqual({
       accessToken,
-      accountSub: "user-123",
       expiresIn: 3600,
       scope: "purchase",
       tokenType: "DPoP",
+    });
+  });
+
+  it("resolves no account from the access token when UserInfo and the ID token are absent", async () => {
+    mockFetchUserInfo.mockResolvedValue(null);
+    const accessToken = `${encodeJwtSegment({ alg: "none" })}.${encodeJwtSegment({
+      sub: "audience-subject",
+    })}.`;
+
+    await expect(
+      resolveOAuthIdentity(
+        "https://issuer.example",
+        accessToken,
+        createMockDpopClient()
+      )
+    ).resolves.toEqual({});
+  });
+
+  it("falls back to the ID token's subject, not the access token's", async () => {
+    mockFetchUserInfo.mockResolvedValue(null);
+    const jwt = (sub: string) =>
+      `${encodeJwtSegment({ alg: "none" })}.${encodeJwtSegment({ sub })}.`;
+
+    await expect(
+      resolveOAuthIdentity(
+        "https://issuer.example",
+        jwt("audience-subject"),
+        createMockDpopClient(),
+        jwt("client-subject")
+      )
+    ).resolves.toEqual({
+      accountSub: "client-subject",
+      loginHint: "client-subject",
     });
   });
 

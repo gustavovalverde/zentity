@@ -121,6 +121,11 @@ async function readUserInfoSubject(
     : undefined;
 }
 
+/**
+ * The account the tokens are for, from UserInfo or the ID token. The access
+ * token is never read: a client must treat it as opaque (RFC 9068 §6), and
+ * its `sub` names the user for its audience, not for this client.
+ */
 export async function resolveOAuthIdentity(
   issuerUrl: string | URL,
   accessToken: string,
@@ -137,7 +142,6 @@ export async function resolveOAuthIdentity(
   if (userInfo) {
     const accountSub =
       (typeof userInfo.sub === "string" && userInfo.sub) ||
-      decodeJwtClaim(accessToken, "sub") ||
       decodeJwtClaim(idToken, "sub");
     const loginHint =
       (typeof userInfo.email === "string" && userInfo.email) ||
@@ -153,8 +157,7 @@ export async function resolveOAuthIdentity(
     };
   }
 
-  const accountSub =
-    decodeJwtClaim(accessToken, "sub") || decodeJwtClaim(idToken, "sub");
+  const accountSub = decodeJwtClaim(idToken, "sub");
 
   return {
     ...(accountSub ? { accountSub, loginHint: accountSub } : {}),
@@ -228,15 +231,13 @@ export async function exchangeToken(
         : { clientSecret: options.clientSecret }),
     }
   );
-  const accountSub =
-    decodeJwtClaim(data.access_token, "sub") ??
-    (options.userInfoEndpoint
-      ? await readUserInfoSubject(
-          options.userInfoEndpoint,
-          data.access_token,
-          options.dpopClient
-        )
-      : undefined);
+  const accountSub = options.userInfoEndpoint
+    ? await readUserInfoSubject(
+        options.userInfoEndpoint,
+        data.access_token,
+        options.dpopClient
+      )
+    : undefined;
 
   return {
     accessToken: data.access_token,
