@@ -92,6 +92,43 @@ function getFinalizeFailureMessage(jobStatus: {
   return null;
 }
 
+/**
+ * Re-check the server-written liveness results, finalize the draft, and wait
+ * for the finalize job. Returns the verification the draft was promoted to.
+ */
+async function finalizeDraft(draftId: string): Promise<string> {
+  const status = await trpc.identity.livenessStatus.mutate({ draftId });
+  if (!status.success) {
+    const message =
+      status.issues.map(getLivenessIssueMessage).join(", ") ||
+      "Verification incomplete";
+    throw new Error(message);
+  }
+
+  const { jobId } = await trpc.identity.finalize.mutate({ draftId });
+
+  for (let attempts = 0; attempts < 30; attempts++) {
+    const jobStatus = await trpc.identity.finalizeStatus.query({ jobId });
+    if (jobStatus.status === "complete") {
+      const finalizeFailure = getFinalizeFailureMessage(jobStatus);
+      if (finalizeFailure) {
+        throw new Error(finalizeFailure);
+      }
+      const verificationId = jobStatus.result?.verificationId;
+      if (!verificationId) {
+        break;
+      }
+      return verificationId;
+    }
+    if (jobStatus.status === "error") {
+      throw new Error(jobStatus.error ?? "Finalization failed");
+    }
+    await new Promise((resolve) => setTimeout(resolve, 500));
+  }
+
+  throw new Error("Finalization timed out");
+}
+
 interface LivenessOrchestratorProps {
   onComplete?: () => void;
   wallet: { address: string; chainId: number } | null;
@@ -122,6 +159,10 @@ export function LivenessOrchestrator({
   } = useVerificationBindingAuth();
   // Ref to hold the verificationId while dialog is open (avoids stale closure)
   const pendingVerificationIdRef = useRef<string | null>(null);
+  const finalizedDraftRef = useRef<{
+    draftId: string;
+    verificationId: string;
+  } | null>(null);
 
   const handleBindingAuthOpenChange = useCallback(
     (open: boolean) => {
@@ -382,40 +423,14 @@ export function LivenessOrchestrator({
 
     setIsSubmitting(true);
     try {
-      // Step 1: re-validate the server-written results. The frame and faceMatch
-      // responses already confirmed the writes synchronously; this is the
-      // server-side gate before finalizing.
-      const status = await trpc.identity.livenessStatus.mutate({ draftId });
-      if (!status.success) {
-        const message =
-          status.issues.map(getLivenessIssueMessage).join(", ") ||
-          "Verification incomplete";
-        throw new Error(message);
-      }
-
-      // Step 2: Trigger finalization
-      const { jobId } = await trpc.identity.finalize.mutate({ draftId });
-
-      // Step 3: Poll for job completion
-      let verificationId: string | null = null;
-      for (let attempts = 0; attempts < 30; attempts++) {
-        const jobStatus = await trpc.identity.finalizeStatus.query({ jobId });
-        if (jobStatus.status === "complete") {
-          const finalizeFailure = getFinalizeFailureMessage(jobStatus);
-          if (finalizeFailure) {
-            throw new Error(finalizeFailure);
-          }
-          verificationId = jobStatus.result?.verificationId ?? null;
-          break;
-        }
-        if (jobStatus.status === "error") {
-          throw new Error(jobStatus.error ?? "Finalization failed");
-        }
-        await new Promise((resolve) => setTimeout(resolve, 500));
-      }
-
+      // A successful finalize deletes the draft, so retrying after a failed
+      // proof step must reuse its verification instead of finalizing again.
+      const finalized = finalizedDraftRef.current;
+      let verificationId =
+        finalized?.draftId === draftId ? finalized.verificationId : null;
       if (!verificationId) {
-        throw new Error("Finalization timed out");
+        verificationId = await finalizeDraft(draftId);
+        finalizedDraftRef.current = { draftId, verificationId };
       }
 
       getStoreState().set({ verificationId });
