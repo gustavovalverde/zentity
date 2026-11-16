@@ -115,26 +115,32 @@ The SDK signs DPoP proofs but does not verify them. Any RFC 9449 verifier works.
 
 ```ts
 import {
-  createDpopClient,
   createProofOfHumanTokenVerifier,
   identityStrengthTier,
   requestProofOfHumanToken,
 } from "@zentity/sdk/rp";
 
+// `dpopClient` must hold the key the access token is bound to (its `cnf.jkt`).
+// The issuer rejects a proof signed with any other key.
 const result = await requestProofOfHumanToken({
   accessToken,
-  dpopClient: await createDpopClient(),
+  dpopClient,
   proofOfHumanUrl: `${issuerUrl}/oauth2/proof-of-human`,
 });
 
 if (result.ok) {
-  const verifier = createProofOfHumanTokenVerifier({ jwksUrl });
+  const verifier = createProofOfHumanTokenVerifier({
+    issuer: issuerUrl,
+    jwksUrl,
+  });
   const { poh } = await verifier.verify(result.token);
   const humanWithDocument = poh.humanity.proven && identityStrengthTier(poh) >= 1;
 }
 ```
 
 Read `result.unverifiedClaims` only to decide what to show. Rely on the verified `poh` claims for access decisions.
+
+The proof-of-human token is bound to the presenter's DPoP key through `cnf.jkt`. A service that receives the token from someone else must check that `cnf.jkt` equals the thumbprint of the key that signed the DPoP proof sent with it. Without that check, anyone who captures the token can replay it.
 
 ## x402 Payment Required
 
@@ -144,7 +150,15 @@ Read `result.unverifiedClaims` only to decide what to show. Rely on the verified
 import { createPaymentRequired } from "@zentity/sdk/rp";
 
 return createPaymentRequired({
-  accepts: { scheme: "exact", network: "eip155:84532", payTo, amount: "1", asset, maxTimeoutSeconds: 300 },
+  accepts: {
+    scheme: "exact",
+    network: "eip155:84532",
+    payTo,
+    amount: "1",
+    asset,
+    maxTimeoutSeconds: 300,
+    extra: { name: "USDC", version: "2" },
+  },
   resource: { url: "/api/premium" },
   extensions: { zentity: { minComplianceLevel: 2, pohIssuer: issuerUrl } },
 });
