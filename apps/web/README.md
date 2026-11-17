@@ -52,7 +52,7 @@ of the baseline: the app feature-detects PRF at runtime
 
 ### Prerequisites
 
-- pnpm 10+
+- pnpm 12+
 
 ### Install Dependencies
 
