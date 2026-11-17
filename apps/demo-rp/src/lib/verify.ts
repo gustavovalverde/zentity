@@ -1,7 +1,7 @@
 import "server-only";
 
 import { encodePath, splitSdJwt } from "@sd-jwt/core";
-import { SDJwtVcInstance, type SdJwtVcPayload } from "@sd-jwt/sd-jwt-vc";
+import { SdJwtVcInstance, type SdJwtVcPayload } from "@sd-jwt/sd-jwt-vc";
 import { decodeBase64UrlJsonStrict } from "@zentity/sdk/protocol";
 import { createJwksTokenVerifier } from "@zentity/sdk/rp";
 import { compactVerify, importJWK, type JWK } from "jose";
@@ -99,7 +99,7 @@ async function fetchStatusList(uri: string): Promise<string> {
   return new Response(limitBytes(response.body, MAX_STATUS_LIST_BYTES)).text();
 }
 
-const sdjwt = new SDJwtVcInstance({
+const sdjwt = new SdJwtVcInstance({
   hasher: sha256Hasher,
   verifier: verifyIssuerSignature,
   statusVerifier: verifyIssuerSignature,

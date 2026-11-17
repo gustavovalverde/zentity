@@ -334,16 +334,16 @@ describe("purchase requests at bc-authorize", () => {
 
   // A runtime tells an inactive session from a mismatched request, registers
   // a new session, and signs again.
-  it.each([
+  it.each<[string, (agent: { sessionId: string }) => void | Promise<void>]>([
     [
       "an unknown session",
-      (agent: { sessionId: string }) => {
+      (agent) => {
         agent.sessionId = "unknown-session";
       },
     ],
     [
       "a session idle past its TTL",
-      async (agent: { sessionId: string }) => {
+      async (agent) => {
         await db
           .update(agentSessions)
           .set({ lastActiveAt: new Date(Date.now() - 31 * 60 * 1000) })
@@ -353,7 +353,7 @@ describe("purchase requests at bc-authorize", () => {
     ],
     [
       "a revoked session",
-      async (agent: { sessionId: string }) => {
+      async (agent) => {
         await db
           .update(agentSessions)
           .set({ status: "revoked" })

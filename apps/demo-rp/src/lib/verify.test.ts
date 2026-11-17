@@ -2,7 +2,8 @@
 
 import { deflateSync } from "node:zlib";
 
-import { SDJwtInstance } from "@sd-jwt/core";
+import { SdJwtInstance } from "@sd-jwt/core";
+import { SdJwtVcInstance } from "@sd-jwt/sd-jwt-vc";
 import {
   type CryptoKey,
   exportJWK,
@@ -108,7 +109,7 @@ interface CredentialOptions {
 }
 
 function issueCredential(options: CredentialOptions = {}): Promise<string> {
-  const issuer = new SDJwtInstance({
+  const issuer = new SdJwtVcInstance({
     hasher: sha256Hasher,
     hashAlg: "sha-256",
     saltGenerator: () => crypto.randomUUID(),
@@ -189,7 +190,7 @@ function presentDisclosures(
   claimNames: string[],
   sdJwt = credential
 ): Promise<string> {
-  const holder = new SDJwtInstance({ hasher: sha256Hasher });
+  const holder = new SdJwtInstance({ hasher: sha256Hasher });
   return holder.present(
     sdJwt,
     Object.fromEntries(claimNames.map((name) => [name, true]))

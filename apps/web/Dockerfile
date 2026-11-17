@@ -152,9 +152,6 @@ COPY --link --from=builder --chown=${APP_UID}:${APP_GID} ${APP_HOME}/src ./src
 COPY --link --from=builder --chown=${APP_UID}:${APP_GID} ${APP_HOME}/scripts ./scripts
 RUN chmod +x ./scripts/docker-entrypoint.sh
 
-# Create symlink for human-models (expected location by human-server.ts)
-RUN ln -s ./node_modules/@vladmandic/human-models/models ./human-models
-
 RUN mkdir -p /var/lib/zentity/web && chown -R ${APP_UID}:${APP_GID} /var/lib/zentity
 RUN mkdir -p /var/lib/zentity/bb-crs && chown -R ${APP_UID}:${APP_GID} /var/lib/zentity/bb-crs
 

@@ -2,7 +2,6 @@ import "server-only";
 
 import type { Config, Human } from "@vladmandic/human";
 
-import fs from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import util from "node:util";
@@ -10,20 +9,15 @@ import util from "node:util";
 import { logger } from "@/lib/logging/logger";
 import { recordLivenessDetectDuration } from "@/lib/observability/metrics";
 
-// In Docker standalone builds we copy models to `/app/human-models`.
-// For local dev we fall back to node_modules.
-const standaloneModelsPath = path.join(process.cwd(), "human-models");
-const nodeModulesModelsPath = path.join(
+// The model files ship inside @vladmandic/human, which is installed under
+// node_modules in local dev and in the Docker image alike.
+const resolvedPath = path.join(
   process.cwd(),
   "node_modules",
   "@vladmandic",
-  "human-models",
+  "human",
   "models"
 );
-
-const resolvedPath = fs.existsSync(standaloneModelsPath)
-  ? standaloneModelsPath
-  : nodeModulesModelsPath;
 
 /**
  * TensorFlow.js Node.js backend requires file:// URLs for local paths.

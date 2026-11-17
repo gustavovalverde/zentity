@@ -374,8 +374,8 @@ No npm packages are patched. Better Auth plugins without an upstream release
 are vendored as tarballs in `vendor/`; see [`vendor/README.md`](vendor/README.md)
 before replacing them with npm versions.
 
-Wallet connector packages such as WalletConnect, Coinbase, MetaMask, Base
-Account, and Porto are optional AppKit peer integrations. Keep them in
+Wallet connector packages such as WalletConnect, Coinbase, MetaMask, and Base
+Account are optional AppKit peer integrations. Keep them in
 `optionalDependencies` unless the app imports a connector directly.
 
 ## License
