@@ -2,9 +2,10 @@ name: E2E OIDC
 
 # Nightly run of the OIDC-only Playwright tier (apps/web/e2e/oidc). It starts
 # its own Next dev server against a fresh SQLite database and needs no FHE
-# service, OCR service, Hardhat node, or confidential chain. The specs drive the
-# protocol endpoints through Playwright's request fixture, so no browser is
-# installed.
+# service, OCR service, Hardhat node, or confidential chain. Most specs drive
+# the protocol endpoints through Playwright's request fixture; the CIBA approval
+# specs drive the approval page with a virtual WebAuthn authenticator, which
+# needs headless Chromium.
 
 on:
   schedule:
@@ -39,6 +40,10 @@ jobs:
       # job stores no repository secrets.
       - name: Generate environment
         run: pnpm run setup
+        working-directory: apps/web
+
+      - name: Install Chromium
+        run: pnpm exec playwright install --with-deps --only-shell chromium
         working-directory: apps/web
 
       - name: OIDC end-to-end tests
