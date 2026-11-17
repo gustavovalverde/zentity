@@ -62,6 +62,8 @@ vi.mock("@zkpassport/sdk", () => ({
 
 // Records which Barretenberg major verified each proof
 vi.mock("@aztec/bb.js", () => ({
+  BackendType: { Wasm: "Wasm" },
+  Barretenberg: { new: () => Promise.resolve({}) },
   UltraHonkVerifierBackend: class {
     verifyProof = mockVerifyProofV5;
   },

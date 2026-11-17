@@ -1,6 +1,7 @@
 [package]
 name = "face_match"
 type = "bin"
+compiler_version = "=1.0.0"
 authors = ["Zentity"]
 
 [dependencies]

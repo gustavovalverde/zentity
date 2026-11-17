@@ -127,7 +127,7 @@ pnpm test:e2e:ui     # Run E2E with Playwright UI
 # From apps/web directory:
 pnpm circuits:compile        # Compile all circuits
 pnpm circuits:test           # Run circuit tests
-pnpm circuits:check-versions # Verify Noir/BB versions match artifacts
+pnpm circuits:check-versions # Verify the nargo pin, circuit artifacts, and Noir.js versions match (CI runs it)
 pnpm circuits:profile        # Profile circuit gate counts
 ```
 
@@ -451,9 +451,11 @@ OAuth clients are managed through the **Applications** page (`/dashboard/develop
 
 ZK circuits are in `apps/web/noir-circuits/` using Noir. Build process:
 
-1. Install Noir toolchain: `curl -L https://raw.githubusercontent.com/noir-lang/noirup/main/install | bash && noirup`
+1. Install the Noir toolchain the circuits pin: `curl -L https://raw.githubusercontent.com/noir-lang/noirup/main/install | bash && noirup --version 1.0.0`
 2. Compile circuits: `cd apps/web && pnpm circuits:compile`
 3. Test circuits: `cd apps/web && pnpm circuits:test`
+
+Each circuit's `Nargo.toml` pins `compiler_version = "=1.0.0"`, and nargo refuses to compile with another version. To move Noir, change the pins, recompile the artifacts, and bump the `@noir-lang/*` packages together; `pnpm circuits:check-versions` fails when they disagree. Proofs are generated and verified with Barretenberg 6 (`@aztec-foundation/bb.js`). Verification keys did not change from Barretenberg 5, but proofs of one major do not verify under the other, so the prover worker and the server verifier must ship in the same deploy.
 
 Circuits available:
 

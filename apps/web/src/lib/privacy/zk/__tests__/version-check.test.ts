@@ -6,7 +6,7 @@ const SEMVER = /^\d+\.\d+\.\d+/;
 
 describe("readInstalledVersion", () => {
   it("resolves packages whose export map hides package.json", () => {
-    expect(readInstalledVersion("@aztec/bb.js")).toMatch(SEMVER);
+    expect(readInstalledVersion("@aztec-foundation/bb.js")).toMatch(SEMVER);
     expect(readInstalledVersion("@noir-lang/noir_js")).toMatch(SEMVER);
   });
 

@@ -23,12 +23,12 @@ import type {
   QueryResult,
 } from "@zkpassport/utils";
 
-import { UltraHonkVerifierBackend } from "@aztec/bb.js";
 import {
-  BackendType as BackendTypeV6,
-  Barretenberg as BarretenbergV6,
-  UltraHonkVerifierBackend as UltraHonkVerifierBackendV6,
-} from "@aztec-foundation/bb.js";
+  BackendType as BackendTypeV5,
+  Barretenberg as BarretenbergV5,
+  UltraHonkVerifierBackend as UltraHonkVerifierBackendV5,
+} from "@aztec/bb.js";
+import { UltraHonkVerifierBackend } from "@aztec-foundation/bb.js";
 import { RegistryClient } from "@zkpassport/registry";
 import {
   AADHAAR_CIRCUIT_NAME,
@@ -278,14 +278,16 @@ function getProofSetCircuitVersion(proofs: ProofResult[]): string | undefined {
 async function createVerifierBackend(
   generation: BarretenbergGeneration
 ): Promise<ProofVerifier> {
-  if (generation === "v5") {
+  if (generation === "v6") {
     return new UltraHonkVerifierBackend(await getBarretenberg());
   }
-  const barretenberg = await BarretenbergV6.new({
+  // Circuit releases before 0.22.0 still pass the registry's root check, so
+  // their proofs keep a bb.js 5 instance of their own, started on first use.
+  const barretenberg = await BarretenbergV5.new({
     crsPath: env.BB_CRS_PATH,
-    backend: BackendTypeV6.Wasm,
+    backend: BackendTypeV5.Wasm,
   });
-  return new UltraHonkVerifierBackendV6(barretenberg);
+  return new UltraHonkVerifierBackendV5(barretenberg);
 }
 
 function getVerifierBackend(

@@ -13,7 +13,7 @@ const assets = [
     id: "bb-threads",
     from: path.join(
       root,
-      "node_modules/@aztec/bb.js/dest/node/barretenberg_wasm/barretenberg-threads.wasm.gz"
+      "node_modules/@aztec-foundation/bb.js/dest/node/barretenberg_wasm/barretenberg-threads.wasm.gz"
     ),
     // bb.js appends "-threads" to wasmPath when multi-threading is enabled.
     // Worker passes "/bb/barretenberg.wasm.gz", bb.js requests "barretenberg-threads.wasm.gz"
@@ -29,7 +29,7 @@ const assets = [
     required: true,
     extractDataUrl: path.join(
       root,
-      "node_modules/@aztec/bb.js/dest/browser/barretenberg_wasm/fetch_code/browser/barretenberg.js"
+      "node_modules/@aztec-foundation/bb.js/dest/browser/barretenberg_wasm/fetch_code/browser/barretenberg.js"
     ),
   },
   // =========================================================================

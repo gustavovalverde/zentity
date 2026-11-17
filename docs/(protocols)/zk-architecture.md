@@ -236,6 +236,8 @@ flowchart TD
 
 Verification uses Barretenberg's `UltraHonkVerifierBackend` directly in the API route with singleton instances for efficiency.
 
+The browser worker and the server both use Barretenberg 6 (`@aztec-foundation/bb.js`). A proof only verifies under the Barretenberg major that generated it, so the worker and the verifier move between majors in the same deploy. The verification keys of Zentity's circuits are byte-identical under Barretenberg 5 and 6, so stored verification key hashes stay valid.
+
 ### Proof metadata (stored for auditability)
 
 - `noirVersion`

@@ -17,7 +17,7 @@ import {
   deflattenFields,
   UltraHonkBackend,
   UltraHonkVerifierBackend,
-} from "@aztec/bb.js";
+} from "@aztec-foundation/bb.js";
 
 import { env } from "@/env";
 import { logger } from "@/lib/logging/logger";
@@ -231,7 +231,7 @@ export function getCircuitMetadata(circuitType: ProofType): {
 
 export function getBbJsVersion(): string | null {
   if (cachedBbJsVersion === undefined) {
-    cachedBbJsVersion = readInstalledVersion("@aztec/bb.js");
+    cachedBbJsVersion = readInstalledVersion("@aztec-foundation/bb.js");
   }
   return cachedBbJsVersion;
 }
