@@ -35,6 +35,10 @@ const ATTESTED_ON_CONFIDENTIAL_SEPOLIA_TEXT =
 const LOCAL_HARDHAT_TEXT = /Local \\(Hardhat\\)/i;
 const DECRYPT_VIEW_BUTTON = /Decrypt & View/i;
 const HIDE_DATA_BUTTON = /Hide Data/i;
+// Storage database chain.tsx gives the Zama SDK, and the function selector
+// of the cleartext KMSVerifier's userDecrypt view.
+const SDK_STORAGE_DATABASE = "ZentityConfidentialCredentials";
+const USER_DECRYPT_SELECTOR = "0xd28e4071";
 const COMPLIANCE_GRANTED_TEXT = /Compliance access granted/i;
 const GRANT_COMPLIANCE_BUTTON = /Grant Compliance Access/i;
 const TOKENS_MINTED_TEXT = /Tokens minted successfully/i;
@@ -177,8 +181,19 @@ test.describe("Web3 workflow (Hardhat + mock relayer)", () => {
     await expect(page.getByText("1990")).toBeVisible({ timeout: 60_000 });
     await expect(page.getByText("Level 2")).toBeVisible();
 
-    // A reload drops every in-memory value, so the clear values must come
-    // from decrypting the on-chain handles.
+    // The SDK caches decrypted values in this IndexedDB database, which
+    // survives a reload. Deleting it and waiting for the KMSVerifier
+    // userDecrypt call proves the values shown after the reload come from
+    // decrypting the on-chain handles.
+    await page.evaluate(
+      (name) =>
+        new Promise<void>((resolve, reject) => {
+          const request = indexedDB.deleteDatabase(name);
+          request.onsuccess = () => resolve();
+          request.onerror = () => reject(request.error);
+        }),
+      SDK_STORAGE_DATABASE
+    );
     await page.reload();
     await connectHardhatWallet(page, hardhatNetwork.chainId);
     await expect(
@@ -188,7 +203,14 @@ test.describe("Web3 workflow (Hardhat + mock relayer)", () => {
       name: DECRYPT_VIEW_BUTTON,
     });
     await expect(decryptAfterReloadButton).toBeEnabled({ timeout: 60_000 });
+    const userDecryptCall = page.waitForRequest(
+      (request) =>
+        request.method() === "POST" &&
+        (request.postData() ?? "").includes(USER_DECRYPT_SELECTOR),
+      { timeout: 60_000 }
+    );
     await decryptAfterReloadButton.click();
+    await userDecryptCall;
     await expect(
       page.getByRole("button", { name: HIDE_DATA_BUTTON })
     ).toBeVisible({ timeout: 60_000 });
