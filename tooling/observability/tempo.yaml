@@ -10,14 +10,7 @@ distributor:
         http:
           endpoint: 0.0.0.0:4318
 
-ingester:
-  lifecycler:
-    ring:
-      kvstore:
-        store: inmemory
-      replication_factor: 1
-
-compactor:
+backend_worker:
   compaction:
     block_retention: 24h
 

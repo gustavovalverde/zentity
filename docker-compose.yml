@@ -131,7 +131,7 @@ services:
       - zcash-x402-demo
 
   mailpit:
-    image: axllent/mailpit:latest
+    image: axllent/mailpit:v1.34.0
     ports:
       - "8025:8025"
       - "1025:1025"
@@ -147,7 +147,7 @@ services:
       - zcash-x402-demo
 
   otel-collector:
-    image: otel/opentelemetry-collector-contrib:0.141.0
+    image: otel/opentelemetry-collector-contrib:0.165.0
     command:
       - --config=/etc/otel-collector.yaml
     ports:
@@ -160,7 +160,7 @@ services:
       - zcash-x402-demo
 
   tempo:
-    image: grafana/tempo:2.9.0
+    image: grafana/tempo:3.1.1
     command:
       - -config.file=/etc/tempo.yaml
     volumes:
@@ -173,7 +173,7 @@ services:
       - zcash-x402-demo
 
   mimir:
-    image: grafana/mimir:3.0.1
+    image: grafana/mimir:3.2.5
     command:
       - -config.file=/etc/mimir.yaml
       - -auth.multitenancy-enabled=false
@@ -187,7 +187,7 @@ services:
       - zcash-x402-demo
 
   grafana:
-    image: grafana/grafana:12.3.0
+    image: grafana/grafana:13.3.1
     ports:
       - "3001:3000"
     environment:
