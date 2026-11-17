@@ -99,22 +99,29 @@ export async function resolveHardhatFhevmChain(
   chain: FheChain,
   client: Client
 ): Promise<FheChain> {
+  let inputVerification: Awaited<ReturnType<typeof getEip712Domain>>;
+  let decryption: Awaited<ReturnType<typeof getEip712Domain>>;
   try {
-    const [inputVerification, decryption] = await Promise.all([
+    [inputVerification, decryption] = await Promise.all([
       getEip712Domain(client, { address: chain.inputVerifierContractAddress }),
       getEip712Domain(client, { address: chain.kmsContractAddress }),
     ]);
-    return {
-      ...chain,
-      gatewayChainId: Number(decryption.domain.chainId),
-      verifyingContractAddressDecryption: decryption.domain.verifyingContract,
-      verifyingContractAddressInputVerification:
-        inputVerification.domain.verifyingContract,
-    };
   } catch (cause) {
     throw new Error(
       "The local Hardhat node did not report its FHEVM contracts. Start it from the contracts repository, which runs @fhevm/hardhat-plugin-v3, then reload this page.",
       { cause }
     );
   }
+  if (inputVerification.domain.chainId !== decryption.domain.chainId) {
+    throw new Error(
+      `The local Hardhat node's FHEVM verifiers name different gateway chains: ${inputVerification.domain.chainId} for input proofs and ${decryption.domain.chainId} for decryption.`
+    );
+  }
+  return {
+    ...chain,
+    gatewayChainId: Number(decryption.domain.chainId),
+    verifyingContractAddressDecryption: decryption.domain.verifyingContract,
+    verifyingContractAddressInputVerification:
+      inputVerification.domain.verifyingContract,
+  };
 }
