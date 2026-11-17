@@ -1,3 +1,6 @@
+// @peculiar/x509 2.x no longer loads reflect-metadata, and Turbopack's module
+// merging can evaluate tsyringe before @simplewebauthn/server's own import of it.
+import "reflect-metadata";
 import type { CibaNotification } from "@better-auth/ciba";
 import type { AuthContext, GenericEndpointContext } from "@better-auth/core";
 import type { LoginMethod } from "@zentity/sdk/protocol";

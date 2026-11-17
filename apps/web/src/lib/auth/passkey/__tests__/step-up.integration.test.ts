@@ -82,6 +82,25 @@ describe("passkey step-up", () => {
     );
   });
 
+  it("offers a stored passkey with its transports and still verifies it", async () => {
+    await db
+      .update(passkeys)
+      .set({ transports: "internal,hybrid" })
+      .where(eq(passkeys.id, authenticator.passkeyId));
+
+    const { allowCredentials, challenge } = await issue();
+
+    expect(allowCredentials).toEqual([
+      expect.objectContaining({
+        id: authenticator.credentialId,
+        transports: ["internal", "hybrid"],
+      }),
+    ]);
+    expect(
+      await outcome(verify(authenticator.assert({ challenge, counter: 3 })))
+    ).toBe("verified");
+  });
+
   it("returns no options for a user without a passkey", async () => {
     const other = await createTestUser();
 
