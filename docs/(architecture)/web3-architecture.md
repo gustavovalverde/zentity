@@ -331,7 +331,7 @@ graph TD
 | State | Meaning |
 |---|---|
 | `not_connected` | No wallet connected or SDK not initialized |
-| `initializing` | The SDK is fetching the network FHE encryption key through the relayer (Sepolia only; Hardhat runs in cleartext mode and starts `ready`) |
+| `initializing` | On Sepolia, the SDK is fetching the network FHE encryption key through the relayer. On local Hardhat, which runs in cleartext mode, the app is reading the gateway EIP-712 domain from the node's FHEVM verifier contracts |
 | `ready` | SDK is usable for encryption/decryption |
 | `error` | Initialization failed |
 

@@ -24,7 +24,6 @@ import {
   useContext,
   useEffect,
   useMemo,
-  useRef,
   useState,
 } from "react";
 import { useChainId, usePublicClient, useWalletClient } from "wagmi";
@@ -33,7 +32,6 @@ import { recordClientMetric } from "@/lib/observability/client-metrics";
 
 import {
   getConfidentialClientNetwork,
-  HARDHAT_CONFIDENTIAL_CHAIN_ID,
   resolveHardhatFhevmChain,
 } from "./client-networks";
 import {
@@ -120,14 +118,6 @@ function assertConfidentialSdk(
   }
 }
 
-function buildLocalIdentityCacheKey(input: {
-  chainId: number;
-  registryAddress: `0x${string}`;
-  userAddress: `0x${string}`;
-}) {
-  return `${input.chainId}:${input.registryAddress.toLowerCase()}:${input.userAddress.toLowerCase()}`;
-}
-
 async function runMeasuredEncrypt<T>(
   encrypt: () => Promise<EncryptResult>,
   build: (encryptedInput: EncryptResult) => T
@@ -166,9 +156,6 @@ export function ConfidentialChainProvider({
     useState<ConfidentialChainStatus>("not_connected");
   const [error, setError] = useState<Error | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
-  const localIdentityValuesRef = useRef(
-    new Map<string, IdentityAttributesForAttestation>()
-  );
 
   useEffect(() => {
     if (!(isConnected && address && publicClient && walletClient)) {
@@ -242,10 +229,7 @@ export function ConfidentialChainProvider({
     setError(null);
     if (activeNetwork.mode === "cleartext") {
       setSdk(null);
-      resolveHardhatFhevmChain(
-        activeNetwork.chain,
-        publicClient.transport.request
-      )
+      resolveHardhatFhevmChain(activeNetwork.chain, publicClient)
         .then((chain) => {
           if (!cancelled) {
             nextSdk = createSdk(chain);
@@ -306,22 +290,10 @@ export function ConfidentialChainProvider({
               { type: "ebool", value: attributes.isBlacklisted },
             ],
           }),
-        (encryptedInput) => {
-          if (activeChainId === HARDHAT_CONFIDENTIAL_CHAIN_ID) {
-            localIdentityValuesRef.current.set(
-              buildLocalIdentityCacheKey({
-                chainId: activeChainId,
-                registryAddress,
-                userAddress,
-              }),
-              attributes
-            );
-          }
-          return buildEncryptedIdentityAttributes(encryptedInput);
-        }
+        buildEncryptedIdentityAttributes
       );
     },
-    [activeChainId, error, sdk]
+    [error, sdk]
   );
 
   const encryptTokenAmount = useCallback<
@@ -347,34 +319,18 @@ export function ConfidentialChainProvider({
   >(
     async ({ attributeHandles, registryAddress }) => {
       assertConfidentialSdk(sdk, error);
-      try {
-        const clearValues = await sdk.decryption.decryptValues(
-          buildIdentityAttributeDecryptHandles({
-            attributeHandles,
-            registryAddress,
-          })
-        );
-        return deriveDecryptedIdentityAttributes({
+      const clearValues = await sdk.decryption.decryptValues(
+        buildIdentityAttributeDecryptHandles({
           attributeHandles,
-          clearValues,
-        });
-      } catch (decryptError) {
-        if (activeChainId === HARDHAT_CONFIDENTIAL_CHAIN_ID && address) {
-          const cachedValues = localIdentityValuesRef.current.get(
-            buildLocalIdentityCacheKey({
-              chainId: activeChainId,
-              registryAddress,
-              userAddress: address as `0x${string}`,
-            })
-          );
-          if (cachedValues) {
-            return cachedValues;
-          }
-        }
-        throw decryptError;
-      }
+          registryAddress,
+        })
+      );
+      return deriveDecryptedIdentityAttributes({
+        attributeHandles,
+        clearValues,
+      });
     },
-    [activeChainId, address, error, sdk]
+    [error, sdk]
   );
 
   const value = useMemo<ConfidentialChainContextValue>(

@@ -34,6 +34,7 @@ const ATTESTED_ON_CONFIDENTIAL_SEPOLIA_TEXT =
   /Attested on Zama Confidential Sepolia/i;
 const LOCAL_HARDHAT_TEXT = /Local \\(Hardhat\\)/i;
 const DECRYPT_VIEW_BUTTON = /Decrypt & View/i;
+const HIDE_DATA_BUTTON = /Hide Data/i;
 const COMPLIANCE_GRANTED_TEXT = /Compliance access granted/i;
 const GRANT_COMPLIANCE_BUTTON = /Grant Compliance Access/i;
 const TOKENS_MINTED_TEXT = /Tokens minted successfully/i;
@@ -72,7 +73,9 @@ test.describe("Web3 workflow (Hardhat + mock relayer)", () => {
     "Web3 tests skipped. Set E2E_RUN_WEB3=true to run. See file header for instructions."
   );
 
-  test("attest, grant compliance, mint, and transfer", async ({ page }) => {
+  test("attest, decrypt after reload, grant compliance, mint, and transfer", async ({
+    page,
+  }) => {
     test.setTimeout(180_000);
     const userId = readTestUserId();
     if (userId) {
@@ -172,6 +175,24 @@ test.describe("Web3 workflow (Hardhat + mock relayer)", () => {
     await decryptButton.click();
 
     await expect(page.getByText("1990")).toBeVisible({ timeout: 60_000 });
+    await expect(page.getByText("Level 2")).toBeVisible();
+
+    // A reload drops every in-memory value, so the clear values must come
+    // from decrypting the on-chain handles.
+    await page.reload();
+    await connectHardhatWallet(page, hardhatNetwork.chainId);
+    await expect(
+      page.getByText("Your On-Chain Identity", { exact: false })
+    ).toBeVisible({ timeout: 120_000 });
+    const decryptAfterReloadButton = page.getByRole("button", {
+      name: DECRYPT_VIEW_BUTTON,
+    });
+    await expect(decryptAfterReloadButton).toBeEnabled({ timeout: 60_000 });
+    await decryptAfterReloadButton.click();
+    await expect(
+      page.getByRole("button", { name: HIDE_DATA_BUTTON })
+    ).toBeVisible({ timeout: 60_000 });
+    await expect(page.getByText("1990")).toBeVisible();
     await expect(page.getByText("Level 2")).toBeVisible();
 
     const complianceGrantedText = page.getByText(COMPLIANCE_GRANTED_TEXT, {
