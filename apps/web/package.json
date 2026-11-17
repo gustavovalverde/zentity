@@ -94,8 +94,8 @@
     "@radix-ui/react-slot": "^1.5.0",
     "@radix-ui/react-tabs": "1.2.1",
     "@radix-ui/react-tooltip": "1.4.1",
-    "@reown/appkit": "1.8.24",
-    "@reown/appkit-adapter-wagmi": "1.8.24",
+    "@reown/appkit": "2.0.0",
+    "@reown/appkit-adapter-wagmi": "2.0.0",
     "@scure/bip39": "2.4.0",
     "@serenity-kit/opaque": "^1.1.0",
     "@simplewebauthn/browser": "14.0.0",
@@ -148,9 +148,7 @@
   },
   "optionalDependencies": {
     "@base-org/account": "^2.6.0",
-    "@coinbase/wallet-sdk": "^4.4.0",
-    "@metamask/connect-evm": "~2.1.1",
-    "@walletconnect/ethereum-provider": "^2.26.0"
+    "@coinbase/wallet-sdk": "^4.4.0"
   },
   "devDependencies": {
     "@biomejs/biome": "2.6.8",
