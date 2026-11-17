@@ -3,7 +3,6 @@ import "server-only";
 import type { AuthContext } from "@better-auth/core";
 import type {
   AuthenticationResponseJSON,
-  AuthenticatorTransportFuture,
   PublicKeyCredentialRequestOptionsJSON,
 } from "@simplewebauthn/server";
 
@@ -62,12 +61,8 @@ function stepUpIdentifier(binding: StepUpBinding): string {
   return `ciba-step-up:${binding.requestId}:${binding.sessionId}`;
 }
 
-function parseTransports(
-  transports: string | null
-): AuthenticatorTransportFuture[] | undefined {
-  return transports
-    ? (transports.split(",") as AuthenticatorTransportFuture[])
-    : undefined;
+function parseTransports(transports: string | null): string[] | undefined {
+  return transports ? transports.split(",") : undefined;
 }
 
 function parseStoredStepUp(value: string): StoredStepUp | null {
