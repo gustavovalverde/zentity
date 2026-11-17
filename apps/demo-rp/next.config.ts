@@ -38,14 +38,6 @@ const nextConfig: NextConfig = {
   typescript: {
     tsconfigPath: "tsconfig.next.json",
   },
-  turbopack: {
-    resolveAlias: {
-      // @wagmi/core's Tempo connector probes the optional Accounts SDK with
-      // await import("accounts"). Turbopack resolves that statically, so keep
-      // the optional connector absent and point the probe at an empty module.
-      accounts: "./src/lib/turbopack-stubs/accounts.ts",
-    },
-  },
   async headers() {
     return [{ source: "/(.*)", headers: securityHeaders }];
   },
