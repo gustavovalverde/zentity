@@ -1,238 +1,62 @@
 "use client";
 
-import type { BetterFetchOption } from "better-auth/react";
-import type { ComponentProps, ReactNode } from "react";
+import type { NavigateFn } from "@better-auth-ui/core";
+import type { ReactNode } from "react";
 import type { SocialProviderId } from "@/lib/auth/auth-config";
 
-import { AuthUIProvider } from "@daveyplate/better-auth-ui";
-import Link from "next/link";
+import { magicLinkPlugin } from "@better-auth-ui/core/plugins/magic-link";
+import { AuthProvider } from "@better-auth-ui/react";
 import { useRouter } from "next/navigation";
-import { useMemo } from "react";
+import { useCallback } from "react";
 
-import { env } from "@/env";
 import { authClient } from "@/lib/auth/auth-client";
-import { prepareForNewSession } from "@/lib/auth/session-cleanup";
 
-type AuthClientBase = ReturnType<
-  typeof import("better-auth/react").createAuthClient
->;
+const plugins = [magicLinkPlugin({ sentPath: "magic-link/sent" })];
+
+// Zentity serves its auth views at the root rather than under `/auth`.
+const basePaths = { auth: "" };
+
+const viewPaths = {
+  auth: {
+    verifyEmail: "email-verification",
+    forgotPassword: "recovery/password",
+    resetPassword: "recovery/password/reset",
+    resetLinkSent: "recovery/password/sent",
+  },
+};
+
+// Passwords go through OPAQUE and passkeys through the PRF flow, so Better
+// Auth's email-and-password views stay off.
+const emailAndPassword = { enabled: false };
 
 interface BetterAuthUIProviderProps {
   children: ReactNode;
   socialProviders: SocialProviderId[];
 }
 
-/**
- * Wrapper around Better Auth UI's AuthUIProvider configured for Zentity.
- *
- * Note: Passkey support is disabled here because Zentity uses a custom PRF-based
- * passkey flow for FHE key derivation. The sign-in page and
- * PasskeyManagementSection handle passkey operations with PRF extension.
- */
+/** Better Auth UI's provider, configured for Zentity's routes. */
 export function BetterAuthUIProvider({
   children,
   socialProviders,
 }: Readonly<BetterAuthUIProviderProps>) {
   const router = useRouter();
-  const authUiClient = useMemo(() => {
-    const signIn = authClient.signIn as typeof authClient.signIn & {
-      __zentityWrapped?: boolean;
-    };
-    const client = authClient as typeof authClient &
-      Pick<AuthClientBase, "requestPasswordReset" | "resetPassword"> & {
-        __zentityPasswordWrapped?: boolean;
-      };
-
-    if (!signIn.__zentityWrapped) {
-      const email = signIn.email;
-      const magicLink = signIn.magicLink;
-      const social = signIn.social;
-
-      signIn.email = ((...args: Parameters<typeof email>) => {
-        prepareForNewSession();
-        return email(...args);
-      }) as typeof email;
-
-      signIn.magicLink = ((...args: Parameters<typeof magicLink>) => {
-        prepareForNewSession();
-        return magicLink(...args);
-      }) as typeof magicLink;
-
-      signIn.social = ((...args: Parameters<typeof social>) => {
-        prepareForNewSession();
-        return social(...args);
-      }) as typeof social;
-      signIn.__zentityWrapped = true;
-    }
-
-    if (!client.__zentityPasswordWrapped) {
-      type RequestPasswordResetArgs = Parameters<
-        AuthClientBase["requestPasswordReset"]
-      >;
-      type ResetPasswordArgs = Parameters<AuthClientBase["resetPassword"]>;
-      type RequestPasswordResetReturn = Awaited<
-        ReturnType<AuthClientBase["requestPasswordReset"]>
-      >;
-      type ResetPasswordReturn = Awaited<
-        ReturnType<AuthClientBase["resetPassword"]>
-      >;
-
-      client.requestPasswordReset = (async (
-        ...args: RequestPasswordResetArgs
-      ) => {
-        const [payload, fetchOptionsOverride] = args;
-        const fetchOptions =
-          (fetchOptionsOverride as BetterFetchOption | undefined) ??
-          payload?.fetchOptions;
-        const email = payload?.email;
-        const redirectTo = payload?.redirectTo;
-
-        if (!email) {
-          const error = {
-            data: null,
-            error: {
-              message: "Email is required",
-              status: 400,
-              statusText: "Bad Request",
-            },
-          } as RequestPasswordResetReturn;
-          if (fetchOptions?.throw) {
-            throw new Error("Email is required");
-          }
-          return error;
-        }
-
-        const result = await authClient.opaque.requestPasswordReset({
-          identifier: email,
-          ...(redirectTo ? { redirectTo } : {}),
-        });
-
-        if (result.error) {
-          if (fetchOptions?.throw) {
-            throw new Error(result.error.message);
-          }
-          return {
-            data: null,
-            error: {
-              message: result.error.message,
-              code: result.error.code,
-              status: 400,
-              statusText: "Bad Request",
-            },
-          } as RequestPasswordResetReturn;
-        }
-
-        const success = {
-          status: result.data.status,
-          message: result.data.message,
-        };
-        return fetchOptions?.throw
-          ? (success as RequestPasswordResetReturn)
-          : ({
-              data: success,
-              error: null,
-            } as RequestPasswordResetReturn);
-      }) as AuthClientBase["requestPasswordReset"];
-
-      client.resetPassword = (async (...args: ResetPasswordArgs) => {
-        const [payload, fetchOptionsOverride] = args;
-        const fetchOptions =
-          (fetchOptionsOverride as BetterFetchOption | undefined) ??
-          payload?.fetchOptions;
-        const token = payload?.token;
-
-        if (!token) {
-          const error = {
-            data: null,
-            error: {
-              message: "Reset token is required",
-              status: 400,
-              statusText: "Bad Request",
-            },
-          } as ResetPasswordReturn;
-          if (fetchOptions?.throw) {
-            throw new Error("Reset token is required");
-          }
-          return error;
-        }
-
-        const result = await authClient.opaque.resetPassword({
-          token,
-          newPassword: payload.newPassword,
-        });
-
-        if (result.error) {
-          if (fetchOptions?.throw) {
-            throw new Error(result.error.message);
-          }
-          return {
-            data: null,
-            error: {
-              message: result.error.message,
-              code: result.error.code,
-              status: 400,
-              statusText: "Bad Request",
-            },
-          } as ResetPasswordReturn;
-        }
-
-        const success = { status: true };
-        return fetchOptions?.throw
-          ? (success as ResetPasswordReturn)
-          : ({
-              data: success,
-              error: null,
-            } as ResetPasswordReturn);
-      }) as AuthClientBase["resetPassword"];
-
-      client.__zentityPasswordWrapped = true;
-    }
-
-    return client;
-  }, []);
-
-  const baseURL =
-    globalThis.window === undefined
-      ? env.NEXT_PUBLIC_APP_URL
-      : globalThis.window.location.origin;
-
-  // Zentity's session carries plugin-augmented fields (isAnonymous) the UI
-  // lib's base AnyAuthClient doesn't model; the extra fields make the client
-  // structurally incompatible without a cast.
-  const uiAuthClient = authUiClient as unknown as ComponentProps<
-    typeof AuthUIProvider
-  >["authClient"];
+  const navigate = useCallback<NavigateFn>(
+    ({ to, replace }) => (replace ? router.replace(to) : router.push(to)),
+    [router]
+  );
 
   return (
-    <AuthUIProvider
-      authClient={uiAuthClient}
-      basePath=""
-      baseURL={baseURL}
-      credentials={false}
-      Link={Link}
-      magicLink={true}
-      navigate={router.push}
-      onSessionChange={() => {
-        // App Router caches routes by default, refresh clears the cache
-        router.refresh();
-      }}
-      // Zentity-specific configuration
-      passkey={false} // Disabled - using custom PRF flow for FHE key derivation
+    <AuthProvider
+      authClient={authClient}
+      basePaths={basePaths}
+      emailAndPassword={emailAndPassword}
+      navigate={navigate}
+      plugins={plugins}
       redirectTo="/dashboard"
-      replace={router.replace}
-      social={{ providers: socialProviders }}
-      viewPaths={{
-        SIGN_IN: "sign-in",
-        SIGN_UP: "sign-up",
-        MAGIC_LINK: "magic-link",
-        FORGOT_PASSWORD: "recovery/password",
-        RESET_PASSWORD: "recovery/password/reset",
-        SIGN_OUT: "sign-out",
-        CALLBACK: "callback",
-        EMAIL_VERIFICATION: "email-verification",
-      }}
+      socialProviders={socialProviders}
+      viewPaths={viewPaths}
     >
       {children}
-    </AuthUIProvider>
+    </AuthProvider>
   );
 }

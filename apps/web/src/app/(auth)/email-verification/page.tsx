@@ -1,5 +1,13 @@
-import { AuthView } from "@daveyplate/better-auth-ui";
+import { EmailVerificationCard } from "../_components/email-verification-card";
 
-export default function EmailVerificationPage() {
-  return <AuthView view="EMAIL_VERIFICATION" />;
+interface EmailVerificationPageProps {
+  searchParams: Promise<{ email?: string }>;
+}
+
+export default async function EmailVerificationPage({
+  searchParams,
+}: Readonly<EmailVerificationPageProps>) {
+  const { email } = await searchParams;
+
+  return <EmailVerificationCard email={email || null} />;
 }
