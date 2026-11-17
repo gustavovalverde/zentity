@@ -20,7 +20,12 @@ NFC chip verification (`passportChip.submitResult`) checks ZKPassport proofs on 
 
 ## Decision Outcome
 
-Run a server-owned verification pipeline that reuses `@zkpassport/utils` public-input helpers and the shared Barretenberg backend, and call `verify()` nowhere on the server path.
+Run a server-owned verification pipeline that reuses `@zkpassport/utils` public-input helpers and cached Barretenberg verifiers, and call `verify()` nowhere on the server path.
+
+The pipeline follows the SDK's rules for reading a proof set:
+
+* Every proof must state the same well-formed circuit version. The version selects the public-input layout, the circuit manifest, and the Barretenberg major that verifies the proofs. Circuit releases from 0.22.0 are built with Barretenberg 6 (`@aztec-foundation/bb.js`), and earlier releases with Barretenberg 5 (`@aztec/bb.js`). Proofs of one major do not verify under the other.
+* The chip path accepts only documents read from their NFC chip (`VerificationMethod.ICAO_CHIP`). Circuit releases from 0.23.0 state the verification method in the integrity and outer proofs, and add base proofs for credentials that need no chip (Aadhaar, camera captures attested by the device). The server rejects those proofs and any method other than an ICAO chip read. The request the browser sends to the ZKPassport app asks for the same method, so the app refuses other credentials before proving.
 
 The SDK's `verify()` is unusable here at `@zkpassport/sdk` 0.14.2:
 
@@ -33,6 +38,7 @@ The SDK's `verify()` is unusable here at `@zkpassport/sdk` 0.14.2:
 * One warmed pipeline serves all verifications; latency stays bounded under load.
 * Server policy lives next to the proof checks that enforce it.
 * The `validate*QueryResult` functions and `checkPublicInputs` mirror the SDK's unexported `check*PublicInputs` internals. They are a deliberate reimplementation and must be re-diffed against upstream on every `@zkpassport/sdk` bump.
+* The server keeps a Barretenberg instance for each major it has verified a proof with. The ZKPassport circuit registry still accepts circuit roots of releases before 0.22.0, so the Barretenberg 5 verifier stays until those roots expire.
 
 ## Alternatives Considered
 
@@ -43,3 +49,7 @@ The SDK's `verify()` is unusable here at `@zkpassport/sdk` 0.14.2:
 
 * Verification-key and backend caching: [ADR 0005](0005-ultrahonkverifierbackend-server-verify.md).
 * The mirrored surface shrinks toward zero if ZKPassport exports its `check*PublicInputs` helpers upstream.
+
+## Revision History
+
+* 2026-11-17: Re-diffed against `@zkpassport/sdk` 0.21.0 (`@zkpassport/utils` 0.41.1). The pipeline requires one circuit version per proof set, selects Barretenberg 5 or 6 by that version, and accepts only ICAO chip reads. It also adopts the SDK's checks that an outer proof comes alone, that every disclosure proof is one of the known circuits and has its parameter commitment checked, that the disclosure proofs share one nullifier, that a disclosed document code fixes the MRZ layout, and that an Android face match was checked against a revocation root the registry holds. `verify()` still re-creates its Barretenberg instance and registry client on every call and still requires `originalQuery`.

@@ -356,7 +356,7 @@ NFC chip path: `documentVerified` always true; `livenessVerified`/`ageVerified`/
 
 1. **Country/document pre-check** → `buildCountryDocumentList` (uses `@zkpassport/registry`) confirms NFC support
 2. **ZKPassport deep-link** → Opens ZKPassport mobile app for NFC chip reading + proof generation
-3. **Server verification** → `trpc.passportChip.submitResult` verifies proofs server-side via `zkpassport.verify()`
+3. **Server verification** → `trpc.passportChip.submitResult` verifies proofs server-side with `verifyZkPassportProofs` (`src/lib/privacy/zk/zkpassport-verifier.ts`), not the SDK's `verify()`. Every proof must state the same circuit version, which selects Barretenberg 5 (`@aztec/bb.js`, circuits before 0.22.0) or 6 (`@aztec-foundation/bb.js`). Only NFC chip reads (`VerificationMethod.ICAO_CHIP`) are accepted, and the browser's ZKPassport request asks for the same method
 4. **Nullifier check** → `chipNullifier` (translated at the ZKPassport SDK boundary from the SDK-external `uniqueIdentifier`) prevents duplicate passport registrations across accounts
 5. **FHE Encryption** → Same as OCR path; synthetic liveness score (1.0) from physical chip possession
 

@@ -54,7 +54,7 @@ function sha256(data: string): string {
 
 const PASSPORT_CHIP_SESSION_TTL_MS = 10 * 60 * 1000;
 const PASSPORT_CHIP_PROOF_SCOPE = "zentity:nfc-chip:identity-verification:v1";
-const PASSPORT_CHIP_QUERY_PROFILE = "passport-chip-v1";
+const PASSPORT_CHIP_QUERY_PROFILE = "passport-chip-v2";
 
 function buildProofBinding(sessionId: string): string {
   return `zentity:nfc-chip:${sessionId}:${crypto.randomBytes(16).toString("hex")}`;
@@ -75,6 +75,7 @@ function expectedQueryHash(): string {
       sanctions: "all",
       facematch: "strict-when-supported",
       bind: "custom_data",
+      verificationMethods: ["icao-chip"],
       scope: PASSPORT_CHIP_PROOF_SCOPE,
     })
   );

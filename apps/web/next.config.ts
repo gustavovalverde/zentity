@@ -65,6 +65,7 @@ const nextConfig: NextConfig = {
 
     // ZK/FHE WASM packages (runtime loading)
     "@aztec/bb.js",
+    "@aztec-foundation/bb.js",
     "node-tfhe",
     "node-tkms",
 
