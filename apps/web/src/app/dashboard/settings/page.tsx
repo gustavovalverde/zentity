@@ -23,7 +23,7 @@ import { EmailSection } from "./_components/email-section";
 import { OpaqueChangePasswordSection } from "./_components/opaque-change-password-section";
 import { PasskeyManagementSection } from "./_components/passkey-management-section";
 import { RecoveryKeySection } from "./_components/recovery-key-section";
-import { SessionsCard } from "./_components/security-cards";
+import { SessionsCard } from "./_components/sessions-card";
 import { SetPasswordSection } from "./_components/set-password-section";
 import { UserDataSection } from "./_components/user-data-section";
 

@@ -2,8 +2,8 @@
 
 import type { SocialProviderId } from "@/lib/auth/auth-config";
 
-import { AuthUIContext } from "@daveyplate/better-auth-ui";
-import { useContext, useState } from "react";
+import { useAuth } from "@better-auth-ui/react";
+import { useState } from "react";
 
 import { SOCIAL_PROVIDERS } from "@/components/social-providers";
 import { Button } from "@/components/ui/button";
@@ -12,13 +12,15 @@ import { asyncHandler } from "@/lib/async-handler";
 import { authClient } from "@/lib/auth/auth-client";
 import { prepareForNewSession } from "@/lib/auth/session-cleanup";
 
-function isKnownProvider(provider: string): provider is SocialProviderId {
-  return Object.hasOwn(SOCIAL_PROVIDERS, provider);
+function isKnownProvider(provider: unknown): provider is SocialProviderId {
+  return (
+    typeof provider === "string" && Object.hasOwn(SOCIAL_PROVIDERS, provider)
+  );
 }
 
 export function SocialLoginButtons() {
-  const { social } = useContext(AuthUIContext);
-  const providers = (social?.providers ?? []).filter(isKnownProvider);
+  const { socialProviders } = useAuth();
+  const providers = (socialProviders ?? []).filter(isKnownProvider);
   const [loadingProvider, setLoadingProvider] =
     useState<SocialProviderId | null>(null);
 

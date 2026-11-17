@@ -26,7 +26,7 @@ Zentity does not patch any Better Auth package, and `pnpm-workspace.yaml` has no
 ### Current State
 
 * **@better-auth/passkey** and **better-auth** run unpatched. Zentity does not install the `twoFactor` plugin.
-* **@daveyplate/better-auth-ui** runs unpatched. Zentity does not render the library's two-factor or security settings cards.
+* **@better-auth-ui/react** and **@better-auth-ui/core** run unpatched. Zentity uses their provider, hooks, and magic-link plugin, and renders its own screens with its design system instead of the library's copied components.
 
 ### Interim code awaiting upstream changes
 
@@ -68,3 +68,4 @@ None of these changes has an upstream issue yet. When one is filed, link it from
 * 2026-11-16: Recorded the interim code that waits for upstream changes, with the change that retires each mechanism.
 * 2026-11-16: Removed U25: the vendored `@better-auth/oidc4vci` resolves a pairwise wallet's user through the provider, so registered wallets receive credentials, and Zentity's two refusals are gone. Added U27 (the built-in wallet client's direct insert) and U28 (a provider test for the contract the plugin relies on).
 * 2026-11-16: Removed two-factor authentication (TOTP and backup codes) with the `twoFactor` plugin, its settings card, and its `/two-factor` pages. The plugin challenged only Better Auth's email, username, and phone-number sign-ins, which Zentity does not use, so TOTP never protected a Zentity sign-in. It treated every Zentity user as passwordless, because OPAQUE accounts are not `credential` accounts, so a session alone could turn it off or mint new backup codes. The setup page also carried the TOTP secret in its URL.
+* 2026-11-17: Replaced the unmaintained `@daveyplate/better-auth-ui` 3.4.0 with its successor, `@better-auth-ui/react` and `@better-auth-ui/core` 1.7.34. The old package's dependencies had pulled a `better-call` 2.x copy that `@better-auth/core` does not accept; the lockfile now resolves only the 1.4.x line that Better Auth requires, plus the 1.3.2 copy pinned by `@better-auth/agent-auth`, which `@better-auth-ui/core` requires as a peer.

@@ -58,7 +58,7 @@ Name routes by **domain noun** (what it manages), sub-routes by **action/state**
 
 - **Route groups** `()` are visual/provider shells — they don't affect URLs
 - **`_components/`** for co-located non-route components — no exceptions
-- **AuthView wrappers** (`callback/`, `email-verification/`, `magic-link/`) are an accepted Next.js App Router constraint, not a design flaw
+- **Auth view pages** (`callback/`, `email-verification/`, `magic-link/`) are thin server pages around client views built on `@better-auth-ui/react` hooks, an accepted Next.js App Router split rather than a design flaw
 - **Standalone routes** (`approve/`, `oauth/consent/`) live at the app root with their own layout when they need no sidebar chrome
 - **`verify/` subtree** is the reference implementation: domain folders, `_components/`, server→client splits, meaningful server-side gates
 

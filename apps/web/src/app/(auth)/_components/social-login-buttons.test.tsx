@@ -1,8 +1,8 @@
 // @vitest-environment jsdom
 
-import type { ComponentProps } from "react";
+import type { AuthClient } from "@better-auth-ui/core";
 
-import { AuthUIContext } from "@daveyplate/better-auth-ui";
+import { AuthProvider } from "@better-auth-ui/react";
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
@@ -15,14 +15,15 @@ vi.mock("@/lib/auth/session-cleanup", () => ({
 
 import { SocialLoginButtons } from "./social-login-buttons";
 
-type ContextValue = ComponentProps<typeof AuthUIContext.Provider>["value"];
-
 function renderWithProviders(providers: string[]) {
-  const value = { social: { providers } } as unknown as ContextValue;
   return render(
-    <AuthUIContext.Provider value={value}>
+    <AuthProvider
+      authClient={{} as AuthClient}
+      navigate={vi.fn()}
+      socialProviders={providers}
+    >
       <SocialLoginButtons />
-    </AuthUIContext.Provider>
+    </AuthProvider>
   );
 }
 
