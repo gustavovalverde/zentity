@@ -39,7 +39,7 @@
   },
   "devDependencies": {
     "@better-auth/core": "1.8.0-beta.10",
-    "@types/node": "^24.19.2",
+    "@types/node": "^26.6.6",
     "tsup": "^9.0.0",
     "typescript": "^7.0.2",
     "vitest": "^5.1.0"
