@@ -85,16 +85,18 @@ function logWorker(
 
 // Module cache for lazy loading
 interface ModuleCache {
-  Barretenberg: typeof import("@aztec/bb.js").Barretenberg;
+  Barretenberg: typeof import("@aztec-foundation/bb.js").Barretenberg;
   BN254_FR_MODULUS: bigint;
   initACVM: typeof import("@noir-lang/acvm_js").default;
   initNoirC: typeof import("@noir-lang/noirc_abi").default;
   Noir: typeof import("@noir-lang/noir_js").Noir;
-  UltraHonkBackend: typeof import("@aztec/bb.js").UltraHonkBackend;
+  UltraHonkBackend: typeof import("@aztec-foundation/bb.js").UltraHonkBackend;
 }
 
 let moduleCache: ModuleCache | null = null;
-let bbApiPromise: Promise<import("@aztec/bb.js").Barretenberg> | null = null;
+let bbApiPromise: Promise<
+  import("@aztec-foundation/bb.js").Barretenberg
+> | null = null;
 let noirRuntimeInitPromise: Promise<void> | null = null;
 
 type CircuitName = ProofType;
@@ -105,7 +107,7 @@ const noirInstanceCache = new Map<
 >();
 const proverBackendCache = new Map<
   CircuitName,
-  import("@aztec/bb.js").UltraHonkBackend
+  import("@aztec-foundation/bb.js").UltraHonkBackend
 >();
 let workerQueue: Promise<void> = Promise.resolve();
 
@@ -244,10 +246,10 @@ async function getModules(): Promise<ModuleCache> {
       durationMs: Math.round(performance.now() - noirImportStart),
     });
 
-    logWorker("import", "Importing @aztec/bb.js...");
+    logWorker("import", "Importing @aztec-foundation/bb.js...");
     const bbImportStart = performance.now();
-    const bbModule = await import("@aztec/bb.js");
-    logWorker("import", "@aztec/bb.js loaded", {
+    const bbModule = await import("@aztec-foundation/bb.js");
+    logWorker("import", "@aztec-foundation/bb.js loaded", {
       durationMs: Math.round(performance.now() - bbImportStart),
     });
 
@@ -311,7 +313,7 @@ function ensureNoirRuntimeReady(): Promise<void> {
 }
 
 async function getBarretenbergApi(): Promise<
-  import("@aztec/bb.js").Barretenberg
+  import("@aztec-foundation/bb.js").Barretenberg
 > {
   if (bbApiPromise) {
     return bbApiPromise;

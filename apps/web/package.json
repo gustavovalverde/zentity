@@ -55,6 +55,7 @@
     "test:ciba-cli": "pnpm exec tsx scripts/ciba-cli-test.ts"
   },
   "dependencies": {
+    "@aztec-foundation/bb.js": "6.0.0",
     "@aztec/bb.js": "5.3.0",
     "@better-auth/ciba": "1.8.0-beta.10",
     "@better-auth/cimd": "1.8.0-beta.10",
@@ -111,9 +112,9 @@
     "@zama-fhe/sdk": "3.8.0",
     "@zentity/contracts": "0.8.0",
     "@zentity/sdk": "workspace:*",
-    "@zkpassport/registry": "^0.15.3",
-    "@zkpassport/sdk": "^0.19.3",
-    "@zkpassport/utils": "^0.39.0",
+    "@zkpassport/registry": "0.15.5",
+    "@zkpassport/sdk": "0.21.0",
+    "@zkpassport/utils": "0.41.1",
     "better-auth": "1.8.0-beta.10",
     "buffer": "^6.0.3",
     "class-variance-authority": "^0.7.1",

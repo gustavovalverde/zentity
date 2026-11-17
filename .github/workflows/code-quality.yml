@@ -131,6 +131,8 @@ jobs:
         working-directory: apps/web
       - run: pnpm run knip
         working-directory: apps/web
+      - run: pnpm run circuits:check-versions
+        working-directory: apps/web
 
   sdk-lint:
     name: SDK (tsc + build)

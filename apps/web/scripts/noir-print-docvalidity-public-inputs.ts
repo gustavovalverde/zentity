@@ -1,6 +1,6 @@
 import fs from "node:fs";
 
-import { Barretenberg, UltraHonkBackend } from "@aztec/bb.js";
+import { Barretenberg, UltraHonkBackend } from "@aztec-foundation/bb.js";
 import { Noir } from "@noir-lang/noir_js";
 
 const circuit = JSON.parse(

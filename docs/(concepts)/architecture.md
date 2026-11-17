@@ -58,7 +58,7 @@ flowchart LR
   UI -->|"doc + selfie"| API
   MCP -->|"FPA/CIBA + DPoP"| API
   Mobile -->|"NFC proofs"| API
-  API -->|"zkpassport.verify()"| API
+  API -->|"verifyZkPassportProofs()"| API
   API -->|"image"| OCR
   OCR -->|"extracted fields"| API
 
@@ -201,7 +201,7 @@ sequenceDiagram
   UI->>UI: Deep-link to ZKPassport mobile app
   Note right of UI: ZKPassport reads NFC chip, generates proofs on device
   UI->>API: passportChip.submitResult (proofs + nullifier)
-  API->>API: zkpassport.verify() (server-side)
+  API->>API: verifyZkPassportProofs() (chip reads only, bb 5 or 6 by circuit version)
   API->>DB: Store verification row (method: nfc_chip)
   API->>DB: Reconcile account snapshot + record validity transition
   API->>FHE: Schedule FHE encryption (synthetic liveness 1.0)

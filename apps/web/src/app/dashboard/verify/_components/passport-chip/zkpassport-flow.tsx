@@ -383,7 +383,9 @@ export function ZkPassportFlow({
     try {
       const verificationSession =
         await trpcClient.passportChip.createSession.mutate();
-      const { ZKPassport } = await import("@zkpassport/sdk");
+      const { NullifierType, VerificationMethod, ZKPassport } = await import(
+        "@zkpassport/sdk"
+      );
       const zkpassport = new ZKPassport(
         typeof window === "undefined" ? undefined : window.location.hostname
       );
@@ -400,6 +402,12 @@ export function ZkPassportFlow({
           "Verify your document for the highest level of identity assurance",
         scope: verificationSession.proofScope,
         devMode: isDevMode,
+        // The chip path accepts only documents read from their NFC chip; the
+        // server rejects every other verification method too.
+        allowedVerificationMethods: [VerificationMethod.ICAO_CHIP],
+        // Sybil checks need a nullifier only the passport determines; the
+        // server rejects salted (OPRF) nullifiers.
+        uniqueIdentifierType: NullifierType.NON_SALTED,
       });
 
       let builder = qb

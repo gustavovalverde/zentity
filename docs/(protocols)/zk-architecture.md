@@ -174,7 +174,7 @@ flowchart TD
   end
 
   subgraph Server["Server"]
-    Verify["zkpassport.verify()\n(NOT UltraHonkVerifier)"] --> Store["Store: identity_verifications\nmethod: nfc_chip"]
+    Verify["verifyZkPassportProofs()\n(bb 5 or bb 6 by circuit version)"] --> Store["Store: identity_verifications\nmethod: nfc_chip"]
   end
 
   Proofs --> Verify
@@ -183,9 +183,11 @@ flowchart TD
 Key differences from browser-based Noir proving:
 
 - **Proof generation**: ZKPassport's own circuit infrastructure on mobile, not Noir/Barretenberg in a Web Worker
-- **Verification**: Server-side via `zkpassport.verify()`, not `UltraHonkVerifierBackend`
+- **Verification**: Server-side via `verifyZkPassportProofs` (`zkpassport-verifier.ts`), which checks the public inputs with `@zkpassport/utils` helpers and then each proof with `UltraHonkVerifierBackend` against the verification key from ZKPassport's circuit registry. It does not call the SDK's `verify()`; see [ADR 0008](../adr/zk/0008-server-side-zkpassport-verification.md).
+- **Circuit version**: Every proof in a set must state the same circuit version. ZKPassport circuit releases from 0.22.0 are proved with Barretenberg 6 (`@aztec-foundation/bb.js`), and earlier releases with Barretenberg 5 (`@aztec/bb.js`). A proof only verifies under the major it was made with, so the server selects the backend by version.
+- **Verification method**: Only documents read from their NFC chip (`VerificationMethod.ICAO_CHIP`) are accepted. The browser asks the ZKPassport app for that method, and the server rejects any other method a proof states, as well as the base proofs of credentials that need no chip (Aadhaar and device-attested camera captures, from circuits 0.23.0).
 - **Liveness**: Synthetic score (1.0), since NFC chip challenge-response proves physical possession
-- **Nullifier**: `chipNullifier` (translated at the ZKPassport SDK boundary from the SDK-external `uniqueIdentifier`) prevents the same passport from being registered across multiple accounts
+- **Nullifier**: `chipNullifier` (translated at the ZKPassport SDK boundary from the SDK-external `uniqueIdentifier`) prevents the same passport from being registered across multiple accounts. It must be the unsalted scoped nullifier: a salted (OPRF) nullifier depends on a key the prover can choose, so the request asks for the unsalted type and the server rejects any other
 - **Proof scope**: A stable Zentity scope (`zentity:nfc-chip:identity-verification:v1`) is passed to ZKPassport verification so the passport nullifier remains stable for duplicate detection. Do not randomize this scope.
 - **Session binding**: Each flow starts with `passportChip.createSession`, which creates a short-lived `identity_verification_sessions` row containing a one-time `proofBinding`, the stable proof scope, and a hash of the expected query profile. The mobile request binds `custom_data` to that one-time value. `passportChip.submitResult` rejects missing, expired, consumed, wrong-profile, or wrong-binding sessions before proof verification.
 - **Country/document pre-check**: `buildCountryDocumentList` (uses `@zkpassport/registry`) confirms NFC support before showing the option
@@ -233,6 +235,8 @@ flowchart TD
 ```
 
 Verification uses Barretenberg's `UltraHonkVerifierBackend` directly in the API route with singleton instances for efficiency.
+
+The browser worker and the server both use Barretenberg 6 (`@aztec-foundation/bb.js`). A proof only verifies under the Barretenberg major that generated it, so the worker and the verifier move between majors in the same deploy. The verification keys of Zentity's circuits are byte-identical under Barretenberg 5 and 6, so stored verification key hashes stay valid.
 
 ### Proof metadata (stored for auditability)
 

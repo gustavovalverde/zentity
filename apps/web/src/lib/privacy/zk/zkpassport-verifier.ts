@@ -7,22 +7,36 @@
  *
  * Uses the SDK's own exported utility functions from @zkpassport/utils
  * for public input validation — no cryptographic reimplementation.
+ *
+ * Every proof of a set must state the same circuit version, which selects the
+ * public-input layout and the Barretenberg major (5 or 6) that verifies it.
+ * Only documents read from their NFC chip (ICAO) with an unsalted nullifier
+ * are accepted.
  */
 
 import "server-only";
 
 import type {
   CircuitManifest,
+  FacematchCommittedInputs,
   PackagedCircuit,
   ProofResult,
   QueryResult,
 } from "@zkpassport/utils";
 
-import { UltraHonkVerifierBackend } from "@aztec/bb.js";
+import {
+  BackendType as BackendTypeV5,
+  Barretenberg as BarretenbergV5,
+  UltraHonkVerifierBackend as UltraHonkVerifierBackendV5,
+} from "@aztec/bb.js";
+import { UltraHonkVerifierBackend } from "@aztec-foundation/bb.js";
 import { RegistryClient } from "@zkpassport/registry";
 import {
+  AADHAAR_CIRCUIT_NAME,
   areDatesEqual,
+  commitsAttestationRevocationRoot,
   DisclosedData,
+  EMPTY_ATTESTATION_REVOCATION_ROOT,
   formatBoundData,
   formatName,
   formatQueryResultDates,
@@ -64,12 +78,18 @@ import {
   getServiceSubScopeFromDisclosureProof,
   getServiceSubscopeHash,
   getSubscopeFromOuterProof,
+  getVerificationMethodFromIntegrityProof,
+  getVerificationMethodFromOuterProof,
+  hasVerificationMethod,
+  isCircuitVersion,
   NullifierType,
   ProofType,
   SanctionsBuilder,
   SECONDS_BETWEEN_1900_AND_1970,
+  VerificationMethod,
 } from "@zkpassport/utils";
 
+import { env } from "@/env";
 import { logger } from "@/lib/logging/logger";
 import { getBarretenberg } from "@/lib/privacy/primitives/barretenberg";
 
@@ -100,6 +120,19 @@ interface RootCacheEntry {
   valid: boolean;
 }
 
+type RegistryRootType = "attestation_revocation" | "certificate" | "circuit";
+
+/** The Barretenberg major a ZKPassport circuit release was built and proved with */
+type BarretenbergGeneration = "v5" | "v6";
+
+interface ProofVerifier {
+  verifyProof(proofData: {
+    proof: Uint8Array;
+    publicInputs: string[];
+    verificationKey: Uint8Array;
+  }): Promise<boolean>;
+}
+
 interface QueryResultValidation {
   errors: Record<string, unknown>;
   isCorrect: boolean;
@@ -124,20 +157,28 @@ interface ProofCoverage {
 // ---------------------------------------------------------------------------
 
 const DEFAULT_VALIDITY_SECONDS = 604_800; // 7 days
+// The prover chooses current_date; allow one day of clock and timezone skew
+const CURRENT_DATE_FUTURE_TOLERANCE_MS = 24 * 60 * 60 * 1000;
 const DEFAULT_TIMEOUT_MS = 60_000;
+const VERIFICATION_TIMEOUT_MESSAGE = "ZKPassport verification timed out";
 const DEFAULT_ZERO_DATE = new Date(0);
 const FACEMATCH_ALLOWED_APP_IDS = new Set([
   "0x1fa73686cf510f8f85757b0602de0dd72a13e68ae2092462be8b72662e7f179b",
   "0x24d9929b248be7eeecaa98e105c034a50539610f3fdd4cb9c8983ef4100d615d",
 ]);
+const APPLE_APP_ATTEST_ROOT_KEY_HASH =
+  "0x2532418a107c5306fa8308c22255792cf77e4a290cbce8a840a642a3e591340b";
 const FACEMATCH_ALLOWED_ROOT_KEYS = new Set([
-  "0x2532418a107c5306fa8308c22255792cf77e4a290cbce8a840a642a3e591340b",
+  APPLE_APP_ATTEST_ROOT_KEY_HASH,
   "0x16700a2d9168a194fc85f237af5829b5a2be05b8ae8ac4879ada34cf54a9c211",
   "0x0e1889bec6c1d686abcf08360ff404f803ab345881ea8cba6aad33b7f7f7ffe0",
 ]);
 const ROOT_CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
 const ETHEREUM_MAINNET_CHAIN_ID = 1;
 const ETHEREUM_SEPOLIA_CHAIN_ID = 11_155_111;
+/** The first ZKPassport circuit release built and proved with Barretenberg 6 */
+const BB6_MIN_CIRCUIT_VERSION = [0, 22, 0] as const;
+const CIRCUIT_VERSION_NUMBERS = /^(\d+)\.(\d+)\.(\d+)/;
 
 function chainIdForDevMode(devMode: boolean): number {
   return devMode ? ETHEREUM_SEPOLIA_CHAIN_ID : ETHEREUM_MAINNET_CHAIN_ID;
@@ -149,6 +190,8 @@ let prewarmPromise: Promise<void> | null = null;
 const manifestCache = new Map<string, Promise<CircuitManifest>>();
 const vkCache = new Map<string, Promise<Uint8Array>>();
 const rootValidityCache = new Map<string, RootCacheEntry>();
+let bb6Verifier: Promise<ProofVerifier> | null = null;
+let legacyVerification: Promise<unknown> = Promise.resolve();
 
 /** Canonical proof sort order — matches the SDK's checkPublicInputs. */
 const PROOF_SORT_ORDER = [
@@ -168,6 +211,24 @@ const PROOF_SORT_ORDER = [
   "facematch",
 ];
 
+/**
+ * Disclosure circuits a request returns as separate proofs, by exact name.
+ * Their `_evm` variants are only proved inside an `outer_evm` proof, and a
+ * standalone one would skip the parameter commitment check.
+ */
+const DISCLOSURE_PROOF_NAMES = new Set([
+  "disclose_bytes",
+  "compare_age",
+  "compare_birthdate",
+  "compare_expiry",
+  "exclusion_check_nationality",
+  "inclusion_check_nationality",
+  "exclusion_check_issuing_country",
+  "inclusion_check_issuing_country",
+  "bind",
+  "exclusion_check_sanctions",
+]);
+
 // ---------------------------------------------------------------------------
 // Singleton accessors
 // ---------------------------------------------------------------------------
@@ -181,8 +242,91 @@ function getRegistry(chainId: number): RegistryClient {
   return client;
 }
 
-async function getVerifierBackend(): Promise<UltraHonkVerifierBackend> {
-  return new UltraHonkVerifierBackend(await getBarretenberg());
+/**
+ * Proofs only verify under the Barretenberg major their circuits were built
+ * with: releases from 0.22.0 use bb 6, earlier ones bb 5. This is the rule the
+ * SDK's own verifier applies.
+ */
+function getBarretenbergGeneration(
+  circuitVersion: string
+): BarretenbergGeneration {
+  const parts =
+    CIRCUIT_VERSION_NUMBERS.exec(circuitVersion)?.slice(1, 4).map(Number) ?? [];
+  for (const [index, minimum] of BB6_MIN_CIRCUIT_VERSION.entries()) {
+    const part = parts[index] ?? 0;
+    if (part !== minimum) {
+      return part > minimum ? "v6" : "v5";
+    }
+  }
+  return "v6";
+}
+
+/**
+ * The version every proof of the set states, or undefined when one is missing,
+ * malformed, or differs. The version selects the public-input layout, the
+ * circuit manifest, and the Barretenberg backend, so a set that mixes versions
+ * cannot be read consistently.
+ */
+function getProofSetCircuitVersion(proofs: ProofResult[]): string | undefined {
+  const version = proofs[0]?.version;
+  if (!isCircuitVersion(version)) {
+    return undefined;
+  }
+  return proofs.every((proof) => proof.version === version)
+    ? version
+    : undefined;
+}
+
+function getBb6Verifier(): Promise<ProofVerifier> {
+  if (!bb6Verifier) {
+    const verifier = getBarretenberg().then(
+      (barretenberg) => new UltraHonkVerifierBackend(barretenberg)
+    );
+    bb6Verifier = verifier;
+    verifier.catch(() => {
+      bb6Verifier = null;
+    });
+  }
+  return bb6Verifier;
+}
+
+/**
+ * Proof sets from circuit releases before 0.22.0 get a single-threaded bb.js 5
+ * instance that is destroyed afterwards, one set at a time. A resident second
+ * Barretenberg instance would hold hundreds of megabytes for a rare path.
+ */
+function withLegacyVerifier<T>(
+  signal: AbortSignal,
+  verify: (verifier: ProofVerifier) => Promise<T>
+): Promise<T> {
+  const run = legacyVerification.then(async () => {
+    // A set that timed out while queued must not load bb.js 5 and the CRS
+    if (signal.aborted) {
+      throw new Error(VERIFICATION_TIMEOUT_MESSAGE);
+    }
+    const barretenberg = await BarretenbergV5.new({
+      crsPath: env.BB_CRS_PATH,
+      backend: BackendTypeV5.Wasm,
+      threads: 1,
+    });
+    try {
+      return await verify(new UltraHonkVerifierBackendV5(barretenberg));
+    } finally {
+      await barretenberg.destroy();
+    }
+  });
+  legacyVerification = run.catch(() => undefined);
+  return run;
+}
+
+function withVerifierBackend<T>(
+  generation: BarretenbergGeneration,
+  signal: AbortSignal,
+  verify: (verifier: ProofVerifier) => Promise<T>
+): Promise<T> {
+  return generation === "v6"
+    ? getBb6Verifier().then(verify)
+    : withLegacyVerifier(signal, verify);
 }
 
 // ---------------------------------------------------------------------------
@@ -223,8 +367,29 @@ function getCachedVk(
   return promise;
 }
 
+async function isRegistryRootValid(
+  registry: RegistryClient,
+  type: RegistryRootType,
+  root: string
+): Promise<boolean> {
+  if (type === "certificate") {
+    return registry.isCertificateRootValid(root);
+  }
+  if (type === "circuit") {
+    return registry.isCircuitRootValid(root);
+  }
+  // The empty tree's root stands for "nothing revoked" only until the
+  // registry publishes its first revocation root.
+  if (BigInt(root) === BigInt(EMPTY_ATTESTATION_REVOCATION_ROOT)) {
+    return (
+      BigInt(await registry.getLatestAttestationRevocationRoot()) === BigInt(0)
+    );
+  }
+  return registry.isAttestationRevocationRootValid(root);
+}
+
 async function validateRootOnChain(
-  type: "certificate" | "circuit",
+  type: RegistryRootType,
   root: string,
   chainId: number
 ): Promise<boolean> {
@@ -237,10 +402,7 @@ async function validateRootOnChain(
   const registry = getRegistry(chainId);
   let valid: boolean;
   try {
-    valid =
-      type === "certificate"
-        ? await registry.isCertificateRootValid(root)
-        : await registry.isCircuitRootValid(root);
+    valid = await isRegistryRootValid(registry, type, root);
   } catch (error) {
     logger.warn(
       {
@@ -285,6 +447,31 @@ function sortProofs(proofs: ProofResult[]): ProofResult[] {
   });
 }
 
+function isFacematchProof(name: string): boolean {
+  return name.startsWith("facematch") && !name.endsWith("_evm");
+}
+
+/** Base proofs of credentials verified without an NFC chip read */
+function isChiplessBaseProof(name: string): boolean {
+  return (
+    name.startsWith("attested_id") ||
+    name === AADHAAR_CIRCUIT_NAME ||
+    (name.startsWith("outer") &&
+      (name.includes("_attested_") || name.includes("_aadhaar_")))
+  );
+}
+
+/** A stated verification method, or null when the proof's value is unknown */
+function readVerificationMethod(
+  read: () => VerificationMethod
+): VerificationMethod | null {
+  try {
+    return read();
+  } catch {
+    return null;
+  }
+}
+
 function addError(
   errors: Record<string, unknown>,
   category: string,
@@ -301,6 +488,39 @@ function addError(
 function todayMidnight(): Date {
   const now = new Date();
   return new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
+}
+
+function checkProofDate(
+  errors: Record<string, unknown>,
+  category: string,
+  proofDate: Date,
+  validitySec: number,
+  tooOldMessage: string
+): boolean {
+  const diffMs = todayMidnight().getTime() - proofDate.getTime();
+  if (diffMs >= validitySec * 1000) {
+    addError(
+      errors,
+      category,
+      "date",
+      `Validity: ${validitySec}s`,
+      `Difference: ${Math.round(diffMs / 1000)}s`,
+      tooOldMessage
+    );
+    return false;
+  }
+  if (-diffMs > CURRENT_DATE_FUTURE_TOLERANCE_MS) {
+    addError(
+      errors,
+      category,
+      "date",
+      `Validity: ${validitySec}s`,
+      `Difference: ${Math.round(diffMs / 1000)}s`,
+      "Proof date is in the future"
+    );
+    return false;
+  }
+  return true;
 }
 
 function addStructuredError(
@@ -370,6 +590,14 @@ function hasAnyKey(
   keys: readonly string[]
 ): boolean {
   return Boolean(value && keys.some((key) => key in value));
+}
+
+function parseFieldElement(value: string): bigint | undefined {
+  try {
+    return BigInt(value);
+  } catch {
+    return undefined;
+  }
 }
 
 function normalizeName(value: unknown): string | undefined {
@@ -448,6 +676,11 @@ function checkStringDisclosure(
   return false;
 }
 
+/** ICAO 9303 document codes: P for passports, A, C, or I for ID cards */
+function documentLayoutForCode(code: number): "id_card" | "passport" {
+  return String.fromCharCode(code) === "P" ? "passport" : "id_card";
+}
+
 function validateDiscloseBytesQueryResult(
   ci: Record<string, Record<string, unknown>> | undefined,
   queryResult: QueryResult
@@ -468,13 +701,19 @@ function validateDiscloseBytesQueryResult(
     return { errors, isCorrect: false };
   }
 
+  // A disclosed document code fixes the layout, so a value cannot be read from
+  // the other layout's offsets; without it both layouts are tried.
+  const layout =
+    disclosedBytes[0] === undefined || disclosedBytes[0] === 0
+      ? undefined
+      : documentLayoutForCode(disclosedBytes[0]);
   const passportData = DisclosedData.fromDisclosedBytes(
     disclosedBytes,
-    "passport"
+    layout ?? "passport"
   );
   const idCardData = DisclosedData.fromDisclosedBytes(
     disclosedBytes,
-    "id_card"
+    layout ?? "id_card"
   );
 
   if (
@@ -1241,19 +1480,49 @@ async function validateSanctionsQueryResult(
   return { errors, isCorrect };
 }
 
-function validateFacematchQueryResult(
+async function validateFacematchQueryResult(
   queryResult: QueryResult,
   inputs: {
     rootKeyLeaf: string;
     environment: string;
     appIdHash: string;
-  }
-): QueryResultValidation {
+    revocationRoot: string | undefined;
+  },
+  circuitVersion: string,
+  chainId: number
+): Promise<QueryResultValidation> {
   const errors: Record<string, unknown> = {};
   let isCorrect = true;
 
   if (!queryResult.facematch?.passed) {
     return { errors, isCorrect };
+  }
+
+  // Since circuits 0.23.0 an Android attestation chain is checked against a
+  // revocation root the registry holds; iOS attestations carry none.
+  if (commitsAttestationRevocationRoot(circuitVersion)) {
+    const revocationRoot = inputs.revocationRoot ?? "0x0";
+    const isIos = inputs.rootKeyLeaf === APPLE_APP_ATTEST_ROOT_KEY_HASH;
+    const revocationRootValid = isIos
+      ? parseFieldElement(revocationRoot) === BigInt(0)
+      : await validateRootOnChain(
+          "attestation_revocation",
+          revocationRoot,
+          chainId
+        );
+    if (!revocationRootValid) {
+      isCorrect = false;
+      addStructuredError(
+        errors,
+        "facematch",
+        "revocation",
+        isIos ? "0" : "A valid root from the ZKPassport registry",
+        revocationRoot,
+        isIos
+          ? "An iOS face match has no revocation root"
+          : "The device attestation was checked against an unrecognized revocation list"
+      );
+    }
   }
 
   if (!FACEMATCH_ALLOWED_ROOT_KEYS.has(inputs.rootKeyLeaf)) {
@@ -1298,7 +1567,9 @@ function validateFacematchQueryResult(
 async function validateQueryResultForProof(
   name: string,
   ci: Record<string, Record<string, unknown>> | undefined,
-  queryResult: QueryResult
+  queryResult: QueryResult,
+  circuitVersion: string,
+  chainId: number
 ): Promise<QueryResultValidation> {
   if (name.startsWith("disclose_bytes")) {
     return validateDiscloseBytesQueryResult(ci, queryResult);
@@ -1405,18 +1676,20 @@ async function validateQueryResultForProof(
 
   if (name.startsWith("facematch")) {
     const inputs =
-      (ci?.facematch as
-        | { rootKeyLeaf: string; environment: string; appIdHash: string }
-        | undefined) ??
-      (ci?.facematch_evm as
-        | { rootKeyLeaf: string; environment: string; appIdHash: string }
-        | undefined);
+      (ci?.facematch as FacematchCommittedInputs | undefined) ??
+      (ci?.facematch_evm as FacematchCommittedInputs | undefined);
 
-    return validateFacematchQueryResult(queryResult, {
-      appIdHash: inputs?.appIdHash ?? "",
-      environment: inputs?.environment ?? "",
-      rootKeyLeaf: inputs?.rootKeyLeaf ?? "",
-    });
+    return validateFacematchQueryResult(
+      queryResult,
+      {
+        appIdHash: inputs?.appIdHash ?? "",
+        environment: inputs?.environment ?? "",
+        revocationRoot: inputs?.revocationRoot,
+        rootKeyLeaf: inputs?.rootKeyLeaf ?? "",
+      },
+      circuitVersion,
+      chainId
+    );
   }
 
   return { errors: {}, isCorrect: true };
@@ -1613,16 +1886,21 @@ async function checkPublicInputs(
   proofs: ProofResult[],
   queryResult: QueryResult,
   chainId: number,
+  circuitVersion: string,
   validity?: number,
   scope?: string
 ): Promise<PublicInputResult> {
   const sorted = sortProofs(proofs);
-  const today = todayMidnight();
   const errors: Record<string, unknown> = {};
   let isCorrect = true;
   let prevCommitment: bigint | undefined;
-  let nullifier: string | undefined;
-  let nullifierType: NullifierType | undefined;
+  let outerNullifier:
+    | { nullifier: string; nullifierType: NullifierType }
+    | undefined;
+  const disclosureNullifiers = new Set<bigint>();
+  const disclosureNullifierTypes = new Set<NullifierType>();
+  // How the ID was verified, as its base proof (integrity or outer) states it
+  let verificationMethod: VerificationMethod | null | undefined;
   const coverage: ProofCoverage = {
     age: false,
     bind: false,
@@ -1637,10 +1915,42 @@ async function checkPublicInputs(
     sanctions: false,
   };
 
+  // An outer proof has no commitment other proofs could link to
+  if (
+    sorted.length > 1 &&
+    sorted.some((proof) => (proof.name ?? "").startsWith("outer"))
+  ) {
+    isCorrect = false;
+    addError(
+      errors,
+      "outer",
+      "proof_count",
+      "1",
+      String(sorted.length),
+      "An outer proof must be the only proof provided"
+    );
+  }
+
   for (const proof of sorted) {
     const name = proof.name ?? "";
+    if (isChiplessBaseProof(name)) {
+      isCorrect = false;
+      addError(
+        errors,
+        "verification_method",
+        "proof",
+        "An NFC chip read",
+        name,
+        "Only identity documents read from their NFC chip are accepted"
+      );
+      continue;
+    }
+
     const proofHex = proof.proof ?? "";
-    const proofData = getProofData(proofHex, getNumberOfPublicInputs(name));
+    const proofData = getProofData(
+      proofHex,
+      getNumberOfPublicInputs(name, circuitVersion)
+    );
     const ci = proof.committedInputs as
       | Record<string, Record<string, unknown>>
       | undefined;
@@ -1686,23 +1996,23 @@ async function checkPublicInputs(
       }
 
       // Date / validity
-      const proofDate = getCurrentDateFromOuterProof(proofData);
-      const diffMs = today.getTime() - proofDate.getTime();
-      const validityMs = (validity ?? DEFAULT_VALIDITY_SECONDS) * 1000;
-      if (diffMs >= validityMs) {
-        isCorrect = false;
-        addError(
+      if (
+        !checkProofDate(
           errors,
           "outer",
-          "date",
-          `Validity: ${validity ?? DEFAULT_VALIDITY_SECONDS}s`,
-          `Difference: ${Math.round(diffMs / 1000)}s`,
+          getCurrentDateFromOuterProof(proofData),
+          validity ?? DEFAULT_VALIDITY_SECONDS,
           "Proof date is older than the validity period"
-        );
+        )
+      ) {
+        isCorrect = false;
       }
 
       // Parameter commitment count
-      const paramCommitments = getParamCommitmentsFromOuterProof(proofData);
+      const paramCommitments = getParamCommitmentsFromOuterProof(
+        proofData,
+        circuitVersion
+      );
       const committedKeys = Object.keys(ci ?? {});
       if (committedKeys.length !== paramCommitments.length) {
         isCorrect = false;
@@ -1749,18 +2059,31 @@ async function checkPublicInputs(
       }
 
       // Per-type parameter commitment checks in the outer proof
-      await verifyOuterParameterCommitments(
+      const outerCommitmentsMatch = await verifyOuterParameterCommitments(
         ci,
         paramCommitments,
         errors,
-        isCorrect
-      ).then((ok) => {
-        isCorrect = isCorrect && ok;
-      });
+        circuitVersion
+      );
+      isCorrect = isCorrect && outerCommitmentsMatch;
 
-      // Extract nullifier from outer proof
-      nullifier = getNullifierFromOuterProof(proofData).toString(10);
-      nullifierType = getNullifierTypeFromOuterProof(proofData);
+      // Outer proofs state their verification method since circuits 0.23.0
+      verificationMethod = hasVerificationMethod(circuitVersion)
+        ? readVerificationMethod(() =>
+            getVerificationMethodFromOuterProof(proofData)
+          )
+        : VerificationMethod.ICAO_CHIP;
+
+      outerNullifier = {
+        nullifier: getNullifierFromOuterProof(
+          proofData,
+          circuitVersion
+        ).toString(10),
+        nullifierType: getNullifierTypeFromOuterProof(
+          proofData,
+          circuitVersion
+        ),
+      };
 
       // ── sig_check_dsc ────────────────────────────────────────────
     } else if (name.startsWith("sig_check_dsc")) {
@@ -1814,42 +2137,51 @@ async function checkPublicInputs(
         );
       }
       prevCommitment = getCommitmentOutFromIntegrityProof(proofData);
+      // Integrity proofs of circuits before 0.23.0 state no method: they are
+      // chip reads
+      verificationMethod = readVerificationMethod(
+        () =>
+          getVerificationMethodFromIntegrityProof(proofData) ??
+          VerificationMethod.ICAO_CHIP
+      );
 
       // ── disclosure proofs ────────────────────────────────────────
-    } else {
-      if (name.startsWith("disclose_bytes")) {
+    } else if (DISCLOSURE_PROOF_NAMES.has(name) || isFacematchProof(name)) {
+      if (name === "disclose_bytes") {
         coverage.discloseBytes = true;
-      } else if (name.startsWith("compare_age")) {
+      } else if (name === "compare_age") {
         coverage.age = true;
-      } else if (name.startsWith("compare_birthdate")) {
+      } else if (name === "compare_birthdate") {
         coverage.compareBirthdate = true;
-      } else if (name.startsWith("compare_expiry")) {
+      } else if (name === "compare_expiry") {
         coverage.compareExpiry = true;
-      } else if (name.startsWith("inclusion_check_nationality")) {
+      } else if (name === "inclusion_check_nationality") {
         coverage.nationalityInclusion = true;
-      } else if (name.startsWith("exclusion_check_nationality")) {
+      } else if (name === "exclusion_check_nationality") {
         coverage.nationalityExclusion = true;
-      } else if (name.startsWith("inclusion_check_issuing_country")) {
+      } else if (name === "inclusion_check_issuing_country") {
         coverage.issuingCountryInclusion = true;
-      } else if (name.startsWith("exclusion_check_issuing_country")) {
+      } else if (name === "exclusion_check_issuing_country") {
         coverage.issuingCountryExclusion = true;
-      } else if (name.startsWith("bind")) {
+      } else if (name === "bind") {
         coverage.bind = true;
-      } else if (name.startsWith("exclusion_check_sanctions")) {
+      } else if (name === "exclusion_check_sanctions") {
         coverage.sanctions = true;
-      } else if (name.startsWith("facematch")) {
+      } else {
         coverage.facematch = true;
       }
 
       const queryValidation = await validateQueryResultForProof(
         name,
         ci,
-        queryResult
+        queryResult,
+        circuitVersion,
+        chainId
       );
       isCorrect = isCorrect && queryValidation.isCorrect;
       mergeValidationErrors(errors, queryValidation.errors);
 
-      const result = await verifyDisclosureProof(
+      const disclosureCorrect = await verifyDisclosureProof(
         name,
         proofData,
         ci,
@@ -1857,34 +2189,105 @@ async function checkPublicInputs(
         domain,
         scope,
         validity ?? DEFAULT_VALIDITY_SECONDS,
+        circuitVersion,
         errors
       );
-      isCorrect = isCorrect && result.isCorrect;
-      if (result.nullifier) {
-        nullifier = result.nullifier;
-        nullifierType = result.nullifierType;
+      isCorrect = isCorrect && disclosureCorrect;
+
+      // A face match may carry no nullifier; every other disclosure proof
+      // carries the bundle's scoped nullifier or none (0)
+      if (!isFacematchProof(name)) {
+        const disclosureNullifier = getNullifierFromDisclosureProof(proofData);
+        if (disclosureNullifier !== BigInt(0)) {
+          disclosureNullifiers.add(disclosureNullifier);
+        }
+        const disclosureNullifierType =
+          getNullifierTypeFromDisclosureProof(proofData);
+        if (disclosureNullifierType !== NullifierType.NONE) {
+          disclosureNullifierTypes.add(disclosureNullifierType);
+        }
       }
+    } else {
+      isCorrect = false;
+      addError(
+        errors,
+        "proof",
+        "name",
+        "A ZKPassport circuit this verifier checks",
+        name,
+        `Unexpected proof: ${name}`
+      );
     }
   }
 
   isCorrect =
     validateQueryResultCoverage(queryResult, coverage, errors) && isCorrect;
 
-  return { isCorrect, nullifier, nullifierType, errors };
+  if (verificationMethod !== VerificationMethod.ICAO_CHIP) {
+    isCorrect = false;
+    addError(
+      errors,
+      "verification_method",
+      "eq",
+      `${VerificationMethod.ICAO_CHIP} (NFC chip)`,
+      String(verificationMethod ?? "none"),
+      "Only identity documents read from their NFC chip are accepted"
+    );
+  }
+
+  if (disclosureNullifiers.size > 1 || disclosureNullifierTypes.size > 1) {
+    isCorrect = false;
+    addError(
+      errors,
+      "nullifier",
+      "eq",
+      "One nullifier shared by the disclosure proofs",
+      `${disclosureNullifiers.size} nullifiers, ${disclosureNullifierTypes.size} types`,
+      "The disclosure proofs do not share the same nullifier"
+    );
+  }
+  const [disclosureNullifier] = disclosureNullifiers;
+  const [disclosureNullifierType] = disclosureNullifierTypes;
+
+  return {
+    isCorrect,
+    nullifier: outerNullifier?.nullifier ?? disclosureNullifier?.toString(10),
+    nullifierType: outerNullifier?.nullifierType ?? disclosureNullifierType,
+    errors,
+  };
 }
 
 // ---------------------------------------------------------------------------
 // Outer proof parameter commitment validation
 // ---------------------------------------------------------------------------
 
+/**
+ * Since circuits 0.23.0 a face match also commits to the attestation
+ * revocation root its Android chain was checked against.
+ */
+function getExpectedFacematchCommitment(
+  inputs: FacematchCommittedInputs,
+  circuitVersion: string
+): Promise<bigint> {
+  return getFacematchParameterCommitment(
+    BigInt(inputs.rootKeyLeaf),
+    inputs.environment === "development" ? BigInt(0) : BigInt(1),
+    BigInt(inputs.appIdHash),
+    inputs.mode === "regular" ? BigInt(1) : BigInt(2),
+    undefined,
+    BigInt(inputs.revocationRoot ?? 0),
+    commitsAttestationRevocationRoot(circuitVersion)
+  );
+}
+
 async function verifyOuterParameterCommitments(
   ci: Record<string, Record<string, unknown>> | undefined,
   paramCommitments: bigint[],
   errors: Record<string, unknown>,
-  currentCorrect: boolean
+  circuitVersion: string
 ): Promise<boolean> {
   if (!ci) {
-    return currentCorrect;
+    return true;
   }
   let isCorrect = true;
 
@@ -2041,17 +2444,9 @@ async function verifyOuterParameterCommitments(
   }
 
   if (ci.facematch) {
-    const { rootKeyLeaf, environment, appIdHash, mode } = ci.facematch as {
-      rootKeyLeaf: string;
-      environment: string;
-      appIdHash: string;
-      mode: string;
-    };
-    const expected = await getFacematchParameterCommitment(
-      BigInt(rootKeyLeaf),
-      environment === "development" ? BigInt(0) : BigInt(1),
-      BigInt(appIdHash),
-      mode === "regular" ? BigInt(1) : BigInt(2)
+    const expected = await getExpectedFacematchCommitment(
+      ci.facematch as unknown as FacematchCommittedInputs,
+      circuitVersion
     );
     if (!paramCommitments.includes(expected)) {
       isCorrect = false;
@@ -2073,12 +2468,6 @@ async function verifyOuterParameterCommitments(
 // Disclosure proof validation
 // ---------------------------------------------------------------------------
 
-interface DisclosureResult {
-  isCorrect: boolean;
-  nullifier: string | undefined;
-  nullifierType: NullifierType | undefined;
-}
-
 async function verifyDisclosureProof(
   name: string,
   proofData: { publicInputs: string[]; proof: string[] },
@@ -2087,13 +2476,10 @@ async function verifyDisclosureProof(
   domain: string,
   scope: string | undefined,
   validitySec: number,
+  circuitVersion: string,
   errors: Record<string, unknown>
-): Promise<DisclosureResult> {
+): Promise<boolean> {
   let isCorrect = true;
-  const nullifier: string | undefined =
-    getNullifierFromDisclosureProof(proofData).toString(10);
-  const nullifierType: NullifierType | undefined =
-    getNullifierTypeFromDisclosureProof(proofData);
 
   // Commitment chain check
   const commitIn = getCommitmentInFromDisclosureProof(proofData);
@@ -2114,12 +2500,20 @@ async function verifyDisclosureProof(
     getParameterCommitmentFromDisclosureProof(proofData);
   const expectedCommitment = await computeExpectedDisclosureCommitment(
     name,
-    ci
+    ci,
+    circuitVersion
   );
-  if (
-    expectedCommitment !== undefined &&
-    disclosureCommitment !== expectedCommitment
-  ) {
+  if (expectedCommitment === undefined) {
+    isCorrect = false;
+    addError(
+      errors,
+      name,
+      "parameter_commitment",
+      "Committed inputs for the proof",
+      "missing",
+      `No committed inputs to check the parameter commitment of ${name}`
+    );
+  } else if (disclosureCommitment !== expectedCommitment) {
     isCorrect = false;
     addError(
       errors,
@@ -2162,28 +2556,25 @@ async function verifyDisclosureProof(
   }
 
   // Date check on disclosure proofs
-  const disclosureDate = getCurrentDateFromDisclosureProof(proofData);
-  const today = todayMidnight();
-  const diffMs = today.getTime() - disclosureDate.getTime();
-  const validityMs = validitySec * 1000;
-  if (diffMs >= validityMs) {
-    isCorrect = false;
-    addError(
+  if (
+    !checkProofDate(
       errors,
       name,
-      "date",
-      `Validity: ${validitySec}s`,
-      `Difference: ${Math.round(diffMs / 1000)}s`,
+      getCurrentDateFromDisclosureProof(proofData),
+      validitySec,
       `Disclosure proof date too old for ${name}`
-    );
+    )
+  ) {
+    isCorrect = false;
   }
 
-  return { isCorrect, nullifier, nullifierType };
+  return isCorrect;
 }
 
 async function computeExpectedDisclosureCommitment(
   name: string,
-  ci: Record<string, Record<string, unknown>> | undefined
+  ci: Record<string, Record<string, unknown>> | undefined,
+  circuitVersion: string
 ): Promise<bigint | undefined> {
   if (!ci) {
     return undefined;
@@ -2260,17 +2651,9 @@ async function computeExpectedDisclosureCommitment(
   }
 
   if (name.startsWith("facematch") && ci.facematch) {
-    const { rootKeyLeaf, environment, appIdHash, mode } = ci.facematch as {
-      rootKeyLeaf: string;
-      environment: string;
-      appIdHash: string;
-      mode: string;
-    };
-    return getFacematchParameterCommitment(
-      BigInt(rootKeyLeaf),
-      environment === "development" ? BigInt(0) : BigInt(1),
-      BigInt(appIdHash),
-      mode === "regular" ? BigInt(1) : BigInt(2)
+    return getExpectedFacematchCommitment(
+      ci.facematch as unknown as FacematchCommittedInputs,
+      circuitVersion
     );
   }
 
@@ -2284,13 +2667,17 @@ async function computeExpectedDisclosureCommitment(
 async function verifyProofCryptographic(
   proof: ProofResult,
   manifest: CircuitManifest,
-  backend: UltraHonkVerifierBackend,
+  backend: ProofVerifier,
+  circuitVersion: string,
   chainId: number
 ): Promise<boolean> {
   const name = proof.name ?? "";
   const proofHex = proof.proof ?? "";
   try {
-    const proofData = getProofData(proofHex, getNumberOfPublicInputs(name));
+    const proofData = getProofData(
+      proofHex,
+      getNumberOfPublicInputs(name, circuitVersion)
+    );
     const vk = await getCachedVk(name, manifest, chainId);
     const proofBytes = Buffer.from(proofData.proof.join(""), "hex");
     return await backend.verifyProof({
@@ -2375,14 +2762,81 @@ async function verifyOuterEvmProofOnChain(params: {
   }
 }
 
+async function verifyProofsCryptographic(params: {
+  chainId: number;
+  circuitVersion: string;
+  devMode: boolean;
+  domain: string;
+  proofs: ProofResult[];
+  scope?: string;
+  signal: AbortSignal;
+  validity?: number;
+}): Promise<boolean> {
+  const { chainId, circuitVersion, proofs, signal } = params;
+  // An outer_evm proof always comes alone and is verified on-chain
+  const [onlyProof] = proofs;
+  if (proofs.length === 1 && onlyProof?.name?.startsWith("outer_evm")) {
+    return verifyOuterEvmProofOnChain({
+      proof: onlyProof,
+      domain: params.domain,
+      devMode: params.devMode,
+      ...(params.scope === undefined ? {} : { scope: params.scope }),
+      ...(params.validity === undefined ? {} : { validity: params.validity }),
+    });
+  }
+
+  const manifest = await getCachedManifest(circuitVersion, chainId);
+  return withVerifierBackend(
+    getBarretenbergGeneration(circuitVersion),
+    signal,
+    async (backend) => {
+      for (const proof of proofs) {
+        if (signal.aborted) {
+          throw new Error(VERIFICATION_TIMEOUT_MESSAGE);
+        }
+        const proofValid = await verifyProofCryptographic(
+          proof,
+          manifest,
+          backend,
+          circuitVersion,
+          chainId
+        );
+        if (!proofValid) {
+          logger.warn(
+            { proofName: proof.name ?? "" },
+            "ZKPassport cryptographic verification failed for a proof"
+          );
+          return false;
+        }
+      }
+      return true;
+    }
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Main API
 // ---------------------------------------------------------------------------
 
-const MOCK_NULLIFIER_TYPES = new Set([
-  NullifierType.NON_SALTED_MOCK,
-  NullifierType.SALTED_MOCK,
-]);
+/**
+ * The chip nullifier must be the unsalted scoped nullifier, which only the
+ * document and the scope determine. A salted (OPRF) nullifier also depends on
+ * an OPRF key the prover chooses, so one passport could present a new
+ * nullifier for every account. Mock documents are accepted only in dev mode.
+ */
+function isAcceptedChipNullifier(
+  nullifier: string | undefined,
+  nullifierType: NullifierType | undefined,
+  devMode: boolean
+): boolean {
+  if (!nullifier || BigInt(nullifier) === BigInt(0)) {
+    return false;
+  }
+  return (
+    nullifierType === NullifierType.NON_SALTED ||
+    (devMode && nullifierType === NullifierType.NON_SALTED_MOCK)
+  );
+}
 
 export async function verifyZkPassportProofs(
   params: VerifyParams
@@ -2414,6 +2868,30 @@ export async function verifyZkPassportProofs(
   const timer = setTimeout(() => controller.abort(), timeoutMs);
 
   try {
+    const circuitVersion = getProofSetCircuitVersion(proofs);
+    if (!circuitVersion) {
+      logger.warn(
+        { proofCount: proofs.length },
+        "ZKPassport proofs do not share one circuit version"
+      );
+      const versionErrors: Record<string, unknown> = {};
+      addStructuredError(
+        versionErrors,
+        "proofs",
+        "version",
+        "One circuit version stated by every proof",
+        [...new Set(proofs.map((proof) => proof.version))],
+        "The proofs must all state the same circuit version"
+      );
+      return {
+        verified: false,
+        chipNullifier: undefined,
+        chipNullifierType: undefined,
+        queryResultErrors: versionErrors,
+        verificationTimeMs: performance.now() - start,
+      };
+    }
+
     const formattedResult = formatQueryResultDates(queryResult);
 
     const chainId = chainIdForDevMode(devMode);
@@ -2425,65 +2903,75 @@ export async function verifyZkPassportProofs(
         proofs,
         formattedResult,
         chainId,
+        circuitVersion,
         validity,
         scope
       );
 
-    // Mock nullifier rejection (unless devMode)
-    if (
-      nullifierType !== undefined &&
-      MOCK_NULLIFIER_TYPES.has(nullifierType) &&
-      !devMode
-    ) {
-      logger.warn("Mock proof rejected in non-dev mode");
+    if (!isAcceptedChipNullifier(nullifier, nullifierType, devMode)) {
+      logger.warn(
+        { nullifierType },
+        "ZKPassport proofs carry no accepted chip nullifier"
+      );
+      addStructuredError(
+        errors,
+        "nullifier",
+        "type",
+        `${NullifierType.NON_SALTED} (unsalted)`,
+        nullifierType ?? "none",
+        "The proofs must carry an unsalted nullifier"
+      );
       return {
         verified: false,
         chipNullifier: undefined,
         chipNullifierType: undefined,
-        queryResultErrors: Object.keys(errors).length > 0 ? errors : undefined,
+        queryResultErrors: errors,
         verificationTimeMs: performance.now() - start,
       };
     }
 
     // Phase 2: Cryptographic proof verification (only if public inputs passed)
     let verified = isCorrect;
-    const queryResultErrors =
-      Object.keys(errors).length > 0 ? errors : undefined;
     if (verified) {
-      const [backend, manifest] = await Promise.all([
-        getVerifierBackend(),
-        getCachedManifest(proofs[0]?.version ?? "", chainId),
-      ]);
-
-      for (const proof of proofs) {
-        const name = proof.name ?? "";
-        if (controller.signal.aborted) {
-          throw new Error("ZKPassport verification timed out");
-        }
-
-        const proofValid = name.startsWith("outer_evm")
-          ? await verifyOuterEvmProofOnChain({
-              proof,
-              domain,
-              devMode,
-              ...(scope === undefined ? {} : { scope }),
-              ...(validity === undefined ? {} : { validity }),
-            })
-          : await verifyProofCryptographic(proof, manifest, backend, chainId);
-        if (!proofValid) {
-          verified = false;
-          logger.warn(
-            { proofName: name },
-            "ZKPassport cryptographic verification failed for a proof"
-          );
-          break;
-        }
+      const manifest = await getCachedManifest(circuitVersion, chainId);
+      // Fast-mode proofs state no circuit root; the release's manifest supplies
+      // their verification keys, so the registry must still accept its root
+      const manifestRoot = BigInt(manifest.root).toString(16);
+      if (!(await validateRootOnChain("circuit", manifestRoot, chainId))) {
+        verified = false;
+        addStructuredError(
+          errors,
+          "proofs",
+          "circuit_root",
+          "valid",
+          "invalid",
+          `Circuit release ${circuitVersion} is no longer valid on-chain`
+        );
       }
     }
+    if (verified) {
+      verified = await verifyProofsCryptographic({
+        chainId,
+        circuitVersion,
+        devMode,
+        domain,
+        proofs,
+        signal: controller.signal,
+        ...(scope === undefined ? {} : { scope }),
+        ...(validity === undefined ? {} : { validity }),
+      });
+    }
+    const queryResultErrors =
+      Object.keys(errors).length > 0 ? errors : undefined;
 
     const elapsed = performance.now() - start;
     logger.info(
-      { durationMs: Math.round(elapsed), verified, proofCount: proofs.length },
+      {
+        circuitVersion,
+        durationMs: Math.round(elapsed),
+        proofCount: proofs.length,
+        verified,
+      },
       "ZKPassport proof verification complete"
     );
 
@@ -2511,7 +2999,9 @@ export function warmupZkPassportVerifier(): Promise<void> {
   prewarmPromise = (async () => {
     const start = performance.now();
     try {
-      await getVerifierBackend();
+      // The ZKPassport app proves with the newest circuit release; older
+      // releases get a backend per proof set
+      await getBb6Verifier();
       const elapsed = performance.now() - start;
       logger.info(
         { durationMs: Math.round(elapsed) },
@@ -2532,6 +3022,7 @@ export function warmupZkPassportVerifier(): Promise<void> {
 
 interface VerifierTestApi {
   computeExpectedDisclosureCommitment: typeof computeExpectedDisclosureCommitment;
+  getBarretenbergGeneration: typeof getBarretenbergGeneration;
   reset(): void;
   validateRootOnChain: typeof validateRootOnChain;
   verifyOuterEvmProofOnChain: typeof verifyOuterEvmProofOnChain;
@@ -2547,9 +3038,12 @@ interface VerifierTestApi {
     vkCache.clear();
     rootValidityCache.clear();
     registryClients.clear();
+    bb6Verifier = null;
+    legacyVerification = Promise.resolve();
     prewarmPromise = null;
   },
   computeExpectedDisclosureCommitment,
+  getBarretenbergGeneration,
   validateRootOnChain,
   verifyOuterEvmProofOnChain,
 };

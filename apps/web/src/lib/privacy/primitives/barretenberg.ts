@@ -9,7 +9,11 @@
 
 import "server-only";
 
-import { BackendType, Barretenberg, BN254_FR_MODULUS } from "@aztec/bb.js";
+import {
+  BackendType,
+  Barretenberg,
+  BN254_FR_MODULUS,
+} from "@aztec-foundation/bb.js";
 import { bytesToBigInt, numberToBytes } from "viem";
 
 import { env } from "@/env";

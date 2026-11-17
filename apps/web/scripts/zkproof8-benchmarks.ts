@@ -9,7 +9,7 @@ import {
   BN254_FR_MODULUS,
   UltraHonkBackend,
   UltraHonkVerifierBackend,
-} from "@aztec/bb.js";
+} from "@aztec-foundation/bb.js";
 import { decode, encode } from "@msgpack/msgpack";
 import { Noir } from "@noir-lang/noir_js";
 import tfhe from "node-tfhe";

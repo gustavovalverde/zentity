@@ -1,4 +1,4 @@
-import { BN254_FR_MODULUS } from "@aztec/bb.js";
+import { BN254_FR_MODULUS } from "@aztec-foundation/bb.js";
 import { describe, expect, it, vi } from "vitest";
 
 // Mock server-only for test environment

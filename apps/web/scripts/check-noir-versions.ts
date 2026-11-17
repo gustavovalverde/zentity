@@ -8,6 +8,8 @@ import {
 } from "@/lib/privacy/zk/version-check";
 
 const VERSION_PREFIX_RE = /^[~^]/;
+// An exact compiler pin, such as `compiler_version = "=1.0.0"`
+const COMPILER_PIN_RE = /^compiler_version\s*=\s*"=(\d+\.\d+\.\d+)"\s*$/m;
 
 interface PackageJson {
   dependencies?: Record<string, string>;
@@ -89,7 +91,40 @@ async function main() {
 
   const artifactVersionList = Array.from(artifactVersions);
 
+  const manifestPaths = await Array.fromAsync(
+    glob("noir-circuits/*/Nargo.toml", { cwd: root })
+  );
+  const compilerPins = new Set<string>();
+  const unpinnedManifests: string[] = [];
+  for (const relPath of manifestPaths) {
+    const pin = COMPILER_PIN_RE.exec(
+      readFileSync(join(root, relPath), "utf8")
+    )?.[1];
+    if (pin) {
+      compilerPins.add(pin);
+    } else {
+      unpinnedManifests.push(relPath);
+    }
+  }
+
   const errors: string[] = [];
+
+  if (manifestPaths.length === 0) {
+    errors.push("No Nargo.toml manifests found in noir-circuits/*");
+  }
+
+  if (unpinnedManifests.length > 0) {
+    errors.push(
+      `Nargo.toml without an exact compiler_version pin (="x.y.z"): ${unpinnedManifests.join(", ")}`
+    );
+  }
+
+  const compilerPinList = Array.from(compilerPins);
+  if (compilerPinList.length > 1) {
+    errors.push(
+      `Nargo.toml manifests pin different compilers: ${compilerPinList.join(", ")}`
+    );
+  }
 
   if (missingRuntime.length > 0) {
     errors.push(
@@ -129,6 +164,13 @@ async function main() {
     );
   }
 
+  const compilerPin = compilerPinList[0] ?? null;
+  if (compilerPin && artifactVersion && compilerPin !== artifactVersion) {
+    errors.push(
+      `Pinned compiler (${compilerPin}) does not match artifact version (${artifactVersion}); recompile the circuits with nargo ${compilerPin}`
+    );
+  }
+
   if (errors.length > 0) {
     for (const error of errors) {
       console.error(error);
@@ -137,7 +179,7 @@ async function main() {
   }
 
   console.log(
-    `Noir versions aligned: ${runtimeVersion ?? "unknown"} (artifacts)`
+    `Noir versions aligned: ${runtimeVersion ?? "unknown"} (nargo pin, artifacts, runtime)`
   );
 }
 

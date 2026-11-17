@@ -30,6 +30,7 @@ updates:
       # artifacts and the FHE service wire format, so they move by hand.
       - dependency-name: "@noir-lang/*"
       - dependency-name: "@aztec/bb.js"
+      - dependency-name: "@aztec-foundation/bb.js"
       - dependency-name: "tfhe"
       - dependency-name: "node-tfhe"
     # A dependency joins the first group that matches it, so better-auth
