@@ -183,7 +183,7 @@ repos:
         pass_filenames: false
       - id: cargo-clippy-fhe
         name: cargo clippy (fhe)
-        entry: cargo clippy --manifest-path apps/fhe/Cargo.toml -- -D warnings
+        entry: cargo clippy --manifest-path apps/fhe/Cargo.toml --all-targets --locked -- -D warnings
         language: system
         files: ^apps/fhe/.*\.rs$
         pass_filenames: false

@@ -2,6 +2,7 @@
 name = "fhe-service"
 version = "0.1.0"
 edition = "2021"
+rust-version = "1.91.1"
 license-file = "../../LICENSE"
 
 [lib]
@@ -36,7 +37,7 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 thiserror = "2"
 chrono = { version = "0.4", default-features = false }
-constant_time_eq = "0.4"
+constant_time_eq = "0.6"
 once_cell = "1.21"
 redb = "4.5"
 opentelemetry = "0.33"
@@ -53,6 +54,31 @@ chrono = "0.4"
 http-body-util = { version = "0.1", features = ["channel"] }
 flate2 = "1.1"
 tempfile = "3.27"
+
+[lints.rust]
+# Crypto service: no unsafe code and no look-alike identifiers.
+unsafe_code = "deny"
+non_ascii_idents = "deny"
+rust_2021_compatibility = { level = "warn", priority = -1 }
+nonstandard_style = { level = "warn", priority = -1 }
+future_incompatible = { level = "warn", priority = -1 }
+
+[lints.clippy]
+# Async code safety
+await_holding_lock = "warn"
+await_holding_refcell_ref = "warn"
+# Integer safety
+checked_conversions = "warn"
+implicit_saturating_sub = "warn"
+invalid_upcast_comparisons = "warn"
+# Incomplete code markers and manual debug output
+dbg_macro = "warn"
+todo = "warn"
+print_stdout = "warn"
+print_stderr = "warn"
+# Panic safety
+fallible_impl_from = "warn"
+unwrap_in_result = "warn"
 
 [profile.release]
 lto = "fat"

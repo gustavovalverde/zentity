@@ -266,7 +266,7 @@ Notes:
 
 - Node.js 26+ (recommended: use `.nvmrc` or `mise`)
 - pnpm 12+ (package manager)
-- Rust 1.91+ (recommended: `mise`)
+- Rust 1.100+ (recommended: `mise`)
 - Python 3.12+ (recommended: `mise`)
 
 **Setup Toolchain:**
