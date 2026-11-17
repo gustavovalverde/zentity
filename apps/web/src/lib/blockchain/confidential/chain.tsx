@@ -10,12 +10,7 @@ import type { ReactNode } from "react";
 import type { EIP1193Provider } from "viem";
 
 import { useAppKitAccount } from "@reown/appkit/react";
-import {
-  cleartext,
-  IndexedDBStorage,
-  MemoryStorage,
-  ZamaSDK,
-} from "@zama-fhe/sdk";
+import { cleartext, MemoryStorage, ZamaSDK } from "@zama-fhe/sdk";
 import { createConfig } from "@zama-fhe/sdk/viem";
 import { web } from "@zama-fhe/sdk/web";
 import {
@@ -53,6 +48,9 @@ const CONFIDENTIAL_PERMIT_TTL_DAYS = CONFIDENTIAL_SESSION_TTL_SECONDS / 86_400;
 const CONFIDENTIAL_TRANSPORT_KEY_PAIR_TTL_SECONDS = 30 * 86_400;
 const confidentialLogger =
   process.env.NODE_ENV === "development" ? console : undefined;
+// Earlier releases gave the SDK this IndexedDB database, where it kept
+// decrypted identity attributes across sessions.
+const LEGACY_SDK_DATABASE = "ZentityConfidentialCredentials";
 
 type ConfidentialChainStatus =
   | "error"
@@ -158,6 +156,10 @@ export function ConfidentialChainProvider({
   const [refreshKey, setRefreshKey] = useState(0);
 
   useEffect(() => {
+    globalThis.indexedDB?.deleteDatabase(LEGACY_SDK_DATABASE);
+  }, []);
+
+  useEffect(() => {
     if (!(isConnected && address && publicClient && walletClient)) {
       setSdk(null);
       setStatus("not_connected");
@@ -188,11 +190,9 @@ export function ConfidentialChainProvider({
             [chain.id]:
               activeNetwork.mode === "cleartext" ? cleartext() : web(),
           },
-          storage: new IndexedDBStorage(
-            "ZentityConfidentialCredentials",
-            1,
-            "credentials"
-          ),
+          // Decrypted values and the transport key pair stay in memory, so
+          // identity attributes never persist in the browser.
+          storage: new MemoryStorage(),
           permitStorage: new MemoryStorage(),
           transportKeyPairTTL: CONFIDENTIAL_TRANSPORT_KEY_PAIR_TTL_SECONDS,
           permitTTL: CONFIDENTIAL_PERMIT_TTL_DAYS,

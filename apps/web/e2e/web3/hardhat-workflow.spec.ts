@@ -36,9 +36,9 @@ const ATTESTED_ON_CONFIDENTIAL_SEPOLIA_TEXT =
 const LOCAL_HARDHAT_TEXT = /Local \\(Hardhat\\)/i;
 const DECRYPT_VIEW_BUTTON = /Decrypt & View/i;
 const HIDE_DATA_BUTTON = /Hide Data/i;
-// Storage database chain.tsx gives the Zama SDK, and the function selector
-// of the cleartext KMSVerifier's userDecrypt view.
-const SDK_STORAGE_DATABASE = "ZentityConfidentialCredentials";
+// IndexedDB database where earlier releases kept decrypted values, and the
+// function selector of the cleartext KMSVerifier's userDecrypt view.
+const LEGACY_SDK_DATABASE = "ZentityConfidentialCredentials";
 const USER_DECRYPT_SELECTOR = "0xd28e4071";
 const COMPLIANCE_GRANTED_TEXT = /Compliance access granted/i;
 const GRANT_COMPLIANCE_BUTTON = /Grant Compliance Access/i;
@@ -173,24 +173,37 @@ test.describe("Web3 workflow (Hardhat + mock relayer)", () => {
     await expect(page.getByText("1990")).toBeVisible({ timeout: 60_000 });
     await expect(page.getByText("Level 2")).toBeVisible();
 
-    // The SDK caches decrypted values in this IndexedDB database, which
-    // survives a reload. Deleting it and waiting for the KMSVerifier
-    // userDecrypt call proves the values shown after the reload come from
-    // decrypting the on-chain handles.
+    // Decrypted values stay in memory, so after a reload they can only come
+    // from the KMSVerifier userDecrypt call. The legacy database is recreated
+    // first to check that the app deletes it.
     await page.evaluate(
       (name) =>
         new Promise<void>((resolve, reject) => {
-          const request = indexedDB.deleteDatabase(name);
-          request.onsuccess = () => resolve();
+          const request = indexedDB.open(name, 1);
+          request.onsuccess = () => {
+            request.result.close();
+            resolve();
+          };
           request.onerror = () => reject(request.error);
         }),
-      SDK_STORAGE_DATABASE
+      LEGACY_SDK_DATABASE
     );
     await page.reload();
     await connectHardhatWallet(page, hardhatNetwork.chainId);
     await expect(
       page.getByText("Your On-Chain Identity", { exact: false })
     ).toBeVisible({ timeout: 120_000 });
+    await expect
+      .poll(() =>
+        page.evaluate(
+          async (name) =>
+            (await indexedDB.databases()).some(
+              (database) => database.name === name
+            ),
+          LEGACY_SDK_DATABASE
+        )
+      )
+      .toBe(false);
     const decryptAfterReloadButton = page.getByRole("button", {
       name: DECRYPT_VIEW_BUTTON,
     });

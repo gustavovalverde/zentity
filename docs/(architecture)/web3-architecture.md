@@ -472,7 +472,7 @@ The token's claims and lifetime are in [Proof of Human](<../(protocols)/oauth-in
 3. **Ciphertext handles** are stored on-chain (no plaintext).
 4. **Compliance checks** operate on ciphertexts (no decryption in contracts).
 5. **Attestation metadata** includes proof and policy hashes for auditability.
-6. **User decryption** requires explicit authorization (signature-based).
+6. **User decryption** requires explicit authorization (signature-based). The Zama SDK keeps decrypted values, its transport key pair, and the decryption permit in memory only, so nothing decrypted reaches browser storage and a page reload asks for a new signature.
 
 ---
 
