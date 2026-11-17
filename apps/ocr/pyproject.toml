@@ -6,13 +6,12 @@ build-backend = "setuptools.build_meta"
 name = "ocr-service"
 version = "0.1.0"
 description = "Privacy-preserving OCR service for document processing"
-requires-python = ">=3.12"
+requires-python = ">=3.14"
 dependencies = [
-    "fastapi==0.162.2",
+    "fastapi==0.163.1",
     "iso3166==3.0.0",
-    "mrz==0.6.2",
-    "numpy==2.5.4",
-    "onnxruntime==1.31.1",
+    "numpy==2.5.5",
+    "onnxruntime==1.32.0",
     "opentelemetry-api==1.45.2",
     "opentelemetry-exporter-otlp-proto-http==1.45.2",
     "opentelemetry-instrumentation-fastapi==0.66b2",
@@ -33,9 +32,9 @@ where = ["src"]
 [project.optional-dependencies]
 test = [
     "pytest==9.2.0",
-    "pytest-asyncio==1.4.1.post1",
+    "pytest-asyncio==1.5.0",
     "pytest-cov==7.1.0",
-    "httpx==0.28.1",
+    "httpx2==2.16.2",
 ]
 dev = [
     "ruff==0.17.5",
@@ -45,15 +44,16 @@ dev = [
     "bandit==1.9.4",
     # Include test deps in dev
     "pytest==9.2.0",
-    "pytest-asyncio==1.4.1.post1",
+    "pytest-asyncio==1.5.0",
     "pytest-cov==7.1.0",
-    "httpx==0.28.1",
+    "httpx2==2.16.2",
 ]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 python_files = ["test_*.py"]
 asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
 addopts = "-v --tb=short"
 
 [tool.coverage.run]
@@ -70,7 +70,7 @@ exclude_lines = [
 
 [tool.ruff]
 line-length = 100  # Allow longer lines for regex patterns
-target-version = "py312"
+target-version = "py314"
 exclude = ["venv", ".venv", "__pycache__", ".git"]
 
 [tool.ruff.lint]

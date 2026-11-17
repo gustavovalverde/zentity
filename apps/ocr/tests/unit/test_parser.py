@@ -11,7 +11,6 @@ Covers:
 """
 
 import pytest
-from mrz.base.countries_ops import get_country
 
 from ocr_service.services.parser import (
     _mrz_date_to_iso,
@@ -54,7 +53,7 @@ class TestParseMrz:
         # nationality is the full country name (from ISO 3166),
         # nationality_code is the 3-letter code
         assert data.nationality_code == "UTO"
-        assert data.nationality == "Utopia"  # Full country name from mrz library
+        assert data.nationality == "Utopia"  # Full country name from the ICAO code table
 
     def test_parse_dominican_mrz(self):
         """Test parsing a Dominican Republic passport MRZ."""
@@ -105,6 +104,33 @@ class TestParseMrz:
 
         # Spaces should be stripped during normalization
         # The result depends on how much the spacing corrupts the MRZ
+
+    def test_unspecified_sex_marker_is_valid_and_has_no_gender(self):
+        """Sex marker X is accepted; the response reports no gender for it."""
+        line2 = "L898902C36UTO7408122X1204159ZE184226B<<<<<10"
+        data, is_valid = parse_mrz(VALID_MRZ_ICAO.split("\n")[0] + "\n" + line2)
+
+        assert is_valid is True
+        assert data.gender is None
+
+    def test_unsplittable_name_leaves_name_fields_empty(self):
+        """A name field with no primary identifier must not surface as the text "None"."""
+        line1 = "P<UTO" + "<" * 39
+        data, is_valid = parse_mrz(line1 + "\n" + VALID_MRZ_ICAO.split("\n")[1])
+
+        assert is_valid is False
+        assert data.last_name is None
+        assert data.first_name is None
+        assert data.full_name is None
+        assert data.document_number == "L898902C3"
+
+    def test_misaligned_lines_return_empty_data(self):
+        """Lines that are not 44 characters each are not a TD3 MRZ."""
+        line1, line2 = VALID_MRZ_ICAO.split("\n")
+        data, is_valid = parse_mrz(line1[:43] + "\n" + line2 + "<")
+
+        assert is_valid is False
+        assert data.document_number is None
 
 
 class TestMrzDateConversion:
@@ -206,24 +232,30 @@ class TestCountryCodeCorrection:
 
 
 class TestCountryNameLookup:
-    """Tests for mrz library country name lookup."""
+    """Tests for country name lookup of MRZ codes."""
 
     def test_dominican_republic_lookup(self):
         """Test that DOM returns Dominican Republic."""
-        name = get_country("DOM")
+        name = get_country_name("DOM")
         assert name == "Dominican Republic"
 
     def test_usa_lookup(self):
         """Test that USA returns correct name."""
-        name = get_country("USA")
-        assert name == "United States"
+        name = get_country_name("USA")
+        assert name == "United States of America"
+
+    def test_icao_only_codes_have_names(self):
+        """Codes that ISO 3166 lacks still resolve through the ICAO table."""
+        assert get_country_name("D") == "Germany"
+        assert get_country_name("UTO") == "Utopia"
+        assert get_country_name("XXA") == "Stateless"
 
     def test_invalid_code_returns_none(self):
         """Test that invalid codes return None."""
-        name = get_country("XYZ")
+        name = get_country_name("XYZ")
         assert name is None
 
-        name = get_country("D0M")  # With zero
+        name = get_country_name("D0M")  # With zero
         assert name is None
 
 

@@ -81,7 +81,7 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
-          python-version: "3.12"
+          python-version: "3.14"
       - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.cache/pre-commit
@@ -212,7 +212,7 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
-          python-version: "3.12"
+          python-version: "3.14"
       - run: pip install ruff
       - run: ruff check apps/ocr
       - run: ruff format --check apps/ocr
@@ -228,11 +228,11 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
-          python-version: "3.12"
+          python-version: "3.14"
       - name: Install dependencies and security tools
         run: |
           pip install pip-audit bandit
-          pip install -e apps/ocr
+          pip install -r apps/ocr/requirements.lock -e apps/ocr
       - name: Run pip-audit (dependency vulnerabilities)
         run: pip-audit
         continue-on-error: true

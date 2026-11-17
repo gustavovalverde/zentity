@@ -31,7 +31,7 @@ def _get_git_sha() -> str:
         )
         if result.returncode == 0:
             return result.stdout.strip()
-    except (subprocess.SubprocessError, FileNotFoundError, OSError):
+    except subprocess.SubprocessError, FileNotFoundError, OSError:
         pass
     return "unknown"
 

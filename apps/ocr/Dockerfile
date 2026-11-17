@@ -12,7 +12,7 @@ ARG APP_USER=ocr
 ARG APP_HOME=/app
 
 # --- Stage 1: Builder ---
-FROM python:3.12-slim@sha256:fa48eefe2146644c2308b909d6bb7651a768178f84fc9550dcd495e4d6d84d01 AS builder
+FROM python:3.14-slim@sha256:9aaa474097d094040649f2162a627c0049b408f52138d980916788d80f04802f AS builder
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 WORKDIR /build
 
@@ -34,7 +34,7 @@ RUN --mount=type=cache,id=s/c844c584-828c-402c-9dc4-ee20eb39d936-/root/.cache/pi
     pip wheel --no-cache-dir --wheel-dir /wheels -r requirements.lock
 
 # --- Stage 2: Runtime ---
-FROM python:3.12-slim@sha256:fa48eefe2146644c2308b909d6bb7651a768178f84fc9550dcd495e4d6d84d01 AS runtime
+FROM python:3.14-slim@sha256:9aaa474097d094040649f2162a627c0049b408f52138d980916788d80f04802f AS runtime
 
 ARG GIT_SHA
 ARG BUILD_TIME

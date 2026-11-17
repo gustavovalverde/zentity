@@ -4,7 +4,8 @@ Dynamic document validation using python-stdnum.
 Uses established libraries for document number validation:
 - python-stdnum: 200+ ID formats with proper checksums (dynamic discovery)
 - iso3166: Country code conversion
-- mrz: Passport MRZ validation (ICAO 9303)
+
+Passport MRZ check digits (ICAO 9303) are validated in mrz.py.
 
 Key features:
 - Dynamic validator discovery via stdnum.get_cc_module()
@@ -297,7 +298,7 @@ def validate_passport_number(number: str) -> list[str]:
     Validate passport document number.
 
     Note: Passport number formats vary by country. The MRZ checksum
-    (validated by the mrz library) is the authoritative validation.
+    (validated in services/mrz.py) is the authoritative validation.
     This function only performs basic sanity checks.
     """
     issues = []
