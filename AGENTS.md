@@ -101,8 +101,8 @@ pnpm test:e2e:ui     # Run E2E with Playwright UI
 
 **Hardhat (default):**
 
-- `pnpm test:e2e` starts its own dev server + Hardhat node via `e2e/automation/start-web3-dev.ts`.
-- Contracts repo path defaults to `../zama/zentity-fhevm-contracts` (override with `E2E_CONTRACTS_PATH`).
+- `pnpm test:e2e` starts its own dev server + Hardhat node via `e2e/automation/start-web3-dev.ts`, and deploys with the contracts repo's `deploy:local` script.
+- Contracts repo path defaults to `../zama/zentity-fhevm-contracts` (override with `E2E_CONTRACTS_PATH`). It must be on Hardhat 3 with `@fhevm/hardhat-plugin-v3`, whose node runs Zama's cleartext host contracts so local values can be decrypted.
 - Uses the seeded E2E database configured by the E2E runner.
 - `e2e/web3/metamask-hardhat.spec.ts` drives a real MetaMask extension through `@tenkeylabs/dappwright`, so the Hardhat project also needs the full Chromium build (`pnpm exec playwright install chromium` once) and downloads MetaMask from GitHub on the first run (set `GITHUB_TOKEN` to avoid the unauthenticated rate limit). dappwright keeps one wallet profile per worker index in the system temp directory, so do not run two Playwright runs on one machine at once.
 

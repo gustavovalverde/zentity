@@ -1,3 +1,10 @@
+import {
+  createClient,
+  custom,
+  encodeFunctionResult,
+  parseAbi,
+  zeroHash,
+} from "viem";
 import { describe, expect, it, vi } from "vitest";
 
 import {
@@ -7,6 +14,10 @@ import {
   resolveHardhatFhevmChain,
   SEPOLIA_CONFIDENTIAL_CHAIN_ID,
 } from "../client-networks";
+
+const eip712DomainAbi = parseAbi([
+  "function eip712Domain() view returns (bytes1 fields, string name, string version, uint256 chainId, address verifyingContract, bytes32 salt, uint256[] extensions)",
+]);
 
 describe("confidential client networks", () => {
   it("uses the configured local RPC URL for Hardhat cleartext mode", () => {
@@ -26,50 +37,79 @@ describe("confidential client networks", () => {
     expect(hardhat?.chain.network).toBe("http://127.0.0.1:9545");
   });
 
-  it("takes Hardhat FHEVM addresses from the node's plugin metadata", async () => {
+  it("takes the Hardhat gateway domain from the node's verifiers", async () => {
     const preset = getConfidentialClientNetwork(
       HARDHAT_CONFIDENTIAL_CHAIN_ID
     )?.chain;
     if (!preset) {
       throw new Error("Hardhat network missing");
     }
-    const request = vi.fn().mockResolvedValue({
-      ACLAddress: "0x50157CFfD6bBFA2DECe204a89ec419c23ef5755D",
-      CoprocessorAddress: "0xe3a9105a3a932253A70F126eb1E3b589C643dD24",
-      InputVerifierAddress: "0x36772142b74871f255CbD7A3e89B401d3e45825f",
-      KMSVerifierAddress: "0xbE0E383937d564D7FF0BC3b46c51f0bF8d5C311A",
-      chainId: 31_337,
-      gatewayChainId: 10_901,
-    });
+    const domains: Record<string, readonly [string, `0x${string}`]> = {
+      [preset.inputVerifierContractAddress.toLowerCase()]: [
+        "InputVerification",
+        "0x6189F6c0c3E40B4a3c72ec86262295D78d845297",
+      ],
+      [preset.kmsContractAddress.toLowerCase()]: [
+        "Decryption",
+        "0xEaaA2FC6BC259dF015Aa7Dc8e59e0B67df622721",
+      ],
+    };
+    const request = vi.fn(
+      ({ method, params }: { method: string; params?: unknown }) => {
+        const [call] = params as [{ to: string }];
+        const domain = domains[call.to.toLowerCase()];
+        if (method !== "eth_call" || !domain) {
+          throw new Error(`Unexpected ${method} to ${call.to}`);
+        }
+        const [name, verifyingContract] = domain;
+        return Promise.resolve(
+          encodeFunctionResult({
+            abi: eip712DomainAbi,
+            functionName: "eip712Domain",
+            result: [
+              "0x0f",
+              name,
+              "1",
+              100_733_346_448_153n,
+              verifyingContract,
+              zeroHash,
+              [],
+            ],
+          })
+        );
+      }
+    );
 
-    const chain = await resolveHardhatFhevmChain(preset, request);
+    const chain = await resolveHardhatFhevmChain(
+      preset,
+      createClient({ transport: custom({ request }) })
+    );
 
-    expect(request).toHaveBeenCalledWith({ method: "fhevm_relayer_metadata" });
-    expect(chain).toMatchObject({
-      aclContractAddress: "0x50157CFfD6bBFA2DECe204a89ec419c23ef5755D",
-      executorAddress: "0xe3a9105a3a932253A70F126eb1E3b589C643dD24",
-      gatewayChainId: 10_901,
-      inputVerifierContractAddress:
-        "0x36772142b74871f255CbD7A3e89B401d3e45825f",
-      kmsContractAddress: "0xbE0E383937d564D7FF0BC3b46c51f0bF8d5C311A",
-      network: preset.network,
+    expect(chain).toEqual({
+      ...preset,
+      gatewayChainId: 100_733_346_448_153,
+      verifyingContractAddressDecryption:
+        "0xEaaA2FC6BC259dF015Aa7Dc8e59e0B67df622721",
+      verifyingContractAddressInputVerification:
+        "0x6189F6c0c3E40B4a3c72ec86262295D78d845297",
     });
   });
 
-  it("explains how to recover when the node has no FHEVM plugin", async () => {
+  it("explains how to recover when the node has no FHEVM stack", async () => {
     const preset = getConfidentialClientNetwork(
       HARDHAT_CONFIDENTIAL_CHAIN_ID
     )?.chain;
     if (!preset) {
       throw new Error("Hardhat network missing");
     }
-    const request = vi
-      .fn()
-      .mockRejectedValue(new Error("Method fhevm_relayer_metadata not found"));
+    const request = vi.fn().mockResolvedValue("0x");
 
-    await expect(resolveHardhatFhevmChain(preset, request)).rejects.toThrow(
-      "Start it from the contracts repository"
-    );
+    await expect(
+      resolveHardhatFhevmChain(
+        preset,
+        createClient({ transport: custom({ request }) })
+      )
+    ).rejects.toThrow("Start it from the contracts repository");
   });
 
   it("routes Sepolia through the relayer proxy with the configured RPC", () => {
