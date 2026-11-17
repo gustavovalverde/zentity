@@ -2,7 +2,8 @@
 
 import { deflateSync } from "node:zlib";
 
-import { SDJwtInstance } from "@sd-jwt/core";
+import { SdJwtInstance } from "@sd-jwt/core";
+import { SdJwtVcInstance } from "@sd-jwt/sd-jwt-vc";
 import {
   CompactEncrypt,
   type CryptoKey,
@@ -70,7 +71,7 @@ function base64url(bytes: Uint8Array): string {
 }
 
 function issueCredential(vct = VCT): Promise<string> {
-  const issuer = new SDJwtInstance({
+  const issuer = new SdJwtVcInstance({
     hasher: sha256Hasher,
     hashAlg: "sha-256",
     saltGenerator: () => crypto.randomUUID(),
@@ -123,7 +124,7 @@ async function present(
   claimNames: string[],
   credential?: string
 ): Promise<string> {
-  const holder = new SDJwtInstance({
+  const holder = new SdJwtInstance({
     hasher: sha256Hasher,
     kbSignAlg: "EdDSA",
     kbSigner: async (data) =>

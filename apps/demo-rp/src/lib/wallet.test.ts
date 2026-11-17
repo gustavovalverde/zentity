@@ -1,4 +1,4 @@
-import { SDJwtInstance } from "@sd-jwt/core";
+import { SdJwtInstance } from "@sd-jwt/core";
 import { exportJWK, generateKeyPair } from "jose";
 import { beforeAll, describe, expect, it } from "vitest";
 
@@ -15,7 +15,7 @@ describe("VeriPass wallet", () => {
   beforeAll(async () => {
     const issuerKeys = await generateKeyPair("ES256");
     const holderKeys = await generateKeyPair("EdDSA", { extractable: true });
-    const issuer = new SDJwtInstance({
+    const issuer = new SdJwtInstance({
       hasher: sha256Hasher,
       hashAlg: "sha-256",
       saltGenerator: () => crypto.randomUUID(),

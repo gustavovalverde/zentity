@@ -1,4 +1,4 @@
-import type { Hasher, SDJwtInstance, SdJwtPayload } from "@sd-jwt/core";
+import type { Hasher, SdJwtInstance, SdJwtPayload } from "@sd-jwt/core";
 
 /**
  * Disclosure digest hasher for `_sd_alg: sha-256`, the algorithm Zentity
@@ -18,7 +18,7 @@ export const sha256Hasher: Hasher = async (data, alg) => {
  * claims the issuer always shows (`iss`, `vct`, `cnf`, `status`, and so on).
  */
 export async function readDisclosedClaims(
-  sdjwt: Pick<SDJwtInstance<SdJwtPayload>, "getClaims" | "presentableKeys">,
+  sdjwt: Pick<SdJwtInstance<SdJwtPayload>, "getClaims" | "presentableKeys">,
   encoded: string
 ): Promise<Record<string, unknown>> {
   const [claims, disclosedKeys] = await Promise.all([

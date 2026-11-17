@@ -50,7 +50,6 @@
     "@commitlint/config-conventional",
     "@noir-lang/acvm_js",
     "@noir-lang/noirc_abi",
-    "@vladmandic/human-models",
     "@synthetixio/synpress-cache",
     "@zentity/sdk",
     "buffer",

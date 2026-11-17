@@ -1,4 +1,4 @@
-import { SDJwtInstance } from "@sd-jwt/core";
+import { SdJwtInstance } from "@sd-jwt/core";
 
 import { readDisclosedClaims, sha256Hasher } from "@/lib/sd-jwt";
 
@@ -12,7 +12,7 @@ export interface StoredCredential {
   issuer: string;
 }
 
-const sdjwt = new SDJwtInstance({ hasher: sha256Hasher });
+const sdjwt = new SdJwtInstance({ hasher: sha256Hasher });
 
 export function saveCredential(stored: StoredCredential): void {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(stored));
