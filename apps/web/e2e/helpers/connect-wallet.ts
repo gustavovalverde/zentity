@@ -1,140 +1,22 @@
 import type { Page } from "@playwright/test";
-import type { MetaMask } from "@synthetixio/synpress/playwright";
+import type { Dappwright } from "@tenkeylabs/dappwright";
+
+import { expect } from "@playwright/test";
 
 // Top-level regex patterns for lint/performance/useTopLevelRegex compliance
-const SWITCH_NETWORK_BUTTON = /switch network/i;
-const NEXT_BUTTON = /next/i;
-const CONNECT_BUTTON = /connect/i;
 const METAMASK_BUTTON = /MetaMask/i;
 const BROWSER_WALLET_BUTTON = /Browser Wallet|Injected/i;
 
-interface BrowserEthereum {
-  request?: (args: { method: string }) => Promise<unknown>;
-}
-
-interface BrowserAppKit {
-  close?: () => void;
-  getAccount?: (namespace?: string) => { isConnected?: boolean } | undefined;
-  getActiveChainNamespace?: () => string;
-  open?: () => void;
-  setCaipAddress?: (
-    address: string,
-    namespace?: string,
-    sync?: boolean
-  ) => void;
-  setStatus?: (status: string, namespace?: string) => void;
-}
-
-type BrowserWindow = Window & {
-  ethereum?: BrowserEthereum;
-  __appkit?: BrowserAppKit;
+type EthereumWindow = Window & {
+  ethereum?: { request: (args: { method: string }) => Promise<unknown> };
 };
-
-interface ConnectWalletOptions {
-  accountName?: string;
-  chainId: number;
-  metamask: MetaMask;
-  page: Page;
-}
-
-function escapeRegExp(value: string) {
-  return value.replaceAll(/[.*+?^${}()|[\]\\]/g, String.raw`\$&`);
-}
-
-async function getNotificationPage(metamask: MetaMask, timeoutMs = 15_000) {
-  const extensionId = metamask.extensionId;
-  if (!extensionId) {
-    return null;
-  }
-  const notificationUrl = `chrome-extension://${extensionId}/notification.html`;
-  const existing = metamask.context
-    .pages()
-    .find((page) => page.url().includes(notificationUrl));
-  if (existing) {
-    return existing;
-  }
-  try {
-    return await metamask.context.waitForEvent("page", {
-      predicate: (page) => page.url().includes(notificationUrl),
-      timeout: timeoutMs,
-    });
-  } catch {
-    return null;
-  }
-}
-
-async function approveNetworkSwitch(metamask: MetaMask) {
-  const notification = await getNotificationPage(metamask, 5000);
-  if (!notification) {
-    return false;
-  }
-  const switchButton = notification.getByRole("button", {
-    name: SWITCH_NETWORK_BUTTON,
-  });
-  if (await switchButton.isVisible().catch(() => false)) {
-    await switchButton.click();
-    return true;
-  }
-  return false;
-}
-
-async function manualConnect(
-  metamask: MetaMask,
-  accountName?: string
-): Promise<boolean> {
-  const notification = await getNotificationPage(metamask);
-  if (!notification) {
-    return false;
-  }
-
-  await notification.bringToFront();
-  await notification
-    .waitForLoadState("domcontentloaded")
-    .catch(() => undefined);
-
-  if (accountName) {
-    const accountText = notification
-      .getByText(new RegExp(`^${escapeRegExp(accountName)}`, "i"))
-      .first();
-    if (await accountText.isVisible().catch(() => false)) {
-      const checkbox = accountText
-        .locator("xpath=ancestor-or-self::*[self::li or self::div][1]")
-        .locator("input[type=checkbox]")
-        .first();
-      if (await checkbox.isVisible().catch(() => false)) {
-        const isChecked = await checkbox.isChecked().catch(() => true);
-        if (!isChecked) {
-          await checkbox.check();
-        }
-      }
-    }
-  }
-
-  const nextButton = notification.getByRole("button", { name: NEXT_BUTTON });
-  if (await nextButton.isVisible().catch(() => false)) {
-    await nextButton.click();
-  }
-
-  const connectButton = notification.getByRole("button", {
-    name: CONNECT_BUTTON,
-  });
-  if (await connectButton.isVisible().catch(() => false)) {
-    await connectButton.click();
-    return true;
-  }
-
-  return false;
-}
 
 async function getAccounts(page: Page) {
   return await page.evaluate(async () => {
     try {
-      const appWindow = globalThis.window as BrowserWindow;
-      const ethereum = appWindow.ethereum;
-      if (!ethereum?.request) {
-        return [] as string[];
-      }
-      const result = await ethereum.request({ method: "eth_accounts" });
+      const result = await (
+        globalThis as unknown as EthereumWindow
+      ).ethereum?.request({ method: "eth_accounts" });
       return Array.isArray(result) ? (result as string[]) : [];
     } catch {
       return [] as string[];
@@ -142,160 +24,41 @@ async function getAccounts(page: Page) {
   });
 }
 
-async function ensureAppKitConnected(
-  page: Page,
-  chainId: number,
-  address?: string
-) {
-  if (!address) {
-    return;
-  }
-  const isConnected = await page
-    .evaluate(() => {
-      const appWindow = globalThis.window as BrowserWindow;
-      const appkit = appWindow.__appkit;
-      if (!appkit?.getAccount) {
-        return false;
-      }
-      const account = appkit.getAccount("eip155") ?? appkit.getAccount();
-      return Boolean(account?.isConnected);
-    })
-    .catch(() => false);
-
-  if (isConnected) {
-    return;
-  }
-
-  await page
-    .evaluate(
-      ({ addr, activeChainId }) => {
-        const appWindow = globalThis.window as BrowserWindow;
-        const appkit = appWindow.__appkit;
-        if (!(appkit?.setCaipAddress && appkit?.setStatus)) {
-          return false;
-        }
-        const namespace = appkit.getActiveChainNamespace?.() ?? "eip155";
-        const caipAddress = `eip155:${activeChainId}:${addr}`;
-        appkit.setCaipAddress(caipAddress, namespace, true);
-        appkit.setStatus("connected", namespace);
-        return true;
-      },
-      { addr: address, activeChainId: chainId }
-    )
-    .catch(() => undefined);
-}
-
+/**
+ * Opens the AppKit modal on a page that shows `<appkit-button>`, picks the
+ * MetaMask extension, and approves the connection request in MetaMask. Returns
+ * immediately when the page already has an authorized account.
+ */
 export async function connectWalletIfNeeded({
   page,
-  metamask,
-  accountName,
-  chainId,
-}: ConnectWalletOptions) {
+  wallet,
+}: {
+  page: Page;
+  wallet: Dappwright;
+}) {
   await page.bringToFront();
-  await page
-    .waitForFunction(
-      () => Boolean((globalThis.window as BrowserWindow).__appkit),
-      null,
-      {
-        timeout: 10_000,
-      }
-    )
-    .catch(() => undefined);
-
-  try {
-    await Promise.race([metamask.unlock(), page.waitForTimeout(5000)]);
-  } catch {
-    // Ignore if already unlocked.
-  }
-
-  const existingAccounts = await getAccounts(page);
-  if (existingAccounts.length > 0) {
-    await ensureAppKitConnected(page, chainId, existingAccounts[0]);
+  if ((await getAccounts(page)).length > 0) {
     return;
   }
 
-  // Open AppKit modal and choose MetaMask.
-  const hasAppKit = await page.evaluate(() =>
-    Boolean((globalThis.window as BrowserWindow).__appkit)
-  );
-  if (hasAppKit) {
-    await page.evaluate(() => {
-      const appWindow = globalThis.window as BrowserWindow;
-      appWindow.__appkit?.open?.();
-    });
-  } else {
-    await page.locator("appkit-button").first().click();
-  }
-
+  await page.locator("appkit-button").first().click();
   const metaMaskOption = page.getByRole("button", { name: METAMASK_BUTTON });
   const injectedOption = page.getByRole("button", {
     name: BROWSER_WALLET_BUTTON,
   });
-  await Promise.race([
-    metaMaskOption.waitFor({ state: "visible", timeout: 15_000 }),
-    injectedOption.waitFor({ state: "visible", timeout: 15_000 }),
-    page.waitForTimeout(15_000),
-  ]);
-  if (await metaMaskOption.isVisible().catch(() => false)) {
-    await metaMaskOption.click();
-  } else if (await injectedOption.isVisible().catch(() => false)) {
-    await injectedOption.click();
-  } else {
-    // Modal may not show options (already connected or auto-injected).
-    await page
-      .evaluate(() => {
-        const appWindow = globalThis.window as BrowserWindow;
-        appWindow.__appkit?.close?.();
-      })
-      .catch(() => undefined);
-  }
+  await metaMaskOption.or(injectedOption).first().click({ timeout: 15_000 });
 
-  // Handle MetaMask switch network requests if they appear.
-  await approveNetworkSwitch(metamask);
+  await wallet.approve();
 
-  // Try synpress MetaMask helper, fall back to manual popup.
-  let connected = false;
-  try {
-    if (accountName) {
-      await metamask.connectToDapp([accountName]);
-    } else {
-      await metamask.connectToDapp();
-    }
-    connected = true;
-  } catch {
-    connected = await manualConnect(metamask, accountName);
-  }
-
-  if (!connected) {
-    throw new Error("MetaMask connect flow did not complete");
-  }
-
-  // Wait for injected accounts.
-  let accounts: string[] = [];
-  for (let attempt = 0; attempt < 20; attempt += 1) {
-    accounts = await getAccounts(page);
-    if (accounts.length > 0) {
-      break;
-    }
-    await page.waitForTimeout(1000);
-  }
-  if (accounts.length === 0) {
-    throw new Error("Wallet connection did not produce accounts");
-  }
-
-  await ensureAppKitConnected(page, chainId, accounts[0]);
-  await page
-    .evaluate(() => {
-      const appWindow = globalThis.window as BrowserWindow;
-      return appWindow.__appkit?.close?.();
+  await expect
+    .poll(() => getAccounts(page), {
+      message: "Wallet connection did not produce accounts",
+      timeout: 20_000,
     })
+    .not.toHaveLength(0);
+  await page
+    .locator("w3m-modal")
+    .first()
+    .waitFor({ state: "hidden", timeout: 10_000 })
     .catch(() => undefined);
-  const appkitModal = page.locator("w3m-modal");
-  if ((await appkitModal.count()) > 0) {
-    await appkitModal
-      .first()
-      .waitFor({ state: "hidden", timeout: 10_000 })
-      .catch(() => undefined);
-  }
-  await page.waitForTimeout(1000);
 }

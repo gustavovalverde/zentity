@@ -6,7 +6,6 @@
     "vitest.integration.setup.mts",
     "e2e/run-global-setup.ts",
     "e2e/automation/*.ts",
-    "e2e/wallet-setup/*.ts",
     "scripts/*.ts",
     "src/lib/auth/oidc/mcp-client.ts!"
   ],
@@ -50,7 +49,6 @@
     "@commitlint/config-conventional",
     "@noir-lang/acvm_js",
     "@noir-lang/noirc_abi",
-    "@synthetixio/synpress-cache",
     "@zentity/sdk",
     "buffer",
     "node-tfhe",

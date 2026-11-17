@@ -17,9 +17,6 @@
 /e2e/.auth
 /e2e/.data
 
-# synpress wallet setup cache (generated from e2e/wallet-setup/*.ts)
-/.synpress-wallet-setup-dist/
-
 # next.js
 /.next/
 /out/

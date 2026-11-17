@@ -145,17 +145,7 @@ NODE_OPTIONS=--inspect=0.0.0.0 pnpm run dev
 
 ## Testing
 
-### E2E (Playwright + Synpress + MetaMask)
-
-This repo uses Synpress to drive a real MetaMask extension during Playwright
-tests (no mock wallet). The wallet cache lives in `.cache-synpress/` and is
-generated from `e2e/wallet-setup/hardhat.setup.ts`.
-
-First-time setup (or after changing wallet setup):
-
-```bash
-pnpm exec synpress e2e/wallet-setup
-```
+### E2E (Playwright)
 
 Run the full E2E suite:
 
@@ -163,27 +153,34 @@ Run the full E2E suite:
 pnpm run test:e2e
 ```
 
-Defaults (can be overridden via env):
+The `web3-hardhat` project (`E2E_RUN_WEB3=true`) starts a local Hardhat node on
+port `8545` from the contracts repository (`E2E_CONTRACTS_PATH`, default
+`../zama/zentity-fhevm-contracts`). The Hardhat FHEVM plugin requires port
+`8545` for its `localhost` network. `hardhat-workflow.spec.ts` signs and sends
+transactions through an injected Hardhat test wallet, so it needs no browser
+extension.
 
-- `SYNPRESS_SEED_PHRASE` defaults to Hardhat's public mnemonic.
-- `SYNPRESS_WALLET_PASSWORD` defaults to `Password123!`.
-- `SYNPRESS_NETWORK_RPC_URL` defaults to `http://127.0.0.1:8545`.
-- `SYNPRESS_NETWORK_CHAIN_ID` defaults to `31337`.
-- `SYNPRESS_NETWORK_NAME` defaults to `Hardhat Local`.
-- `SYNPRESS_NETWORK_SYMBOL` defaults to `ETH`.
+`metamask-hardhat.spec.ts` in the same project connects, signs, and sends a
+transaction through the real MetaMask extension against that node. The
+`web3-sepolia` project uses the same extension setup. Both drive MetaMask with
+[dappwright](https://github.com/TenKeyLabs/dappwright). The first run
+downloads MetaMask into the system temp directory, and each Playwright worker
+starts with a fresh wallet that imports a seed phrase. Defaults, which you can
+override with environment variables:
+
+- `E2E_WALLET_SEED_PHRASE` defaults to Hardhat's public mnemonic. Use a seed
+  phrase whose account holds SepoliaETH for the Sepolia run.
+- `E2E_WALLET_PASSWORD` defaults to `Tester@1234`.
+- `E2E_SEPOLIA_ACCOUNT_NAME` selects a MetaMask account by name before
+  connecting. When unset, the first account is used.
+
+MetaMask needs a full Chromium build, so dappwright launches it with
+`--headless=new`. Playwright's headless shell has no extension support, and
+the Sepolia project needs `pnpm exec playwright install chromium` once.
 
 If you run E2E against an existing dev server, set
 `NEXT_PUBLIC_COOP=same-origin-allow-popups` so popup-based wallet SDKs can
 communicate without COOP blocking them.
-
-The setup step spins up a local Hardhat node temporarily so MetaMask can add
-the network during wallet cache creation.
-
-To rebuild the wallet cache after edits to the setup file or env overrides:
-
-```bash
-pnpm exec synpress ./e2e/wallet-setup --force
-```
 
 ## Project Structure
 

@@ -108,8 +108,6 @@
       "!!public",
       "!!noir-circuits",
       "!!.next",
-      "!!.cache-synpress",
-      "!!.synpress-wallet-setup-dist",
       "!!.data",
       "!!playwright-report",
       "!!test-results",
