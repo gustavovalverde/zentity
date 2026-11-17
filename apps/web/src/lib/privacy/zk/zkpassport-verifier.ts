@@ -157,7 +157,10 @@ interface ProofCoverage {
 // ---------------------------------------------------------------------------
 
 const DEFAULT_VALIDITY_SECONDS = 604_800; // 7 days
+// The prover chooses current_date; allow one day of clock and timezone skew
+const CURRENT_DATE_FUTURE_TOLERANCE_MS = 24 * 60 * 60 * 1000;
 const DEFAULT_TIMEOUT_MS = 60_000;
+const VERIFICATION_TIMEOUT_MESSAGE = "ZKPassport verification timed out";
 const DEFAULT_ZERO_DATE = new Date(0);
 const FACEMATCH_ALLOWED_APP_IDS = new Set([
   "0x1fa73686cf510f8f85757b0602de0dd72a13e68ae2092462be8b72662e7f179b",
@@ -293,9 +296,14 @@ function getBb6Verifier(): Promise<ProofVerifier> {
  * Barretenberg instance would hold hundreds of megabytes for a rare path.
  */
 function withLegacyVerifier<T>(
+  signal: AbortSignal,
   verify: (verifier: ProofVerifier) => Promise<T>
 ): Promise<T> {
   const run = legacyVerification.then(async () => {
+    // A set that timed out while queued must not load bb.js 5 and the CRS
+    if (signal.aborted) {
+      throw new Error(VERIFICATION_TIMEOUT_MESSAGE);
+    }
     const barretenberg = await BarretenbergV5.new({
       crsPath: env.BB_CRS_PATH,
       backend: BackendTypeV5.Wasm,
@@ -313,11 +321,12 @@ function withLegacyVerifier<T>(
 
 function withVerifierBackend<T>(
   generation: BarretenbergGeneration,
+  signal: AbortSignal,
   verify: (verifier: ProofVerifier) => Promise<T>
 ): Promise<T> {
   return generation === "v6"
     ? getBb6Verifier().then(verify)
-    : withLegacyVerifier(verify);
+    : withLegacyVerifier(signal, verify);
 }
 
 // ---------------------------------------------------------------------------
@@ -479,6 +488,39 @@ function addError(
 function todayMidnight(): Date {
   const now = new Date();
   return new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
+}
+
+function checkProofDate(
+  errors: Record<string, unknown>,
+  category: string,
+  proofDate: Date,
+  validitySec: number,
+  tooOldMessage: string
+): boolean {
+  const diffMs = todayMidnight().getTime() - proofDate.getTime();
+  if (diffMs >= validitySec * 1000) {
+    addError(
+      errors,
+      category,
+      "date",
+      `Validity: ${validitySec}s`,
+      `Difference: ${Math.round(diffMs / 1000)}s`,
+      tooOldMessage
+    );
+    return false;
+  }
+  if (-diffMs > CURRENT_DATE_FUTURE_TOLERANCE_MS) {
+    addError(
+      errors,
+      category,
+      "date",
+      `Validity: ${validitySec}s`,
+      `Difference: ${Math.round(diffMs / 1000)}s`,
+      "Proof date is in the future"
+    );
+    return false;
+  }
+  return true;
 }
 
 function addStructuredError(
@@ -1849,7 +1891,6 @@ async function checkPublicInputs(
   scope?: string
 ): Promise<PublicInputResult> {
   const sorted = sortProofs(proofs);
-  const today = todayMidnight();
   const errors: Record<string, unknown> = {};
   let isCorrect = true;
   let prevCommitment: bigint | undefined;
@@ -1955,19 +1996,16 @@ async function checkPublicInputs(
       }
 
       // Date / validity
-      const proofDate = getCurrentDateFromOuterProof(proofData);
-      const diffMs = today.getTime() - proofDate.getTime();
-      const validityMs = (validity ?? DEFAULT_VALIDITY_SECONDS) * 1000;
-      if (diffMs >= validityMs) {
-        isCorrect = false;
-        addError(
+      if (
+        !checkProofDate(
           errors,
           "outer",
-          "date",
-          `Validity: ${validity ?? DEFAULT_VALIDITY_SECONDS}s`,
-          `Difference: ${Math.round(diffMs / 1000)}s`,
+          getCurrentDateFromOuterProof(proofData),
+          validity ?? DEFAULT_VALIDITY_SECONDS,
           "Proof date is older than the validity period"
-        );
+        )
+      ) {
+        isCorrect = false;
       }
 
       // Parameter commitment count
@@ -2518,20 +2556,16 @@ async function verifyDisclosureProof(
   }
 
   // Date check on disclosure proofs
-  const disclosureDate = getCurrentDateFromDisclosureProof(proofData);
-  const today = todayMidnight();
-  const diffMs = today.getTime() - disclosureDate.getTime();
-  const validityMs = validitySec * 1000;
-  if (diffMs >= validityMs) {
-    isCorrect = false;
-    addError(
+  if (
+    !checkProofDate(
       errors,
       name,
-      "date",
-      `Validity: ${validitySec}s`,
-      `Difference: ${Math.round(diffMs / 1000)}s`,
+      getCurrentDateFromDisclosureProof(proofData),
+      validitySec,
       `Disclosure proof date too old for ${name}`
-    );
+    )
+  ) {
+    isCorrect = false;
   }
 
   return isCorrect;
@@ -2754,10 +2788,11 @@ async function verifyProofsCryptographic(params: {
   const manifest = await getCachedManifest(circuitVersion, chainId);
   return withVerifierBackend(
     getBarretenbergGeneration(circuitVersion),
+    signal,
     async (backend) => {
       for (const proof of proofs) {
         if (signal.aborted) {
-          throw new Error("ZKPassport verification timed out");
+          throw new Error(VERIFICATION_TIMEOUT_MESSAGE);
         }
         const proofValid = await verifyProofCryptographic(
           proof,

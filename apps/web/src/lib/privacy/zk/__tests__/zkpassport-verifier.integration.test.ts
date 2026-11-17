@@ -79,6 +79,22 @@ describe("ZKPassport verifier with a real outer proof", () => {
   );
 
   it(
+    "rejects the proof when its date is more than a day ahead of the verifier",
+    async () => {
+      vi.setSystemTime((fixture.nowTimestamp - 3 * 24 * 60 * 60) * 1000);
+
+      const result = await verify(fixture.proof as ProofResult);
+
+      expect(result.verified).toBe(false);
+      expect(result.queryResultErrors).toHaveProperty(
+        "outer.date.message",
+        "Proof date is in the future"
+      );
+    },
+    BB_TIMEOUT_MS
+  );
+
+  it(
     "does not verify the same proof under Barretenberg 5",
     async () => {
       // Claiming an older release routes the proof to the bb 5 verifier,

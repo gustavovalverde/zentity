@@ -299,6 +299,8 @@ const IOS_FACEMATCH: FacematchInputs = {
 };
 
 interface ProofSetOptions {
+  /** The current_date (unix seconds) the disclosure proofs state */
+  currentDate?: number;
   extraProofs?: ProofResult[];
   facematch?: FacematchInputs;
   /** The method the integrity proof states (circuits 0.23.0 and later) */
@@ -332,7 +334,7 @@ async function buildChipProofSet(options: ProofSetOptions): Promise<{
   const { version } = options;
   const facematch = options.facematch ?? IOS_FACEMATCH;
   const withMethod = supportsVerificationMethod(version);
-  const now = Math.floor(Date.now() / 1000);
+  const now = options.currentDate ?? Math.floor(Date.now() / 1000);
   const scopeHash = getServiceScopeHash(DOMAIN);
   const subscopeHash = getServiceSubscopeHash(SCOPE);
 
@@ -567,6 +569,22 @@ describe("zkpassport-verifier proof sets", () => {
     expect(result.queryResultErrors).toHaveProperty("proofs.circuit_root");
     expect(mockRegistryClient.isCircuitRootValid).toHaveBeenCalledWith("1");
     expect(mockBarretenbergV5New).not.toHaveBeenCalled();
+  });
+
+  it("rejects disclosure proofs dated more than a day in the future", async () => {
+    const twoDays = 2 * 24 * 60 * 60;
+    const { proofs, queryResult } = await buildChipProofSet({
+      currentDate: Math.floor(Date.now() / 1000) + twoDays,
+      version: "0.23.0",
+    });
+
+    const result = await verifyProofSet(proofs, queryResult);
+
+    expect(result.verified).toBe(false);
+    expect(result.queryResultErrors).toHaveProperty(
+      "compare_age.date.message",
+      "Proof date is in the future"
+    );
   });
 
   it("rejects a salted nullifier, whose OPRF key the prover chooses", async () => {
