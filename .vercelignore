@@ -8,6 +8,8 @@
 /apps/mcp/*
 # The landing build generates its MCP tool manifest from these sources.
 !/apps/mcp/src
+# pnpm 12 fails a frozen install when a lockfile importer has no package.json.
+!/apps/mcp/package.json
 
 # demo-rp depends on @better-auth tarballs in apps/web/vendor/ and on
 # @zentity/sdk in packages/sdk/, so apps/web and packages/ must remain
