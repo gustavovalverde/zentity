@@ -18,7 +18,7 @@ export const MCP_TOOL_MANIFEST = [
   {
     name: "purchase",
     description:
-      "Authorize and execute a purchase on behalf of the user. This tool owns the browser approval flow and returns fulfillment data after approval.",
+      "Buy something on behalf of the user, who approves in the browser with a passkey. Without url: a purchase from a named merchant; pass merchant, item, amount, and currency, and the tool returns the user's shipping details once after approval. With url: an x402 resource that needs a Zentity Proof-of-Human. The user approves proving their identity to that merchant; the agent's own wallet pays the merchant's price, up to maxAmount. This needs a payment scheme client, so it answers payment_not_configured until one is configured. Statuses: approved, needs_user_action, denied, expired, payment_not_configured, merchant_mismatch, untrusted_issuer, unsupported_resource, payment_bounds_exceeded, identity_strength_bound_exceeded, approval_mismatch, payment_failed. An x402 purchase is approved only when the merchant accepts the payment after the user's approval; payment_failed means the user approved but the merchant refused the payment (see x402.status and x402.response), and unsupported_resource with an x402 field means the merchant answered without asking for a Proof-of-Human.",
   },
   {
     name: "whoami",
