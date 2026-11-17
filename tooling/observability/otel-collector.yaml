@@ -27,9 +27,9 @@ processors:
     send_batch_size: 1024
 
 exporters:
-  otlphttp/tempo:
+  otlp_http/tempo:
     endpoint: http://tempo:4318
-  otlphttp/mimir:
+  otlp_http/mimir:
     endpoint: http://mimir:8080/otlp
 
 service:
@@ -37,8 +37,8 @@ service:
     traces:
       receivers: [otlp]
       processors: [filter/health, batch]
-      exporters: [otlphttp/tempo]
+      exporters: [otlp_http/tempo]
     metrics:
       receivers: [otlp]
       processors: [filter/metrics, batch]
-      exporters: [otlphttp/mimir]
+      exporters: [otlp_http/mimir]
