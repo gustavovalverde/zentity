@@ -21,14 +21,12 @@
 /apps/web/noir-circuits
 /apps/web/playwright.config.mts
 /apps/web/biome.json
-/apps/web/.cache-synpress
 /apps/web/.next
 /apps/web/.next-prod
 /apps/web/.data
 /apps/web/coverage
 /apps/web/playwright-report
 /apps/web/test-results
-/apps/web/.synpress-wallet-setup-dist
 /apps/web/.claude
 /apps/web/.cursor
 /apps/web/Dockerfile

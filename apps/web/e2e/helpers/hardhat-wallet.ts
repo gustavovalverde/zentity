@@ -187,7 +187,6 @@ export async function installHardhatWallet(
     options.rpcUrl ??
     process.env.NEXT_PUBLIC_LOCAL_RPC_URL ??
     process.env.LOCAL_RPC_URL ??
-    process.env.SYNPRESS_NETWORK_RPC_URL ??
     DEFAULT_HARDHAT_RPC_URL;
   const privateKey = asHexPrivateKey(
     options.privateKey ??

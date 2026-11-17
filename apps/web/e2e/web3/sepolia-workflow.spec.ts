@@ -1,15 +1,15 @@
-import type { Page } from "@playwright/test";
+import type { Dappwright } from "@tenkeylabs/dappwright";
 
-import fs from "node:fs";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { expect } from "@playwright/test";
 
-import { expect, test } from "../fixtures/synpress";
+import { appUrl, test } from "../fixtures/metamask";
 import { connectWalletIfNeeded } from "../helpers/connect-wallet";
-import { confirmSignature, confirmTransaction } from "../helpers/metamask";
+import {
+  approveAttestationPrompts,
+  confirmTransactionIfPrompted,
+} from "../helpers/wallet-popup";
 
 // Top-level regex patterns for lint/performance/useTopLevelRegex compliance
-const WELCOME_OR_SIGN_IN_PATTERN = /welcome back|sign in/i;
 const DASHBOARD_URL_PATTERN = /dashboard/;
 const ATTESTATION_URL_PATTERN = /dashboard\/attestation/;
 const WELCOME_HEADING_PATTERN = /welcome/i;
@@ -31,6 +31,9 @@ const TRANSFER_BUTTON_PATTERN = /^Transfer$/;
 const TRANSFER_SUCCESS_TEXT = /Transfer submitted!/i;
 const TRANSFER_REVERTED_TEXT = /transfer.*reverted/i;
 
+const RPC_UNREACHABLE_PATTERN = /could not get an answer/i;
+const SEPOLIA_CHAIN_ID = 11_155_111;
+
 const sepoliaRpcUrl =
   process.env.E2E_SEPOLIA_RPC_URL ??
   process.env.NEXT_PUBLIC_CONFIDENTIAL_CHAIN_RPC_URL ??
@@ -40,7 +43,7 @@ const sepoliaChainId = Number(
   process.env.E2E_SEPOLIA_CHAIN_ID ??
     process.env.NEXT_PUBLIC_CONFIDENTIAL_CHAIN_ID ??
     process.env.CONFIDENTIAL_CHAIN_ID ??
-    11_155_111
+    SEPOLIA_CHAIN_ID
 );
 const sepoliaNetworkName =
   process.env.E2E_SEPOLIA_NETWORK_NAME ??
@@ -48,7 +51,6 @@ const sepoliaNetworkName =
   process.env.NEXT_PUBLIC_CONFIDENTIAL_CHAIN_NETWORK_NAME ??
   "Zama Confidential Sepolia";
 const sepoliaSymbol = process.env.E2E_SEPOLIA_SYMBOL ?? "SepoliaETH";
-const sepoliaExplorer = process.env.E2E_SEPOLIA_EXPLORER_URL ?? "";
 
 const senderAddress =
   process.env.E2E_SEPOLIA_SENDER_ADDRESS ??
@@ -58,18 +60,16 @@ const recipientAddress =
   process.env.E2E_SEPOLIA_RECIPIENT_ADDRESS ??
   process.env.E2E_RECIPIENT_ADDRESS ??
   "";
+// MetaMask starts on "Account 1" of the seed phrase. Set a name to switch to
+// another account before connecting.
 const senderAccountName =
-  process.env.E2E_SEPOLIA_ACCOUNT_NAME ??
-  process.env.E2E_ACCOUNT_NAME ??
-  process.env.SYNPRESS_ACCOUNT_NAME ??
-  "Account 2";
+  process.env.E2E_SEPOLIA_ACCOUNT_NAME ?? process.env.E2E_ACCOUNT_NAME ?? "";
 
 const sepoliaNetwork = {
-  name: sepoliaNetworkName,
-  rpcUrl: sepoliaRpcUrl,
+  networkName: sepoliaNetworkName,
+  rpc: sepoliaRpcUrl,
   chainId: sepoliaChainId,
   symbol: sepoliaSymbol,
-  ...(sepoliaExplorer ? { blockExplorerUrl: sepoliaExplorer } : {}),
 };
 
 const sepoliaEnabled =
@@ -81,35 +81,30 @@ const sepoliaEnabled =
   Boolean(process.env.CONFIDENTIAL_CHAIN_COMPLIANT_ERC20);
 const runFullFlow = process.env.E2E_SEPOLIA_FULL === "true";
 
-function readAuthSeed() {
-  try {
-    const currentDir = path.dirname(fileURLToPath(import.meta.url));
-    const seedPath = path.join(currentDir, ".auth", "seed.json");
-    const payload = fs.readFileSync(seedPath, "utf8");
-    return JSON.parse(payload) as { email: string; password: string };
-  } catch {
-    return null;
-  }
-}
-
-async function ensureSignedIn(page: Page) {
-  const signInHeading = page
-    .locator(`text=${WELCOME_OR_SIGN_IN_PATTERN.source}`)
-    .first();
-  if (!(await signInHeading.isVisible().catch(() => false))) {
+// MetaMask ships Sepolia (chain 11155111) as a built-in network, so a custom
+// RPC for that chain edits the built-in entry instead of adding a second one.
+async function selectSepolia(wallet: Dappwright) {
+  if (await wallet.hasNetwork(sepoliaNetwork.networkName)) {
+    await wallet.switchNetwork(sepoliaNetwork.networkName);
     return;
   }
-
-  console.log("[e2e] ensureSignedIn: signing in with seed user");
-  const seed = readAuthSeed();
-  if (!seed) {
-    throw new Error("Missing auth seed for E2E sign-in fallback.");
+  try {
+    await wallet.addNetwork(sepoliaNetwork);
+  } catch (error) {
+    // Only the duplicate built-in chain falls back; an unreachable RPC is a
+    // configuration error to surface.
+    if (
+      sepoliaNetwork.chainId !== SEPOLIA_CHAIN_ID ||
+      (error instanceof Error && RPC_UNREACHABLE_PATTERN.test(error.message))
+    ) {
+      throw error;
+    }
+    await wallet.updateNetworkRpc({
+      chainId: sepoliaNetwork.chainId,
+      rpc: sepoliaNetwork.rpc,
+    });
+    await wallet.switchNetwork("Sepolia");
   }
-
-  await page.locator('input[type="email"]').fill(seed.email);
-  await page.locator('input[type="password"]').fill(seed.password);
-  await page.locator('button[type="submit"]').click();
-  await page.waitForURL(DASHBOARD_URL_PATTERN, { timeout: 30_000 });
 }
 
 test.describe("Web3 workflow (Sepolia)", () => {
@@ -120,33 +115,23 @@ test.describe("Web3 workflow (Sepolia)", () => {
   );
 
   test("attest, decrypt, grant compliance (and optionally mint + transfer)", async ({
+    context,
     page,
-    metamask,
+    wallet,
   }) => {
     test.setTimeout(300_000);
 
-    if (!sepoliaNetwork.rpcUrl) {
+    if (!sepoliaNetwork.rpc) {
       test.skip(true, "Sepolia RPC URL is missing for MetaMask setup.");
     }
 
-    await metamask.page.bringToFront();
-    try {
-      await metamask.addNetwork(sepoliaNetwork);
-    } catch {
-      // Network may already exist (MetaMask ships with Sepolia when testnets are enabled).
-    }
-    try {
-      await metamask.switchNetwork(sepoliaNetwork.name, true);
-    } catch {
-      // Fall back to the default Sepolia network if the custom name isn't available.
-      await metamask.switchNetwork("Sepolia", true);
+    await selectSepolia(wallet);
+    if (senderAccountName) {
+      await wallet.switchAccount(senderAccountName);
     }
 
     console.log("[e2e] navigated to dashboard");
-    await page.goto("/dashboard");
-    if (page.url().includes("/sign-in")) {
-      await ensureSignedIn(page);
-    }
+    await page.goto(appUrl("/dashboard"));
     await expect(page).toHaveURL(DASHBOARD_URL_PATTERN);
     await expect(
       page.getByRole("heading", { name: WELCOME_HEADING_PATTERN })
@@ -154,20 +139,16 @@ test.describe("Web3 workflow (Sepolia)", () => {
       timeout: 60_000,
     });
 
-    console.log("[e2e] attempting wallet connection");
-    await connectWalletIfNeeded({
-      page,
-      metamask,
-      accountName: senderAccountName,
-      chainId: sepoliaChainId,
-    });
-
-    await page.goto("/dashboard/attestation");
+    await page.goto(appUrl("/dashboard/attestation"));
     await expect(page).toHaveURL(ATTESTATION_URL_PATTERN);
     const attestationTitle = page.getByRole("heading", {
       name: ON_CHAIN_ATTESTATION_HEADING,
     });
     await expect(attestationTitle).toBeVisible({ timeout: 60_000 });
+
+    // The AppKit connect button lives on the attestation page, not the dashboard.
+    console.log("[e2e] attempting wallet connection");
+    await connectWalletIfNeeded({ page, wallet });
     const lockedText = page.getByText(COMPLETE_VERIFICATION_TEXT, {
       exact: false,
     });
@@ -207,16 +188,10 @@ test.describe("Web3 workflow (Sepolia)", () => {
 
     if (await registerButton.isVisible()) {
       await registerButton.click();
-      await confirmTransaction(metamask, {
-        allowMissing: true,
-        timeoutMs: 4000,
-      });
+      await approveAttestationPrompts(wallet);
     } else if (await updateAttestationButton.isVisible()) {
       await updateAttestationButton.click();
-      await confirmTransaction(metamask, {
-        allowMissing: true,
-        timeoutMs: 4000,
-      });
+      await approveAttestationPrompts(wallet);
     }
 
     await expect(attestedText.or(pendingText)).toBeVisible({
@@ -250,7 +225,7 @@ test.describe("Web3 workflow (Sepolia)", () => {
     await expect(decryptButton).toBeVisible();
     await expect(decryptButton).toBeEnabled({ timeout: 60_000 });
     await decryptButton.click();
-    await confirmSignature(metamask).catch(() => undefined);
+    await wallet.sign();
 
     await expect(page.getByText("1990")).toBeVisible({ timeout: 60_000 });
     await expect(page.getByText("Level 3")).toBeVisible();
@@ -270,7 +245,7 @@ test.describe("Web3 workflow (Sepolia)", () => {
         );
       }
       await Promise.all([
-        confirmTransaction(metamask, { allowMissing: true, timeoutMs: 5000 }),
+        confirmTransactionIfPrompted(wallet, context, 10_000),
         grantButton.click(),
       ]);
     }
@@ -281,7 +256,7 @@ test.describe("Web3 workflow (Sepolia)", () => {
       return;
     }
 
-    await page.goto("/dashboard/defi-demo");
+    await page.goto(appUrl("/dashboard/defi-demo"));
     await expect(
       page.getByRole("heading", { name: "DeFi Compliance Demo" })
     ).toBeVisible();
@@ -339,7 +314,7 @@ test.describe("Web3 workflow (Sepolia)", () => {
       name: TRANSFER_BUTTON_PATTERN,
     });
     await expect(transferButton).toBeEnabled({ timeout: 60_000 });
-    await Promise.all([confirmTransaction(metamask), transferButton.click()]);
+    await Promise.all([wallet.confirmTransaction(), transferButton.click()]);
 
     const transferSuccess = page.getByText(TRANSFER_SUCCESS_TEXT, {
       exact: false,

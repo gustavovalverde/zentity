@@ -31,7 +31,6 @@ cd "$REPO_ROOT"
 
 rsync -a \
   --exclude='node_modules' --exclude='.next' --exclude='.next-prod' \
-  --exclude='.cache-synpress' --exclude='.synpress-wallet-setup-dist' \
   --exclude='.data' --exclude='coverage' --exclude='playwright-report' \
   --exclude='test-results' --exclude='e2e' --exclude='.claude' \
   --exclude='.cursor' --exclude='*.tsbuildinfo' --exclude='dist' \

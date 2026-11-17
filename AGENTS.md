@@ -101,9 +101,10 @@ pnpm test:e2e:ui     # Run E2E with Playwright UI
 
 **Hardhat (default):**
 
-- `pnpm test:e2e` starts its own dev server + Hardhat node via `e2e/automation/start-web3-dev.js`.
+- `pnpm test:e2e` starts its own dev server + Hardhat node via `e2e/automation/start-web3-dev.ts`.
 - Contracts repo path defaults to `../zama/zentity-fhevm-contracts` (override with `E2E_CONTRACTS_PATH`).
 - Uses the seeded E2E database configured by the E2E runner.
+- `e2e/web3/metamask-hardhat.spec.ts` drives a real MetaMask extension through `@tenkeylabs/dappwright`, so the Hardhat project also needs the full Chromium build (`pnpm exec playwright install chromium` once) and downloads MetaMask from GitHub on the first run (set `GITHUB_TOKEN` to avoid the unauthenticated rate limit). dappwright keeps one wallet profile per worker index in the system temp directory, so do not run two Playwright runs on one machine at once.
 
 **Existing dev server:**
 
@@ -114,7 +115,8 @@ pnpm test:e2e:ui     # Run E2E with Playwright UI
 
 - Start server with `NEXT_PUBLIC_ENABLE_CONFIDENTIAL_CHAIN=true` and `NEXT_PUBLIC_ENABLE_HARDHAT=false`.
 - Required envs: `E2E_SEPOLIA=true`, `E2E_SEPOLIA_RPC_URL`, and `CONFIDENTIAL_CHAIN_*` contract addresses + registrar key.
-- Run: `E2E_EXTERNAL_WEB_SERVER=true E2E_SEPOLIA=true pnpm exec playwright test e2e/web3-sepolia.spec.ts`
+- Run: `E2E_EXTERNAL_WEB_SERVER=true E2E_SEPOLIA=true pnpm exec playwright test --config playwright.config.mts --project=web3-sepolia` from `apps/web`.
+- The spec drives a real MetaMask extension through `@tenkeylabs/dappwright` (headless Chromium via `--headless=new` unless Playwright runs headed; run `pnpm exec playwright install chromium` once). Each worker imports `E2E_WALLET_SEED_PHRASE` (default: Hardhat's public mnemonic, so set a funded seed) into a fresh wallet, and `E2E_SEPOLIA_ACCOUNT_NAME` optionally selects an account by name.
 - Sepolia E2E **skips** if envs are missing or the MetaMask account has no SepoliaETH (grant compliance access is disabled).
 
 **Logs:**

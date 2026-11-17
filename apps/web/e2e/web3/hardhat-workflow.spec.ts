@@ -3,7 +3,8 @@
  *
  * Uses an injected Hardhat test wallet instead of a browser extension so the
  * default local workflow proves deployment, AppKit/wagmi wiring, signing, and
- * transactions without Synpress cache state.
+ * transactions without downloading MetaMask. The Sepolia workflow drives the
+ * real extension through dappwright.
  *
  * To run locally:
  * E2E_RUN_WEB3=true pnpm test:e2e --project=web3-hardhat
@@ -16,7 +17,7 @@ import {
 } from "../helpers/hardhat-wallet";
 import { readTestUserId } from "../helpers/test-user";
 
-// Skip Web3 tests by default due to synpress caching bugs
+// Skip Web3 tests by default: they need the contracts repo and a Hardhat node.
 // Set E2E_RUN_WEB3=true to run these tests
 const skipWeb3Tests = process.env.E2E_RUN_WEB3 !== "true";
 
@@ -52,21 +53,12 @@ const senderAddress =
 const recipientAddress =
   process.env.E2E_RECIPIENT_ADDRESS ??
   "0x70997970C51812dc3A010C7d01b50e0d17dc79C8";
-const hardhatRpcUrl =
-  process.env.SYNPRESS_NETWORK_RPC_URL ??
-  `http://127.0.0.1:${process.env.E2E_HARDHAT_PORT ?? 8545}`;
-const hardhatNetwork = {
-  name: process.env.SYNPRESS_NETWORK_NAME ?? "Hardhat Local",
-  rpcUrl: hardhatRpcUrl,
-  chainId: Number(process.env.SYNPRESS_NETWORK_CHAIN_ID ?? 31_337),
-  symbol: process.env.SYNPRESS_NETWORK_SYMBOL ?? "ETH",
-};
+const hardhatChainId = 31_337;
+const hardhatRpcUrl = `http://127.0.0.1:${process.env.E2E_HARDHAT_PORT ?? 8545}`;
 
 test.describe("Web3 workflow (Hardhat + mock relayer)", () => {
   test.describe.configure({ timeout: 180_000 });
 
-  // Skip by default due to synpress caching bugs
-  // Set E2E_RUN_WEB3=true to run these tests
   test.skip(
     () => skipWeb3Tests,
     "Web3 tests skipped. Set E2E_RUN_WEB3=true to run. See file header for instructions."
@@ -80,8 +72,8 @@ test.describe("Web3 workflow (Hardhat + mock relayer)", () => {
     }
 
     await installHardhatWallet(page, {
-      chainId: hardhatNetwork.chainId,
-      rpcUrl: hardhatNetwork.rpcUrl,
+      chainId: hardhatChainId,
+      rpcUrl: hardhatRpcUrl,
     });
 
     await page.goto("/dashboard");
@@ -89,7 +81,7 @@ test.describe("Web3 workflow (Hardhat + mock relayer)", () => {
       page.getByRole("heading", { name: WELCOME_HEADING_PATTERN })
     ).toBeVisible();
 
-    await connectHardhatWallet(page, hardhatNetwork.chainId);
+    await connectHardhatWallet(page, hardhatChainId);
 
     await page.goto("/dashboard/attestation");
     await expect(page).toHaveURL(ATTESTATION_URL_PATTERN);

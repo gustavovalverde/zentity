@@ -108,9 +108,6 @@ yarn-error.log*
 .env.production
 reset-production-db.sh
 
-# synpress wallet cache
-.cache-synpress/
-
 # generated noir wasm assets
 apps/web/public/noir/
 

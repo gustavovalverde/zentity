@@ -33,10 +33,6 @@ node_modules
 **/*.pyc
 **/*.log
 
-# Synpress / e2e wallet caches (multi-hundred MB)
-**/.cache-synpress
-**/.synpress-wallet-setup-dist
-
 # Rust targets
 **/target
 
@@ -59,9 +55,7 @@ apps/web/playwright-report
 apps/web/test-results
 apps/web/.next
 apps/web/.next-prod
-apps/web/.cache-synpress
 apps/web/.data
-apps/web/.synpress-wallet-setup-dist
 apps/web/.claude
 apps/web/.cursor
 apps/web/tsconfig.tsbuildinfo
