@@ -12,7 +12,7 @@
   "scripts": {
     "build:sdk": "pnpm --filter @zentity/sdk build",
     "dev": "pnpm run build:sdk >&2 && tsx src/index.ts",
-    "build": "pnpm run build:sdk && tsup src/index.ts --format esm --target node24 --clean --out-dir dist",
+    "build": "pnpm run build:sdk && tsdown",
     "start": "node dist/index.js",
     "start:http": "node --env-file-if-exists=.env dist/index.js --transport http",
     "lint": "pnpm exec ultracite fix",
@@ -38,7 +38,7 @@
     "@biomejs/biome": "2.6.8",
     "@modelcontextprotocol/client": "2.4.0",
     "@types/node": "^26.6.6",
-    "tsup": "^9.0.0",
+    "tsdown": "0.23.7",
     "tsx": "^4.23.15",
     "typescript": "^7.0.2",
     "ultracite": "8.2.1",

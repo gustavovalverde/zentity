@@ -19,7 +19,7 @@ RUN npm install --global corepack@0.36.0 && corepack enable
 
 WORKDIR ${REPO_HOME}
 
-COPY --link package.json pnpm-lock.yaml pnpm-workspace.yaml .pnpmfile.cjs ./
+COPY --link package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY --link apps/demo-rp/package.json ./apps/demo-rp/package.json
 COPY --link apps/web/vendor ./apps/web/vendor
 COPY --link packages/sdk/package.json ./packages/sdk/package.json

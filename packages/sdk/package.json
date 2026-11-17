@@ -30,8 +30,8 @@
     "THIRD_PARTY_NOTICES.md"
   ],
   "scripts": {
-    "build": "tsup",
-    "build:watch": "tsup --watch",
+    "build": "tsdown",
+    "build:watch": "tsdown --watch",
     "clean": "rm -rf dist",
     "prepack": "pnpm run build",
     "test": "vitest run",
@@ -40,7 +40,7 @@
   "devDependencies": {
     "@better-auth/core": "1.8.0-beta.10",
     "@types/node": "^26.6.6",
-    "tsup": "^9.0.0",
+    "tsdown": "0.23.7",
     "typescript": "^7.0.2",
     "vitest": "^5.1.0"
   },
