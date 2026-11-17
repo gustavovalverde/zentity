@@ -83,6 +83,76 @@ updates:
       - "dependencies"
       - "rust"
 
+  # Docker base images
+  # The tags are pinned to a Rust, Python, or Node line that also appears in
+  # rust-toolchain.toml, .mise.toml, and CI, so Dependabot refreshes digests
+  # and patch tags only. Moving to a new language line is a manual change.
+  - package-ecosystem: docker
+    directory: "/apps/fhe"
+    schedule:
+      interval: weekly
+      day: monday
+      timezone: America/New_York
+    open-pull-requests-limit: 3
+    ignore:
+      - dependency-name: "rust"
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
+      - dependency-name: "debian"
+        update-types: ["version-update:semver-major"]
+    cooldown:
+      default-days: 7
+    labels:
+      - "dependencies"
+      - "docker"
+
+  - package-ecosystem: docker
+    directory: "/apps/ocr"
+    schedule:
+      interval: weekly
+      day: monday
+      timezone: America/New_York
+    open-pull-requests-limit: 3
+    ignore:
+      - dependency-name: "python"
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
+    cooldown:
+      default-days: 7
+    labels:
+      - "dependencies"
+      - "docker"
+
+  - package-ecosystem: docker
+    directory: "/apps/web"
+    schedule:
+      interval: weekly
+      day: monday
+      timezone: America/New_York
+    open-pull-requests-limit: 3
+    ignore:
+      - dependency-name: "node"
+        update-types: ["version-update:semver-major"]
+    cooldown:
+      default-days: 7
+    labels:
+      - "dependencies"
+      - "docker"
+
+  - package-ecosystem: docker
+    directory: "/apps/demo-rp"
+    schedule:
+      interval: weekly
+      day: monday
+      timezone: America/New_York
+    open-pull-requests-limit: 3
+    ignore:
+      - dependency-name: "node"
+        update-types: ["version-update:semver-major"]
+    cooldown:
+      default-days: 7
+    labels:
+      - "dependencies"
+      - "docker"
+
   # GitHub Actions
   - package-ecosystem: github-actions
     directory: "/"

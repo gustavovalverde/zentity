@@ -3,7 +3,7 @@
 //! Embeds git SHA and build time at compile time for deployment verification.
 //! Priority: CI env var → git command → "unknown"
 
-use chrono::Utc;
+use jiff::Timestamp;
 use std::process::Command;
 
 fn main() {
@@ -28,7 +28,7 @@ fn main() {
         .unwrap_or_else(|| "unknown".to_string());
 
     // Priority: CI env var → ISO 8601 timestamp (consistent with Web/OCR services)
-    let build_time = std::env::var("BUILD_TIME").unwrap_or_else(|_| Utc::now().to_rfc3339());
+    let build_time = std::env::var("BUILD_TIME").unwrap_or_else(|_| Timestamp::now().to_string());
 
     println!("cargo:rustc-env=GIT_SHA={}", git_sha);
     println!("cargo:rustc-env=BUILD_TIME={}", build_time);

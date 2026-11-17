@@ -12,7 +12,7 @@ ARG APP_USER=zentity
 ARG APP_HOME=/app
 
 # --- Stage 1: Builder ---
-FROM rust:1.91-trixie@sha256:867f1d1162913c401378a8504fb17fe2032c760dc316448766f150a130204aad AS builder
+FROM rust:1.100-trixie@sha256:e19840879045c951c905d0eaa9887f3439c62000e429963371b376bac8d38c31 AS builder
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
 ARG APP_HOME
@@ -29,8 +29,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libssl-dev \
     && rm -rf /var/lib/apt/lists/* /tmp/*
 
-# Copy manifests first for dependency caching
-COPY --link Cargo.toml Cargo.lock ./
+# Copy manifests and the toolchain pin first for dependency caching. rustup reads
+# rust-toolchain.toml, so the build uses the same compiler as CI and local development.
+COPY --link Cargo.toml Cargo.lock rust-toolchain.toml ./
 
 # Create dummy src for dependency caching
 RUN mkdir src && \
@@ -56,7 +57,7 @@ RUN --mount=type=cache,id=s/6bb539e1-aad1-4b72-baf0-6e9253435464-/usr/local/carg
     cp ${APP_HOME}/target/release/fhe-service ${APP_HOME}/fhe-service
 
 # --- Stage 2: Runtime ---
-FROM debian:bookworm-slim@sha256:e899040a73d36e2b36fa33216943539d9957cba8172b858097c2cabcdb20a3e2 AS runtime
+FROM debian:trixie-slim@sha256:a72b4433de1cf7d6bae0c4cee74d0547f58601a643b3375f070c51600d63b6b2 AS runtime
 
 ARG APP_UID
 ARG APP_GID
