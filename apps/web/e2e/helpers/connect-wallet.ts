@@ -25,6 +25,29 @@ async function getAccounts(page: Page) {
 }
 
 /**
+ * Revokes the site's access to every wallet account and reloads, so the next
+ * connection prompt offers the account MetaMask has selected.
+ */
+export async function revokeWalletConnection(page: Page) {
+  await page.evaluate(() =>
+    (
+      globalThis as unknown as {
+        ethereum: {
+          request: (args: {
+            method: string;
+            params: unknown[];
+          }) => Promise<unknown>;
+        };
+      }
+    ).ethereum.request({
+      method: "wallet_revokePermissions",
+      params: [{ eth_accounts: {} }],
+    })
+  );
+  await page.reload();
+}
+
+/**
  * Opens the AppKit modal on a page that shows `<appkit-button>`, picks the
  * MetaMask extension, and approves the connection request in MetaMask. Returns
  * immediately when the page already has an authorized account.
@@ -56,9 +79,15 @@ export async function connectWalletIfNeeded({
       timeout: 20_000,
     })
     .not.toHaveLength(0);
-  await page
-    .locator("w3m-modal")
-    .first()
+  // After a reconnect the modal sometimes stays on "Continue in MetaMask" even
+  // though the account is connected, and it then blocks later clicks.
+  const modal = page.locator("w3m-modal.open");
+  const closed = await modal
     .waitFor({ state: "hidden", timeout: 10_000 })
-    .catch(() => undefined);
+    .then(() => true)
+    .catch(() => false);
+  if (!closed) {
+    await page.keyboard.press("Escape");
+    await modal.waitFor({ state: "hidden", timeout: 10_000 });
+  }
 }

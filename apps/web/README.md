@@ -153,19 +153,25 @@ Run the full E2E suite:
 pnpm run test:e2e
 ```
 
-The `web3-hardhat` project (`E2E_RUN_WEB3=true`) starts a local Hardhat node on
-port `8545` from the contracts repository (`E2E_CONTRACTS_PATH`, default
-`../zama/zentity-fhevm-contracts`). The Hardhat FHEVM plugin requires port
+Unless `E2E_OIDC_ONLY` is set, the built-in web server also starts a local
+Hardhat node on port `8545` from the contracts repository
+(`E2E_CONTRACTS_PATH`, default `../zama/zentity-fhevm-contracts`), which the
+`web3-hardhat` project (`E2E_RUN_WEB3=true`) uses. The Hardhat FHEVM plugin requires port
 `8545` for its `localhost` network. `hardhat-workflow.spec.ts` signs and sends
 transactions through an injected Hardhat test wallet, so it needs no browser
 extension.
 
 `metamask-hardhat.spec.ts` in the same project connects, signs, and sends a
-transaction through the real MetaMask extension against that node. The
+transaction through the real MetaMask extension against that node, and
+submits an attestation from a new account, which raises a consent signature
+prompt followed by a transaction prompt. The
 `web3-sepolia` project uses the same extension setup. Both drive MetaMask with
 [dappwright](https://github.com/TenKeyLabs/dappwright). The first run
-downloads MetaMask into the system temp directory, and each Playwright worker
-starts with a fresh wallet that imports a seed phrase. Defaults, which you can
+downloads MetaMask from GitHub into the system temp directory (set
+`GITHUB_TOKEN` to avoid the unauthenticated rate limit), and each Playwright
+worker starts with a fresh wallet that imports a seed phrase. dappwright keeps
+that wallet profile per worker index under the temp directory, so do not run
+two Playwright runs on one machine at the same time. Defaults, which you can
 override with environment variables:
 
 - `E2E_WALLET_SEED_PHRASE` defaults to Hardhat's public mnemonic. Use a seed
@@ -175,8 +181,10 @@ override with environment variables:
   connecting. When unset, the first account is used.
 
 MetaMask needs a full Chromium build, so dappwright launches it with
-`--headless=new`. Playwright's headless shell has no extension support, and
-the Sepolia project needs `pnpm exec playwright install chromium` once.
+`--headless=new` unless Playwright runs headed (`--headed`, `--debug`, or the
+UI mode). Playwright's headless shell has no extension support, so
+`metamask-hardhat.spec.ts` and the Sepolia project need
+`pnpm exec playwright install chromium` once.
 
 If you run E2E against an existing dev server, set
 `NEXT_PUBLIC_COOP=same-origin-allow-popups` so popup-based wallet SDKs can

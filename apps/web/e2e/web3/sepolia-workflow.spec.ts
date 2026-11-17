@@ -4,7 +4,10 @@ import { expect } from "@playwright/test";
 
 import { appUrl, test } from "../fixtures/metamask";
 import { connectWalletIfNeeded } from "../helpers/connect-wallet";
-import { confirmTransactionIfPrompted } from "../helpers/wallet-popup";
+import {
+  approveAttestationPrompts,
+  confirmTransactionIfPrompted,
+} from "../helpers/wallet-popup";
 
 // Top-level regex patterns for lint/performance/useTopLevelRegex compliance
 const DASHBOARD_URL_PATTERN = /dashboard/;
@@ -28,6 +31,9 @@ const TRANSFER_BUTTON_PATTERN = /^Transfer$/;
 const TRANSFER_SUCCESS_TEXT = /Transfer submitted!/i;
 const TRANSFER_REVERTED_TEXT = /transfer.*reverted/i;
 
+const RPC_UNREACHABLE_PATTERN = /could not get an answer/i;
+const SEPOLIA_CHAIN_ID = 11_155_111;
+
 const sepoliaRpcUrl =
   process.env.E2E_SEPOLIA_RPC_URL ??
   process.env.NEXT_PUBLIC_CONFIDENTIAL_CHAIN_RPC_URL ??
@@ -37,7 +43,7 @@ const sepoliaChainId = Number(
   process.env.E2E_SEPOLIA_CHAIN_ID ??
     process.env.NEXT_PUBLIC_CONFIDENTIAL_CHAIN_ID ??
     process.env.CONFIDENTIAL_CHAIN_ID ??
-    11_155_111
+    SEPOLIA_CHAIN_ID
 );
 const sepoliaNetworkName =
   process.env.E2E_SEPOLIA_NETWORK_NAME ??
@@ -84,7 +90,15 @@ async function selectSepolia(wallet: Dappwright) {
   }
   try {
     await wallet.addNetwork(sepoliaNetwork);
-  } catch {
+  } catch (error) {
+    // Only the duplicate built-in chain falls back; an unreachable RPC or a
+    // different chain ID is a configuration error to surface.
+    if (
+      sepoliaNetwork.chainId !== SEPOLIA_CHAIN_ID ||
+      (error instanceof Error && RPC_UNREACHABLE_PATTERN.test(error.message))
+    ) {
+      throw error;
+    }
     await wallet.updateNetworkRpc({
       chainId: sepoliaNetwork.chainId,
       rpc: sepoliaNetwork.rpc,
@@ -174,10 +188,10 @@ test.describe("Web3 workflow (Sepolia)", () => {
 
     if (await registerButton.isVisible()) {
       await registerButton.click();
-      await confirmTransactionIfPrompted(wallet, context, 10_000);
+      await approveAttestationPrompts(wallet);
     } else if (await updateAttestationButton.isVisible()) {
       await updateAttestationButton.click();
-      await confirmTransactionIfPrompted(wallet, context, 10_000);
+      await approveAttestationPrompts(wallet);
     }
 
     await expect(attestedText.or(pendingText)).toBeVisible({

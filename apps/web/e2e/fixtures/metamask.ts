@@ -50,14 +50,14 @@ export const test = base.extend<
   { walletSession: WalletSession }
 >({
   walletSession: [
-    // biome-ignore lint/correctness/noEmptyPattern: Playwright requires a destructured first argument
-    async ({}, use) => {
+    async ({ headless }, use) => {
       const [wallet, , context] = await bootstrap("", {
         wallet: "metamask",
         version: MetaMaskWallet.recommendedVersion,
         seed: process.env.E2E_WALLET_SEED_PHRASE ?? DEFAULT_SEED_PHRASE,
         password: process.env.E2E_WALLET_PASSWORD ?? DEFAULT_WALLET_PASSWORD,
         showTestNets: true,
+        headless,
       });
       await applySeededSession(context);
       await use({ context, wallet });
@@ -67,6 +67,13 @@ export const test = base.extend<
   ],
   context: async ({ walletSession }, use) => {
     await use(walletSession.context);
+  },
+  // The context outlives each test, so close the test's page to keep stale
+  // tabs from receiving wallet events meant for the next test.
+  page: async ({ context }, use) => {
+    const page = await context.newPage();
+    await use(page);
+    await page.close();
   },
   wallet: async ({ walletSession }, use) => {
     await use(walletSession.wallet);
