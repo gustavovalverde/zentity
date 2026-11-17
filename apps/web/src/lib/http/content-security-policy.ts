@@ -51,9 +51,16 @@ export function buildContentSecurityPolicy(
   localRpcUrl?: string
 ): string {
   if (!isProduction) {
+    // The proxy reads the raw variable, so a value env.ts would reject must
+    // not throw on every page.
+    const localRpcOrigin = new URL(
+      localRpcUrl && URL.canParse(localRpcUrl)
+        ? localRpcUrl
+        : DEFAULT_LOCAL_RPC_URL
+    ).origin;
     return [
       "script-src 'self' blob: 'unsafe-eval' 'wasm-unsafe-eval' 'unsafe-inline'",
-      `connect-src 'self' ws: wss: data: ${new URL(localRpcUrl || DEFAULT_LOCAL_RPC_URL).origin} ${ZKPASSPORT_DOMAINS} ${WEB3_DOMAINS} ${WORLD_ID_DOMAINS}`,
+      `connect-src 'self' ws: wss: data: ${localRpcOrigin} ${ZKPASSPORT_DOMAINS} ${WEB3_DOMAINS} ${WORLD_ID_DOMAINS}`,
       "worker-src 'self' blob:",
     ].join("; ");
   }

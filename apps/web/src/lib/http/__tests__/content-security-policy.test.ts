@@ -69,6 +69,17 @@ describe("content security policy", () => {
     expect(connectSrc(policy)).not.toContain("http://127.0.0.1:8545");
   });
 
+  it("falls back to the default local RPC when the configured one is not a URL", () => {
+    vi.stubEnv("NODE_ENV", "development");
+    vi.stubEnv("NEXT_PUBLIC_LOCAL_RPC_URL", "127.0.0.1:8565");
+
+    const policy = proxy(
+      new NextRequest("http://localhost:3000/dashboard")
+    ).headers.get("Content-Security-Policy");
+
+    expect(connectSrc(policy)).toContain(" http://127.0.0.1:8545 ");
+  });
+
   it("leaves API responses and the service worker to their own headers", () => {
     vi.stubEnv("NODE_ENV", "production");
 
