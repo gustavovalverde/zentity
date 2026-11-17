@@ -15,28 +15,34 @@ function normalizeWhitespace(value) {
   return value.replace(/\s+/g, " ").trim();
 }
 
-function extractImportPathByRegisterFunction(indexSource) {
+export function extractImportPathByRegisterFunction(indexSource) {
   const importPathByRegisterFunction = new Map();
-  const importPattern =
-    /import\s+\{\s*(register\w+Tool)\s*\}\s+from\s+"(\.\/[^"]+)\.js";/g;
+  const importPattern = /import\s+\{([^}]*)\}\s+from\s+"(\.\/[^"]+)\.js";/g;
 
   for (const match of indexSource.matchAll(importPattern)) {
-    const registerFunction = match[1];
+    const specifiers = match[1];
     const relativeImportPath = match[2];
-    if (registerFunction && relativeImportPath) {
-      importPathByRegisterFunction.set(
-        registerFunction,
-        resolve(mcpSourceRoot, `${relativeImportPath}.ts`),
-      );
+    if (!(specifiers && relativeImportPath)) {
+      continue;
+    }
+
+    for (const specifier of specifiers.split(",")) {
+      const registerFunction = specifier.trim();
+      if (/^register\w+Tool$/.test(registerFunction)) {
+        importPathByRegisterFunction.set(
+          registerFunction,
+          resolve(mcpSourceRoot, `${relativeImportPath}.ts`),
+        );
+      }
     }
   }
 
   return importPathByRegisterFunction;
 }
 
-function extractRegisterFunctionOrder(indexSource) {
+export function extractRegisterFunctionOrder(indexSource) {
   const registerFunctionOrder = [];
-  const registerCallPattern = /^\s+(register\w+Tool)\(server\);$/gm;
+  const registerCallPattern = /^\s+(register\w+Tool)\(\s*server\s*[,)]/gm;
 
   for (const match of indexSource.matchAll(registerCallPattern)) {
     const registerFunction = match[1];
@@ -48,17 +54,45 @@ function extractRegisterFunctionOrder(indexSource) {
   return registerFunctionOrder;
 }
 
-function extractToolMetadata(toolSource, toolPath) {
-  const nameMatch = toolSource.match(/server\.registerTool\(\s*"([^"]+)"/);
-  const descriptionMatch = toolSource.match(/description:\s*"([^"]+)"/s);
+const STRING_LITERAL = /\s*("(?:[^"\\]|\\.)*")\s*/y;
+const DESCRIPTION_ARRAY = /\[((?:\s*"(?:[^"\\]|\\.)*"\s*,?)*)\s*\]\s*\.join\(\s*("(?:[^"\\]|\\.)*")\s*\)/y;
 
-  if (!(nameMatch?.[1] && descriptionMatch?.[1])) {
+// A tool description is a string literal, or an array of string literals joined by a separator.
+function extractDescription(toolSource) {
+  const registration = toolSource.indexOf("server.registerTool(");
+  const marker = /description:\s*/g;
+  marker.lastIndex = Math.max(registration, 0);
+  if (!marker.exec(toolSource)) {
+    return null;
+  }
+
+  const start = marker.lastIndex;
+  DESCRIPTION_ARRAY.lastIndex = start;
+  const arrayMatch = DESCRIPTION_ARRAY.exec(toolSource);
+  if (arrayMatch) {
+    const parts = [];
+    for (const literal of arrayMatch[1].matchAll(/"(?:[^"\\]|\\.)*"/g)) {
+      parts.push(JSON.parse(literal[0]));
+    }
+    return parts.join(JSON.parse(arrayMatch[2]));
+  }
+
+  STRING_LITERAL.lastIndex = start;
+  const stringMatch = STRING_LITERAL.exec(toolSource);
+  return stringMatch ? JSON.parse(stringMatch[1]) : null;
+}
+
+export function extractToolMetadata(toolSource, toolPath) {
+  const nameMatch = toolSource.match(/server\.registerTool\(\s*"([^"]+)"/);
+  const description = extractDescription(toolSource);
+
+  if (!(nameMatch?.[1] && description)) {
     throw new Error(`Unable to extract MCP tool metadata from ${toolPath}`);
   }
 
   return {
     name: nameMatch[1],
-    description: normalizeWhitespace(descriptionMatch[1]),
+    description: normalizeWhitespace(description),
   };
 }
 
