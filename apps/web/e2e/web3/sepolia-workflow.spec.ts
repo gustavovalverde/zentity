@@ -91,8 +91,8 @@ async function selectSepolia(wallet: Dappwright) {
   try {
     await wallet.addNetwork(sepoliaNetwork);
   } catch (error) {
-    // Only the duplicate built-in chain falls back; an unreachable RPC or a
-    // different chain ID is a configuration error to surface.
+    // Only the duplicate built-in chain falls back; an unreachable RPC is a
+    // configuration error to surface.
     if (
       sepoliaNetwork.chainId !== SEPOLIA_CHAIN_ID ||
       (error instanceof Error && RPC_UNREACHABLE_PATTERN.test(error.message))

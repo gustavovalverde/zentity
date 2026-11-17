@@ -163,7 +163,7 @@ extension.
 
 `metamask-hardhat.spec.ts` in the same project connects, signs, and sends a
 transaction through the real MetaMask extension against that node, and
-submits an attestation from a new account, which raises a consent signature
+submits an attestation from the mnemonic's second account, which raises a consent signature
 prompt followed by a transaction prompt. The
 `web3-sepolia` project uses the same extension setup. Both drive MetaMask with
 [dappwright](https://github.com/TenKeyLabs/dappwright). The first run
