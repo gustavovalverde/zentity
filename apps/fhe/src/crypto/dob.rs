@@ -6,7 +6,8 @@
 
 use super::{decode_tfhe_binary, encode_tfhe_binary, setup_for_verification};
 use crate::error::FheError;
-use chrono::{Days, Months, NaiveDate};
+use jiff::civil::{date, Date};
+use jiff::Span;
 use tfhe::prelude::*;
 use tfhe::{CompressedPublicKey, FheUint32};
 
@@ -17,10 +18,7 @@ use tfhe::{CompressedPublicKey, FheUint32};
 const MAX_DOB_DAYS: u32 = 150_000;
 
 /// Day 0 of `dobDays`.
-const BASE_DATE: NaiveDate = match NaiveDate::from_ymd_opt(1900, 1, 1) {
-    Some(date) => date,
-    None => panic!("1900-01-01 is a valid date"),
-};
+const BASE_DATE: Date = date(1900, 1, 1);
 
 fn validate_dob_days(days: u32) -> Result<(), FheError> {
     if days > MAX_DOB_DAYS {
@@ -37,24 +35,29 @@ fn validate_dob_days(days: u32) -> Result<(), FheError> {
 /// The cutoff is `current_days` minus `min_age` calendar years. Feb 29 falls back
 /// to Feb 28 when the cutoff year has no Feb 29.
 fn cutoff_days(current_days: u32, min_age: u16) -> Result<u32, FheError> {
-    let current = BASE_DATE
-        .checked_add_days(Days::new(u64::from(current_days)))
-        .ok_or_else(|| {
+    let current = Span::new()
+        .try_days(i64::from(current_days))
+        .and_then(|days| BASE_DATE.checked_add(days))
+        .map_err(|_| {
             FheError::InvalidInput(format!(
                 "Current date is out of range (got {current_days} days)"
             ))
         })?;
-    let cutoff = current
-        .checked_sub_months(Months::new(12 * u32::from(min_age)))
-        .filter(|cutoff| *cutoff >= BASE_DATE)
+    Span::new()
+        .try_years(i64::from(min_age))
+        .and_then(|years| current.checked_sub(years))
+        .ok()
+        .and_then(days_since_base)
         .ok_or_else(|| {
             FheError::InvalidInput(format!(
                 "Cutoff date must be on or after {BASE_DATE} (current day {current_days}, minimum age {min_age})"
             ))
-        })?;
+        })
+}
 
-    // The cutoff is between the base date and `current_days`, so this fits in a u32.
-    Ok(cutoff.signed_duration_since(BASE_DATE).num_days() as u32)
+/// `dobDays` for `date`, or `None` when it is before the base date.
+fn days_since_base(date: Date) -> Option<u32> {
+    u32::try_from(date.since(BASE_DATE).ok()?.get_days()).ok()
 }
 
 /// Encrypt a date of birth (`dobDays`: days since 1900-01-01) using the provided public key
@@ -100,8 +103,7 @@ pub fn verify_age_from_dob(
 /// This is a utility for testing; the web frontend handles actual conversion.
 #[cfg(test)]
 fn date_to_days_since_base(date: &str) -> Option<u32> {
-    let date = NaiveDate::parse_from_str(date, "%Y-%m-%d").ok()?;
-    u32::try_from(date.signed_duration_since(BASE_DATE).num_days()).ok()
+    days_since_base(date.parse().ok()?)
 }
 
 #[cfg(test)]
