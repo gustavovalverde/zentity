@@ -1,0 +1,1883 @@
+[
+ {
+  "name": "ocr-id_cards-Spain.png",
+  "function": "extract_passport_fields",
+  "text": "ESPANA DOCBRINTO NACROSALBEIDENBDAD al ESPAÑELA FUPAROLA 01 051960 ESP ongt som BAAG00589 DI. D1 2029 987654 866666666 AVOA SE MADRID S-N MASRID MADRED MABRED MABRED JUAN/ CARNEN 1DESPBAA000589599999999R<<<<<< 8001014F2501017ESP<<<<<<<<<<<7 ESPANOLA<ESPANOLA<<CARMEN<<<<<",
+  "data": {
+   "full_name": null,
+   "first_name": null,
+   "last_name": null,
+   "document_number": null,
+   "date_of_birth": null,
+   "expiration_date": null,
+   "nationality": null,
+   "nationality_code": null,
+   "issuing_country": null,
+   "issuing_country_code": null,
+   "gender": null
+  },
+  "valid": false
+ },
+ {
+  "name": "ocr-passports-Canada.png",
+  "function": "extract_passport_fields",
+  "text": "PASSPORT CANADA PASSEPORT TypaType P CAN PasapotNo.N*dopassspert ZE000509 Sumame/Norr MARTIN Giyen nemes/Prénoms NetionaltyNaconalte SARAH CANADIAN/CANADIENNE 7 14 JAN /JAN 13 Date of issuerDale de deisrande Deto of Nit/Cate de nalisarce Sex/sexo 01 JAN /JAN 85 F PaceororhLesorcassance OTTAMA CAN Sared Martn 2 0 N 14 JAN /JAN 23 Issuina AumoitvAutoré dedélvrance GATINEAU P<CANMARTIN<<SARAH<<<<<<<<<<<<<<<<<<<<<<<<<< zE000509<9CAN8501019F2301147<<<<<<<<<<<<<<08",
+  "data": {
+   "full_name": null,
+   "first_name": null,
+   "last_name": null,
+   "document_number": null,
+   "date_of_birth": null,
+   "expiration_date": null,
+   "nationality": null,
+   "nationality_code": null,
+   "issuing_country": null,
+   "issuing_country_code": null,
+   "gender": null
+  },
+  "valid": false
+ },
+ {
+  "name": "ocr-passports-China.png",
+  "function": "extract_passport_fields",
+  "text": "護 PASSPORT 照 型式/ Type P 中華民國 代碼 / Code TWN REPUBLIC OF CHINA 覆照號码 / Passport No. 000000000 姓名 / Name (Surname,Given names) 林美華 LIN, MEI-HUA SPECIMEN 外文别名 / Also known as MAY LIN 国籍 / Nationality 身分激枕一编號 / Personal Id. No. REPUBLIC OF CHINA A234567893 性别 / Sex 出生日期 / Date of birth F 01 JAN 1976 發照日期 / Date of issue 出生地 / Place of birth 01 APR 2004 TAIWAN 效期截止日期/ Date of expiry 發照地 / Place of issue 01 APR 2014 DOMINICAN REPUBLIC 發照機關 / Authority EMBASSY OF THE REPUBLIC OF CHINA P<TWNLIN<<MEI<HUA<<<<<<<<<<<<<<<<<<<<<<<<<<< 0000000000TWN7601015F1404018A234567893<<<<18",
+  "data": {
+   "full_name": "Mei Hua Lin",
+   "first_name": "Mei Hua",
+   "last_name": "Lin",
+   "document_number": "000000000",
+   "date_of_birth": "1976-01-01",
+   "expiration_date": "2014-04-01",
+   "nationality": "Taiwan, Province of China",
+   "nationality_code": "TWN",
+   "issuing_country": "Taiwan, Province of China",
+   "issuing_country_code": "TWN",
+   "gender": "F"
+  },
+  "valid": true
+ },
+ {
+  "name": "ocr-passports-Czech_Republic.png",
+  "function": "extract_passport_fields",
+  "text": "ČESKÁ REPUBLIKA/CZECH REPUBLIC CESTOVNI PAS / PASSPORT TW/TYM KoD/Coce CIRO tNU/PARRI NOG P CZE 99003853 01 Plpd/Sn SPECIMEN 02 JMINO/ GIVEN NAMs Vzor 3 STATN CSCUSTE/NATIONALTY ČESKÁ REPUBLIKA/CZECH REPUBLIC 04 D /D  0S RODNE CISLD/PIRSONALNO. 01.01.1911 110101/111 06 FOITLAME/SEX 07 MISTO NABOIZINE/PLACE O BIRTH M PRAHA 09 PASVIDAL/AUTIONTY 04.07.2002 PRAHA  P os E  o pt 04.07.2012 Spacimen P<CZESPECIMEN<<VZOR<<<<<<<<<<<<<<<<<<<<<<<<< 99003853<1CZE1101018M1207046110101111<<<<<94",
+  "data": {
+   "full_name": "Vzor Specimen",
+   "first_name": "Vzor",
+   "last_name": "Specimen",
+   "document_number": "99003853",
+   "date_of_birth": "2011-01-01",
+   "expiration_date": "2012-07-04",
+   "nationality": "Czechia",
+   "nationality_code": "CZE",
+   "issuing_country": "Czechia",
+   "issuing_country_code": "CZE",
+   "gender": "M"
+  },
+  "valid": true
+ },
+ {
+  "name": "ocr-passports-ICAO_Example.png",
+  "function": "extract_passport_fields",
+  "text": "UTOPIA Pasaporte Passport/ Typel To P Country codel Código del pats UTO Passport Number Nüm. de pasaporte L898902C3 Surname/ ApeNdo ERIKSSON Given names/ Nombres ANNA MARIA Nationality Nacionalidad Date of Binth/ Fecha de nacimiento UTOPIAN 12 AUGUST/AGO 74 Personal NoJ Núm. personal ZE 184226 B Sexl Sexo F Place of birt/ Lugar de nacimiento ZENITH Date of issuel Fecha de expecición 16 APR/ABR 07 Authorityl Autordad PASSPORT OFFICE Date df expiryt Fecha de caducidad 15 APR/ABR 12 Holder's signaturel Fima del Stular Anna Maria Eriksson P<UT0ERIKSSON<<ANNA<MARIA<<<<<<<<<<<<<<<<<<< L898902C36UT07408122F1204159ZE184226B<<<<<10",
+  "data": {
+   "full_name": "S ANNA MARIA NATIONALITY NACIONALIDAD DATE OF BINTH",
+   "first_name": null,
+   "last_name": null,
+   "document_number": null,
+   "date_of_birth": null,
+   "expiration_date": null,
+   "nationality": null,
+   "nationality_code": null,
+   "issuing_country": null,
+   "issuing_country_code": null,
+   "gender": null
+  },
+  "valid": false
+ },
+ {
+  "name": "ocr-passports-ICAO_Example2.png",
+  "function": "extract_passport_fields",
+  "text": "Passport/ LA Type Country Code Passport No. P ASU A2222222 Name MAHMUT ABDUL RAHIIM Date of Birth 21/08/71 ID No. 1000146819 a W xasl Date of Issue 29/01/2000 Date of Expiry ?th Issuing Authority  04/12/04 1ET0/1./TY mino BAD HASHSES P<ASUMXHMWD<EBDALRXHYM >>>>> >>>>> A2222222<0ASU710821 1 M041204 1000146819<<< 33",
+  "data": {
+   "full_name": "MAHMUT ABDUL RAHIIM DATE OF BIRTH",
+   "first_name": null,
+   "last_name": null,
+   "document_number": null,
+   "date_of_birth": null,
+   "expiration_date": null,
+   "nationality": null,
+   "nationality_code": null,
+   "issuing_country": null,
+   "issuing_country_code": null,
+   "gender": null
+  },
+  "valid": false
+ },
+ {
+  "name": "ocr-passports-Iceland.png",
+  "function": "extract_passport_fields",
+  "text": "VEGABRÉF ISLAND ICELAND ISLANDE PASSPORT PASSEPORT PA ISL A2040611 AEVARSDÓTTIR PURÍDUR OSP ISLENSKT/ICELANDIC/ISLANDAISE 180 CM 12 DES /DEC 12 121212-1239 KVKIF FRODARHREPPUR 29 MAR /MAR 07 29 JÚN/JUN 11 PJODSKRA PAISLAEVARSDOTTIR<<THURIDUR<OESP<<<<<<<<<<<< A2040611<0ISL1212123F1106297121212<1239<<<66",
+  "data": {
+   "full_name": null,
+   "first_name": null,
+   "last_name": null,
+   "document_number": null,
+   "date_of_birth": null,
+   "expiration_date": null,
+   "nationality": null,
+   "nationality_code": null,
+   "issuing_country": null,
+   "issuing_country_code": null,
+   "gender": null
+  },
+  "valid": false
+ },
+ {
+  "name": "ocr-passports-Interpol.png",
+  "function": "extract_passport_fields",
+  "text": "INTERPOL ISTHISCONE PASSPORT PASSEPORT Tyou/Tipe P SPECIMEN Code/Code INP PassportN/PasseportNP XX000000 Nationality/ Nadionalité FRA SAMPLE Say Sane F INTERPOL ROTOTYP P Date of berty Dale de naissance Place-df birthy/Lieude naissance LYON/FRA 01 JAN/JAN 75 Title: Titre SPECIALIZED OFFICER Date of isuin/Cate de delivrance 30 JUL/JUIL 09 Hoyder's signature/ Sipn Dute of expiry/Dato drapeation 30 JUL/JUIL 19 E P<INPSPECIMEN<<SAMPLE<<<<<<<<<<<<<<<<<<<<<<< XX000000<0FRA7501012F19073021234567890<<<<70",
+  "data": {
+   "full_name": "Sample Specimen",
+   "first_name": "Sample",
+   "last_name": "Specimen",
+   "document_number": "XX000000",
+   "date_of_birth": "1975-01-01",
+   "expiration_date": "2019-07-30",
+   "nationality": "France",
+   "nationality_code": "FRA",
+   "issuing_country": "Interpol",
+   "issuing_country_code": "INP",
+   "gender": "F"
+  },
+  "valid": true
+ },
+ {
+  "name": "ocr-passports-Japan.png",
+  "function": "extract_passport_fields",
+  "text": "日本国 JAPAN PASSPORT 旅券 P JPN XS1234567 SPECIMEN GAIMU SAKURA JAPAN 20 +EB 1979 F SR/ KANAGAWA 20MAR2006 SPECIMEN 20 MAR 2016 外務<ら P<JPNGAIMU<<SAKURA<<<<<<<<<<<<<<<<<<<<<<<<<< X512345673JPN7902206F1603202<<<<<<<<<<<<<<02",
+  "data": {
+   "full_name": "Sakura Gaimu",
+   "first_name": "Sakura",
+   "last_name": "Gaimu",
+   "document_number": "X51234567",
+   "date_of_birth": "1979-02-20",
+   "expiration_date": "2016-03-20",
+   "nationality": "Japan",
+   "nationality_code": "JPN",
+   "issuing_country": "Japan",
+   "issuing_country_code": "JPN",
+   "gender": "F"
+  },
+  "valid": false
+ },
+ {
+  "name": "ocr-passports-Ukraine.png",
+  "function": "extract_passport_fields",
+  "text": "KPAIHA UKRAINE Tnn/ Type  / n   / st o. P UKR XX000000 PASSPORT pi/Srname TKA4EHKO/TKACHENKO Im's/ Given Names MAP'HA/MARIANA / ationaty YKPAIHA/UKRAINE  / D of r 24 CEP/AUG 91 1234567890 3anuc N9/ Record No. Crams/Sex K/F Micue / Plce of birth M. KIB/UKR  / Date of iss 25 BEP/SEP 13 xXXX ,  / uorit E  3 y A/ Date of xpiy 25 BEP/SEP 23  / Holder's signature ury P<UKRTKACHENK0<<MARIANA<<<<<<<<<<<<<<<<<<<<< XX000000<0UKR9108242F23092571234567890<<<<70",
+  "data": {
+   "full_name": "TKA",
+   "first_name": null,
+   "last_name": null,
+   "document_number": null,
+   "date_of_birth": null,
+   "expiration_date": null,
+   "nationality": null,
+   "nationality_code": null,
+   "issuing_country": null,
+   "issuing_country_code": null,
+   "gender": null
+  },
+  "valid": false
+ },
+ {
+  "name": "edge-single_name",
+  "function": "parse_mrz",
+  "text": "P<UTOERIKSSON<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<\nL898902C36UTO7408122F1204159ZE184226B<<<<<10",
+  "data": {
+   "full_name": null,
+   "first_name": null,
+   "last_name": null,
+   "document_number": null,
+   "date_of_birth": null,
+   "expiration_date": null,
+   "nationality": null,
+   "nationality_code": null,
+   "issuing_country": null,
+   "issuing_country_code": null,
+   "gender": null
+  },
+  "valid": false
+ },
+ {
+  "name": "edge-digit_in_name",
+  "function": "parse_mrz",
+  "text": "P<UTOERIKSS0N<<ANNA<MARIA<<<<<<<<<<<<<<<<<<<\nL898902C36UTO7408122F1204159ZE184226B<<<<<10",
+  "data": {
+   "full_name": "Anna Maria Erikss0N",
+   "first_name": "Anna Maria",
+   "last_name": "Erikss0N",
+   "document_number": "L898902C3",
+   "date_of_birth": "1974-08-12",
+   "expiration_date": "2012-04-15",
+   "nationality": "Utopia",
+   "nationality_code": "UTO",
+   "issuing_country": "Utopia",
+   "issuing_country_code": "UTO",
+   "gender": "F"
+  },
+  "valid": false
+ },
+ {
+  "name": "edge-id_starts_lt",
+  "function": "parse_mrz",
+  "text": "P<UTO<ERIKSSON<<ANNA<MARIA<<<<<<<<<<<<<<<<<<\nL898902C36UTO7408122F1204159ZE184226B<<<<<10",
+  "data": {
+   "full_name": "Anna Maria  Eriksson",
+   "first_name": "Anna Maria",
+   "last_name": " Eriksson",
+   "document_number": "L898902C3",
+   "date_of_birth": "1974-08-12",
+   "expiration_date": "2012-04-15",
+   "nationality": "Utopia",
+   "nationality_code": "UTO",
+   "issuing_country": "Utopia",
+   "issuing_country_code": "UTO",
+   "gender": "F"
+  },
+  "valid": false
+ },
+ {
+  "name": "edge-docnum_blank",
+  "function": "parse_mrz",
+  "text": "P<UTOERIKSSON<<ANNA<MARIA<<<<<<<<<<<<<<<<<<<\n<<<<<<<<<0UTO7408122F1204159ZE184226B<<<<<10",
+  "data": {
+   "full_name": "Anna Maria Eriksson",
+   "first_name": "Anna Maria",
+   "last_name": "Eriksson",
+   "document_number": "",
+   "date_of_birth": "1974-08-12",
+   "expiration_date": "2012-04-15",
+   "nationality": "Utopia",
+   "nationality_code": "UTO",
+   "issuing_country": "Utopia",
+   "issuing_country_code": "UTO",
+   "gender": "F"
+  },
+  "valid": false
+ },
+ {
+  "name": "edge-type_PA",
+  "function": "parse_mrz",
+  "text": "PAUTOERIKSSON<<ANNA<MARIA<<<<<<<<<<<<<<<<<<<\nL898902C36UTO7408122F1204159ZE184226B<<<<<10",
+  "data": {
+   "full_name": "Anna Maria Eriksson",
+   "first_name": "Anna Maria",
+   "last_name": "Eriksson",
+   "document_number": "L898902C3",
+   "date_of_birth": "1974-08-12",
+   "expiration_date": "2012-04-15",
+   "nationality": "Utopia",
+   "nationality_code": "UTO",
+   "issuing_country": "Utopia",
+   "issuing_country_code": "UTO",
+   "gender": "F"
+  },
+  "valid": true
+ },
+ {
+  "name": "edge-type_P1",
+  "function": "parse_mrz",
+  "text": "P1UTOERIKSSON<<ANNA<MARIA<<<<<<<<<<<<<<<<<<<\nL898902C36UTO7408122F1204159ZE184226B<<<<<10",
+  "data": {
+   "full_name": "Anna Maria Eriksson",
+   "first_name": "Anna Maria",
+   "last_name": "Eriksson",
+   "document_number": "L898902C3",
+   "date_of_birth": "1974-08-12",
+   "expiration_date": "2012-04-15",
+   "nationality": "Utopia",
+   "nationality_code": "UTO",
+   "issuing_country": "Utopia",
+   "issuing_country_code": "UTO",
+   "gender": "F"
+  },
+  "valid": true
+ },
+ {
+  "name": "edge-line1_43",
+  "function": "parse_mrz",
+  "text": "P<UTOERIKSSON<<ANNA<MARIA<<<<<<<<<<<<<<<<<<\nL898902C36UTO7408122F1204159ZE184226B<<<<<10",
+  "data": {
+   "full_name": null,
+   "first_name": null,
+   "last_name": null,
+   "document_number": null,
+   "date_of_birth": null,
+   "expiration_date": null,
+   "nationality": null,
+   "nationality_code": null,
+   "issuing_country": null,
+   "issuing_country_code": null,
+   "gender": null
+  },
+  "valid": false
+ },
+ {
+  "name": "edge-line2_43",
+  "function": "parse_mrz",
+  "text": "P<UTOERIKSSON<<ANNA<MARIA<<<<<<<<<<<<<<<<<<<\nL898902C36UTO7408122F1204159ZE184226B<<<<<1",
+  "data": {
+   "full_name": null,
+   "first_name": null,
+   "last_name": null,
+   "document_number": null,
+   "date_of_birth": null,
+   "expiration_date": null,
+   "nationality": null,
+   "nationality_code": null,
+   "issuing_country": null,
+   "issuing_country_code": null,
+   "gender": null
+  },
+  "valid": false
+ },
+ {
+  "name": "edge-line1_45",
+  "function": "parse_mrz",
+  "text": "P<UTOERIKSSON<<ANNA<MARIA<<<<<<<<<<<<<<<<<<<<\nL898902C36UTO7408122F1204159ZE184226B<<<<<1",
+  "data": {
+   "full_name": null,
+   "first_name": null,
+   "last_name": null,
+   "document_number": null,
+   "date_of_birth": null,
+   "expiration_date": null,
+   "nationality": null,
+   "nationality_code": null,
+   "issuing_country": null,
+   "issuing_country_code": null,
+   "gender": null
+  },
+  "valid": false
+ },
+ {
+  "name": "edge-three_lines",
+  "function": "parse_mrz",
+  "text": "P<UTOERIKSSON<<ANNA<MARIA<<<<<<<<<<<<<<<<<<<\nL898902C36UTO7408122F1204159ZE184226B<<<<<10\nXXXX",
+  "data": {
+   "full_name": "Anna Maria Eriksson",
+   "first_name": "Anna Maria",
+   "last_name": "Eriksson",
+   "document_number": "L898902C3",
+   "date_of_birth": "1974-08-12",
+   "expiration_date": "2012-04-15",
+   "nationality": "Utopia",
+   "nationality_code": "UTO",
+   "issuing_country": "Utopia",
+   "issuing_country_code": "UTO",
+   "gender": "F"
+  },
+  "valid": true
+ },
+ {
+  "name": "edge-trailing_nl",
+  "function": "parse_mrz",
+  "text": "P<UTOERIKSSON<<ANNA<MARIA<<<<<<<<<<<<<<<<<<<\nL898902C36UTO7408122F1204159ZE184226B<<<<<10\n",
+  "data": {
+   "full_name": "Anna Maria Eriksson",
+   "first_name": "Anna Maria",
+   "last_name": "Eriksson",
+   "document_number": "L898902C3",
+   "date_of_birth": "1974-08-12",
+   "expiration_date": "2012-04-15",
+   "nationality": "Utopia",
+   "nationality_code": "UTO",
+   "issuing_country": "Utopia",
+   "issuing_country_code": "UTO",
+   "gender": "F"
+  },
+  "valid": true
+ },
+ {
+  "name": "edge-leading_nl",
+  "function": "parse_mrz",
+  "text": "\nP<UTOERIKSSON<<ANNA<MARIA<<<<<<<<<<<<<<<<<<<\nL898902C36UTO7408122F1204159ZE184226B<<<<<10",
+  "data": {
+   "full_name": "Anna Maria Eriksson",
+   "first_name": "Anna Maria",
+   "last_name": "Eriksson",
+   "document_number": "L898902C3",
+   "date_of_birth": "1974-08-12",
+   "expiration_date": "2012-04-15",
+   "nationality": "Utopia",
+   "nationality_code": "UTO",
+   "issuing_country": "Utopia",
+   "issuing_country_code": "UTO",
+   "gender": "F"
+  },
+  "valid": true
+ },
+ {
+  "name": "edge-opt_hash_filler",
+  "function": "parse_mrz",
+  "text": "P<UTOERIKSSON<<ANNA<MARIA<<<<<<<<<<<<<<<<<<<\nL898902C36UTO7408122F1204159<<<<<<<<<<<<<<<6",
+  "data": {
+   "full_name": "Anna Maria Eriksson",
+   "first_name": "Anna Maria",
+   "last_name": "Eriksson",
+   "document_number": "L898902C3",
+   "date_of_birth": "1974-08-12",
+   "expiration_date": "2012-04-15",
+   "nationality": "Utopia",
+   "nationality_code": "UTO",
+   "issuing_country": "Utopia",
+   "issuing_country_code": "UTO",
+   "gender": "F"
+  },
+  "valid": false
+ },
+ {
+  "name": "edge-opt_hash_zero",
+  "function": "parse_mrz",
+  "text": "P<UTOERIKSSON<<ANNA<MARIA<<<<<<<<<<<<<<<<<<<\nL898902C36UTO7408122F1204159<<<<<<<<<<<<<<06",
+  "data": {
+   "full_name": "Anna Maria Eriksson",
+   "first_name": "Anna Maria",
+   "last_name": "Eriksson",
+   "document_number": "L898902C3",
+   "date_of_birth": "1974-08-12",
+   "expiration_date": "2012-04-15",
+   "nationality": "Utopia",
+   "nationality_code": "UTO",
+   "issuing_country": "Utopia",
+   "issuing_country_code": "UTO",
+   "gender": "F"
+  },
+  "valid": false
+ },
+ {
+  "name": "edge-feb30",
+  "function": "parse_mrz",
+  "text": "P<UTOERIKSSON<<ANNA<MARIA<<<<<<<<<<<<<<<<<<<\nL898902C36UTO7408302F1204159ZE184226B<<<<<10",
+  "data": {
+   "full_name": "Anna Maria Eriksson",
+   "first_name": "Anna Maria",
+   "last_name": "Eriksson",
+   "document_number": "L898902C3",
+   "date_of_birth": "1974-08-30",
+   "expiration_date": "2012-04-15",
+   "nationality": "Utopia",
+   "nationality_code": "UTO",
+   "issuing_country": "Utopia",
+   "issuing_country_code": "UTO",
+   "gender": "F"
+  },
+  "valid": false
+ },
+ {
+  "name": "edge-germany_D",
+  "function": "parse_mrz",
+  "text": "P<D<<MUSTERMANN<<ERIKA<<<<<<<<<<<<<<<<<<<<<<<\nC01X00T478D<<6408125F2702283<<<<<<<<<<<<<<<4",
+  "data": {
+   "full_name": null,
+   "first_name": null,
+   "last_name": null,
+   "document_number": null,
+   "date_of_birth": null,
+   "expiration_date": null,
+   "nationality": null,
+   "nationality_code": null,
+   "issuing_country": null,
+   "issuing_country_code": null,
+   "gender": null
+  },
+  "valid": false
+ },
+ {
+  "name": "edge-germany_DEU",
+  "function": "parse_mrz",
+  "text": "P<DEUMUSTERMANN<<ERIKA<<<<<<<<<<<<<<<<<<<<<<<\nC01X00T478DEU6408125F2702283<<<<<<<<<<<<<<<4",
+  "data": {
+   "full_name": null,
+   "first_name": null,
+   "last_name": null,
+   "document_number": null,
+   "date_of_birth": null,
+   "expiration_date": null,
+   "nationality": null,
+   "nationality_code": null,
+   "issuing_country": null,
+   "issuing_country_code": null,
+   "gender": null
+  },
+  "valid": false
+ },
+ {
+  "name": "edge-lowercase_sex",
+  "function": "parse_mrz",
+  "text": "P<UTOERIKSSON<<ANNA<MARIA<<<<<<<<<<<<<<<<<<<\nL898902C36UTO7408122f1204159ZE184226B<<<<<10",
+  "data": {
+   "full_name": null,
+   "first_name": null,
+   "last_name": null,
+   "document_number": null,
+   "date_of_birth": null,
+   "expiration_date": null,
+   "nationality": null,
+   "nationality_code": null,
+   "issuing_country": null,
+   "issuing_country_code": null,
+   "gender": null
+  },
+  "valid": false
+ },
+ {
+  "name": "edge-sex_Z",
+  "function": "parse_mrz",
+  "text": "P<UTOERIKSSON<<ANNA<MARIA<<<<<<<<<<<<<<<<<<<\nL898902C36UTO7408122Z1204159ZE184226B<<<<<10",
+  "data": {
+   "full_name": "Anna Maria Eriksson",
+   "first_name": "Anna Maria",
+   "last_name": "Eriksson",
+   "document_number": "L898902C3",
+   "date_of_birth": "1974-08-12",
+   "expiration_date": "2012-04-15",
+   "nationality": "Utopia",
+   "nationality_code": "UTO",
+   "issuing_country": "Utopia",
+   "issuing_country_code": "UTO",
+   "gender": null
+  },
+  "valid": false
+ },
+ {
+  "name": "edge-tabs",
+  "function": "parse_mrz",
+  "text": "P<UTOERIKSSON<<ANNA<MARIA<<<<<<<<<<<<<<<<<<<\t\nL898902C36UTO7408122F1204159ZE184226B<<<<<10",
+  "data": {
+   "full_name": null,
+   "first_name": null,
+   "last_name": null,
+   "document_number": null,
+   "date_of_birth": null,
+   "expiration_date": null,
+   "nationality": null,
+   "nationality_code": null,
+   "issuing_country": null,
+   "issuing_country_code": null,
+   "gender": null
+  },
+  "valid": false
+ },
+ {
+  "name": "edge-unicode",
+  "function": "parse_mrz",
+  "text": "P<UTOÉRIKSSON<<ANNA<MARIA<<<<<<<<<<<<<<<<<<\nL898902C36UTO7408122F1204159ZE184226B<<<<<10",
+  "data": {
+   "full_name": null,
+   "first_name": null,
+   "last_name": null,
+   "document_number": null,
+   "date_of_birth": null,
+   "expiration_date": null,
+   "nationality": null,
+   "nationality_code": null,
+   "issuing_country": null,
+   "issuing_country_code": null,
+   "gender": null
+  },
+  "valid": false
+ },
+ {
+  "name": "edge-name_JR",
+  "function": "parse_mrz",
+  "text": "P<UTOERIKSSON<JR<<ANNA<MARIA<<<<<<<<<<<<<<<<<<\nL898902C36UTO7408122F1204159ZE184226B<<<<<10",
+  "data": {
+   "full_name": null,
+   "first_name": null,
+   "last_name": null,
+   "document_number": null,
+   "date_of_birth": null,
+   "expiration_date": null,
+   "nationality": null,
+   "nationality_code": null,
+   "issuing_country": null,
+   "issuing_country_code": null,
+   "gender": null
+  },
+  "valid": false
+ },
+ {
+  "name": "edge-no_padding",
+  "function": "parse_mrz",
+  "text": "P<UTOERIKSSON<<ANNA<MARIAAAAAAAAAAAAAAA\nL898902C36UTO7408122F1204159ZE184226B<<<<<10",
+  "data": {
+   "full_name": null,
+   "first_name": null,
+   "last_name": null,
+   "document_number": null,
+   "date_of_birth": null,
+   "expiration_date": null,
+   "nationality": null,
+   "nationality_code": null,
+   "issuing_country": null,
+   "issuing_country_code": null,
+   "gender": null
+  },
+  "valid": false
+ },
+ {
+  "name": "gen-178",
+  "function": "parse_mrz",
+  "text": "P<SAUGARCIA<LOPEZ<<BO<<<<<<<<<<<<<<<<<<<<<<<\nHTPUQT6<<0MAC6401230F0206226<<<<<<<<<<<<<<04",
+  "data": {
+   "full_name": "Bo Garcia Lopez",
+   "first_name": "Bo",
+   "last_name": "Garcia Lopez",
+   "document_number": "HTPUQT6",
+   "date_of_birth": "1964-01-23",
+   "expiration_date": "2002-06-22",
+   "nationality": "Macao",
+   "nationality_code": "MAC",
+   "issuing_country": "Saudi Arabia",
+   "issuing_country_code": "SAU",
+   "gender": "F"
+  },
+  "valid": true
+ },
+ {
+  "name": "gen-84",
+  "function": "parse_mrz",
+  "text": "P<GBODE<LA<CRUZ<<A<<<<<<<<<<<<<<<<<<<<<<<<<<\n9KCNW9<<<1SVK0606169<2303163<<<<<<<<<<<<<<06",
+  "data": {
+   "full_name": "A De La Cruz",
+   "first_name": "A",
+   "last_name": "De La Cruz",
+   "document_number": "9KCNW9",
+   "date_of_birth": "2006-06-16",
+   "expiration_date": "2023-03-16",
+   "nationality": "Slovakia",
+   "nationality_code": "SVK",
+   "issuing_country": "British Overseas Citizen",
+   "issuing_country_code": "GBO",
+   "gender": null
+  },
+  "valid": true
+ },
+ {
+  "name": "gen-217",
+  "function": "parse_mrz",
+  "text": "P<VGBDE<LA<CRUZ<<BO<<<<<<<<<<<<<<<<<<<<<<<<<\n9ACM8F25<7TJK8702137F15072741234567890123458",
+  "data": {
+   "full_name": "Bo De La Cruz",
+   "first_name": "Bo",
+   "last_name": "De La Cruz",
+   "document_number": "9ACM8F25",
+   "date_of_birth": "1987-02-13",
+   "expiration_date": "2015-07-27",
+   "nationality": "Tajikistan",
+   "nationality_code": "TJK",
+   "issuing_country": "Virgin Islands, British",
+   "issuing_country_code": "VGB",
+   "gender": "F"
+  },
+  "valid": true
+ },
+ {
+  "name": "gen-357",
+  "function": "parse_mrz",
+  "text": "P<NZLANDERSSON<<ZOE<<<<<<<<<<<<<<<<<<<<<<<<<\n7EPRRT<<<5SAU4706137<00092651234567890123456",
+  "data": {
+   "full_name": "Zoe Andersson",
+   "first_name": "Zoe",
+   "last_name": "Andersson",
+   "document_number": "7EPRRT",
+   "date_of_birth": "2047-06-13",
+   "expiration_date": "2000-09-26",
+   "nationality": "Saudi Arabia",
+   "nationality_code": "SAU",
+   "issuing_country": "New Zealand",
+   "issuing_country_code": "NZL",
+   "gender": null
+  },
+  "valid": true
+ },
+ {
+  "name": "gen-25",
+  "function": "parse_mrz",
+  "text": "P<ATGANDERSSON<<ZOE<<<<<<<<<<<<<<<<<<<<<<<<<\nMASYXA<<<9IRN5901272<4111021<<<<<<<<<<<<<<08",
+  "data": {
+   "full_name": "Zoe Andersson",
+   "first_name": "Zoe",
+   "last_name": "Andersson",
+   "document_number": "MASYXA",
+   "date_of_birth": "1959-01-27",
+   "expiration_date": "2041-11-02",
+   "nationality": "Iran, Islamic Republic of",
+   "nationality_code": "IRN",
+   "issuing_country": "Antigua and Barbuda",
+   "issuing_country_code": "ATG",
+   "gender": null
+  },
+  "valid": true
+ },
+ {
+  "name": "gen-39",
+  "function": "parse_mrz",
+  "text": "P<CAFANDERSSON<<MARIA<DEL<CARMEN<<<<<<<<<<<<\nEJP3CSZ0<0AIA3504255F0912116<<<<<<<<<<<<<<02",
+  "data": {
+   "full_name": "Maria Del Carmen Andersson",
+   "first_name": "Maria Del Carmen",
+   "last_name": "Andersson",
+   "document_number": "EJP3CSZ0",
+   "date_of_birth": "2035-04-25",
+   "expiration_date": "2009-12-11",
+   "nationality": "Anguilla",
+   "nationality_code": "AIA",
+   "issuing_country": "Central African Republic",
+   "issuing_country_code": "CAF",
+   "gender": "F"
+  },
+  "valid": true
+ },
+ {
+  "name": "gen-293",
+  "function": "parse_mrz",
+  "text": "P<MDGSMITH<<A<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<\nP7JK4Q<<<3PYF3604270<3502217<<<<<<<<<<<<<<06",
+  "data": {
+   "full_name": "A Smith",
+   "first_name": "A",
+   "last_name": "Smith",
+   "document_number": "P7JK4Q",
+   "date_of_birth": "2036-04-27",
+   "expiration_date": "2035-02-21",
+   "nationality": "French Polynesia",
+   "nationality_code": "PYF",
+   "issuing_country": "Madagascar",
+   "issuing_country_code": "MDG",
+   "gender": null
+  },
+  "valid": true
+ },
+ {
+  "name": "gen-51",
+  "function": "parse_mrz",
+  "text": "P<HKGSMITH<<JEAN<PIERRE<<<<<<<<<<<<<<<<<<<<<\nQC05Z3J<<4PRY0502180<2612177<<<<<<<<<<<<<<04",
+  "data": {
+   "full_name": "Jean Pierre Smith",
+   "first_name": "Jean Pierre",
+   "last_name": "Smith",
+   "document_number": "QC05Z3J",
+   "date_of_birth": "2005-02-18",
+   "expiration_date": "2026-12-17",
+   "nationality": "Paraguay",
+   "nationality_code": "PRY",
+   "issuing_country": "Hong Kong",
+   "issuing_country_code": "HKG",
+   "gender": null
+  },
+  "valid": true
+ },
+ {
+  "name": "gen-201",
+  "function": "parse_mrz",
+  "text": "P<HTIANDERSSON<<JEAN<PIERRE<<<<<<<<<<<<<<<<<\n89S7QN<<<1CAF6612050M11091281234567890123458",
+  "data": {
+   "full_name": "Jean Pierre Andersson",
+   "first_name": "Jean Pierre",
+   "last_name": "Andersson",
+   "document_number": "89S7QN",
+   "date_of_birth": "1966-12-05",
+   "expiration_date": "2011-09-12",
+   "nationality": "Central African Republic",
+   "nationality_code": "CAF",
+   "issuing_country": "Haiti",
+   "issuing_country_code": "HTI",
+   "gender": "M"
+  },
+  "valid": true
+ },
+ {
+  "name": "gen-319",
+  "function": "parse_mrz",
+  "text": "P<GHAGARCIA<LOPEZ<<ZOE<<<<<<<<<<<<<<<<<<<<<<\n52VMYH0L<8BTN6001157<4301211<<<<<<<<<<<<<<06",
+  "data": {
+   "full_name": "Zoe Garcia Lopez",
+   "first_name": "Zoe",
+   "last_name": "Garcia Lopez",
+   "document_number": "52VMYH0L",
+   "date_of_birth": "1960-01-15",
+   "expiration_date": "2043-01-21",
+   "nationality": "Bhutan",
+   "nationality_code": "BTN",
+   "issuing_country": "Ghana",
+   "issuing_country_code": "GHA",
+   "gender": null
+  },
+  "valid": true
+ },
+ {
+  "name": "gen-30",
+  "function": "parse_mrz",
+  "text": "P<BVTNGUYEN<<MARY<ANN<<<<<<<<<<<<<<<<<<<<<<<\n0AHQ0D98<9BEL9407222M44050161234567890123452",
+  "data": {
+   "full_name": "Mary Ann Nguyen",
+   "first_name": "Mary Ann",
+   "last_name": "Nguyen",
+   "document_number": "0AHQ0D98",
+   "date_of_birth": "1994-07-22",
+   "expiration_date": "2044-05-01",
+   "nationality": "Belgium",
+   "nationality_code": "BEL",
+   "issuing_country": "Bouvet Island",
+   "issuing_country_code": "BVT",
+   "gender": "M"
+  },
+  "valid": true
+ },
+ {
+  "name": "gen-278",
+  "function": "parse_mrz",
+  "text": "P<AREONEIL<<MARIA<DEL<CARMEN<<<<<<<<<<<<<<<<\nVWPBZXS8<3DOM4507035<1409286<<<<<<<<<<<<<<00",
+  "data": {
+   "full_name": "Maria Del Carmen Oneil",
+   "first_name": "Maria Del Carmen",
+   "last_name": "Oneil",
+   "document_number": "VWPBZXS8",
+   "date_of_birth": "2045-07-03",
+   "expiration_date": "2014-09-28",
+   "nationality": "Dominican Republic",
+   "nationality_code": "DOM",
+   "issuing_country": "United Arab Emirates",
+   "issuing_country_code": "ARE",
+   "gender": null
+  },
+  "valid": true
+ },
+ {
+  "name": "gen-119",
+  "function": "parse_mrz",
+  "text": "P<UZBSMITH<<MARY<ANN<<<<<<<<<<<<<<<<<<<<<<<<\nW0YTHA<<<2UKR4701062<1703180<<<<<<<<<<<<<<00",
+  "data": {
+   "full_name": "Mary Ann Smith",
+   "first_name": "Mary Ann",
+   "last_name": "Smith",
+   "document_number": "W0YTHA",
+   "date_of_birth": "2047-01-06",
+   "expiration_date": "2017-03-18",
+   "nationality": "Ukraine",
+   "nationality_code": "UKR",
+   "issuing_country": "Uzbekistan",
+   "issuing_country_code": "UZB",
+   "gender": null
+  },
+  "valid": true
+ },
+ {
+  "name": "gen-20",
+  "function": "parse_mrz",
+  "text": "P<VUTNGUYEN<<BO<<<<<<<<<<<<<<<<<<<<<<<<<<<<<\nGSEMT3<<<4NTZ0001281F0701271<<<<<<<<<<<<<<02",
+  "data": {
+   "full_name": "Bo Nguyen",
+   "first_name": "Bo",
+   "last_name": "Nguyen",
+   "document_number": "GSEMT3",
+   "date_of_birth": "2000-01-28",
+   "expiration_date": "2007-01-27",
+   "nationality": "Neutral Zone",
+   "nationality_code": "NTZ",
+   "issuing_country": "Vanuatu",
+   "issuing_country_code": "VUT",
+   "gender": "F"
+  },
+  "valid": true
+ },
+ {
+  "name": "gen-46",
+  "function": "parse_mrz",
+  "text": "P<BRADE<LA<CRUZ<<A<<<<<<<<<<<<<<<<<<<<<<<<<<\nLSH51779D2ITA7203095M4007018<<<<<<<<<<<<<<08",
+  "data": {
+   "full_name": "A De La Cruz",
+   "first_name": "A",
+   "last_name": "De La Cruz",
+   "document_number": "LSH51779D",
+   "date_of_birth": "1972-03-09",
+   "expiration_date": "2040-07-01",
+   "nationality": "Italy",
+   "nationality_code": "ITA",
+   "issuing_country": "Brazil",
+   "issuing_country_code": "BRA",
+   "gender": "M"
+  },
+  "valid": true
+ },
+ {
+  "name": "gen-239",
+  "function": "parse_mrz",
+  "text": "P<ALBSMITH<<BO<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<\nVUE6Z<<<<8BEL1706125F3108170<<<<<<<<<<<<<<08",
+  "data": {
+   "full_name": "Bo Smith",
+   "first_name": "Bo",
+   "last_name": "Smith",
+   "document_number": "VUE6Z",
+   "date_of_birth": "2017-06-12",
+   "expiration_date": "2031-08-17",
+   "nationality": "Belgium",
+   "nationality_code": "BEL",
+   "issuing_country": "Albania",
+   "issuing_country_code": "ALB",
+   "gender": "F"
+  },
+  "valid": true
+ },
+ {
+  "name": "gen-230",
+  "function": "parse_mrz",
+  "text": "P<BRBDE<LA<CRUZ<<MARY<ANN<<<<<<<<<<<<<<<<<<<\nA9GRAEEC<0PAN6708043<4105073ZE184226B<<<<<18",
+  "data": {
+   "full_name": "Mary Ann De La Cruz",
+   "first_name": "Mary Ann",
+   "last_name": "De La Cruz",
+   "document_number": "A9GRAEEC",
+   "date_of_birth": "1967-08-04",
+   "expiration_date": "2041-05-07",
+   "nationality": "Panama",
+   "nationality_code": "PAN",
+   "issuing_country": "Barbados",
+   "issuing_country_code": "BRB",
+   "gender": null
+  },
+  "valid": true
+ },
+ {
+  "name": "gen-36",
+  "function": "parse_mrz",
+  "text": "P<INDNGUYEN<<ZOE<<<<<<<<<<<<<<<<<<<<<<<<<<<<\nKBWSK6QPZ9MAF5706156<1105061<<<<<<<<<<<<<<08",
+  "data": {
+   "full_name": "Zoe Nguyen",
+   "first_name": "Zoe",
+   "last_name": "Nguyen",
+   "document_number": "KBWSK6QPZ",
+   "date_of_birth": "1957-06-15",
+   "expiration_date": "2011-05-06",
+   "nationality": "Saint Martin (French part)",
+   "nationality_code": "MAF",
+   "issuing_country": "India",
+   "issuing_country_code": "IND",
+   "gender": null
+  },
+  "valid": true
+ },
+ {
+  "name": "gen-134",
+  "function": "parse_mrz",
+  "text": "P<MMRSMITH<<A<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<\nXW97D<<<<4AZE4410104<31011481234567890123456",
+  "data": {
+   "full_name": "A Smith",
+   "first_name": "A",
+   "last_name": "Smith",
+   "document_number": "XW97D",
+   "date_of_birth": "2044-10-10",
+   "expiration_date": "2031-01-14",
+   "nationality": "Azerbaijan",
+   "nationality_code": "AZE",
+   "issuing_country": "Myanmar",
+   "issuing_country_code": "MMR",
+   "gender": null
+  },
+  "valid": true
+ },
+ {
+  "name": "gen-49",
+  "function": "parse_mrz",
+  "text": "P<TJKSMITH<<A<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<\nESGCXV4<<0COD6610078<0808228<<<<<<<<<<<<<<06",
+  "data": {
+   "full_name": "A Smith",
+   "first_name": "A",
+   "last_name": "Smith",
+   "document_number": "ESGCXV4",
+   "date_of_birth": "1966-10-07",
+   "expiration_date": "2008-08-22",
+   "nationality": "Congo, Democratic Republic of the",
+   "nationality_code": "COD",
+   "issuing_country": "Tajikistan",
+   "issuing_country_code": "TJK",
+   "gender": null
+  },
+  "valid": true
+ },
+ {
+  "name": "gen-303",
+  "function": "parse_mrz",
+  "text": "P<POLLI<<JOHN<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<\nVVT2S6C<<7BRB7005277F0002060<<<<<<<<<<<<<<04",
+  "data": {
+   "full_name": "John Li",
+   "first_name": "John",
+   "last_name": "Li",
+   "document_number": "VVT2S6C",
+   "date_of_birth": "1970-05-27",
+   "expiration_date": "2000-02-06",
+   "nationality": "Barbados",
+   "nationality_code": "BRB",
+   "issuing_country": "Poland",
+   "issuing_country_code": "POL",
+   "gender": "F"
+  },
+  "valid": true
+ },
+ {
+  "name": "gen-233",
+  "function": "parse_mrz",
+  "text": "P<GUYMUELLER<<A<<<<<<<<<<<<<<<<<<<<<<<<<<<<<\nCWP1R4L6R9CAN7002058F3710092<<<<<<<<<<<<<<02",
+  "data": {
+   "full_name": "A Mueller",
+   "first_name": "A",
+   "last_name": "Mueller",
+   "document_number": "CWP1R4L6R",
+   "date_of_birth": "1970-02-05",
+   "expiration_date": "2037-10-09",
+   "nationality": "Canada",
+   "nationality_code": "CAN",
+   "issuing_country": "Guyana",
+   "issuing_country_code": "GUY",
+   "gender": "F"
+  },
+  "valid": true
+ },
+ {
+  "name": "gen-31",
+  "function": "parse_mrz",
+  "text": "P<CXRNGUYEN<<JOHN<<<<<<<<<<<<<<<<<<<<<<<<<<<\nC0T91E6<<5CZE4911210<4906225<<<<<<<<<<<<<<08",
+  "data": {
+   "full_name": "John Nguyen",
+   "first_name": "John",
+   "last_name": "Nguyen",
+   "document_number": "C0T91E6",
+   "date_of_birth": "2049-11-21",
+   "expiration_date": "2049-06-22",
+   "nationality": "Czechia",
+   "nationality_code": "CZE",
+   "issuing_country": "Christmas Island",
+   "issuing_country_code": "CXR",
+   "gender": null
+  },
+  "valid": true
+ },
+ {
+  "name": "gen-310",
+  "function": "parse_mrz",
+  "text": "P<CHNANDERSSON<<MARIA<DEL<CARMEN<<<<<<<<<<<<\nATWA1V<<<3GBS8212281F4507264<<<<<<<<<<<<<<06",
+  "data": {
+   "full_name": "Maria Del Carmen Andersson",
+   "first_name": "Maria Del Carmen",
+   "last_name": "Andersson",
+   "document_number": "ATWA1V",
+   "date_of_birth": "1982-12-28",
+   "expiration_date": "2045-07-26",
+   "nationality": "British Subject",
+   "nationality_code": "GBS",
+   "issuing_country": "China",
+   "issuing_country_code": "CHN",
+   "gender": "F"
+  },
+  "valid": true
+ },
+ {
+  "name": "gen-68",
+  "function": "parse_mrz",
+  "text": "P<ETHNGUYEN<<ZOE<<<<<<<<<<<<<<<<<<<<<<<<<<<<\nDGKFGTV<<8CZE3911073<35071971234567890123456",
+  "data": {
+   "full_name": "Zoe Nguyen",
+   "first_name": "Zoe",
+   "last_name": "Nguyen",
+   "document_number": "DGKFGTV",
+   "date_of_birth": "2039-11-07",
+   "expiration_date": "2035-07-19",
+   "nationality": "Czechia",
+   "nationality_code": "CZE",
+   "issuing_country": "Ethiopia",
+   "issuing_country_code": "ETH",
+   "gender": null
+  },
+  "valid": true
+ },
+ {
+  "name": "mut-2405",
+  "function": "parse_mrz",
+  "text": "P<PRKANDERSSON<<A<<<<<<<<<<<<<<<<<<<<<<<<<<<\nZN6BCBVDK0SUR9104141M0410243<<<<<<<<<<<<<<02\n",
+  "data": {
+   "full_name": "A Andersson",
+   "first_name": "A",
+   "last_name": "Andersson",
+   "document_number": "ZN6BCBVDK",
+   "date_of_birth": "1991-04-14",
+   "expiration_date": "2004-10-24",
+   "nationality": "Suriname",
+   "nationality_code": "SUR",
+   "issuing_country": "Korea, Democratic People's Republic of",
+   "issuing_country_code": "PRK",
+   "gender": "M"
+  },
+  "valid": true
+ },
+ {
+  "name": "mut-601",
+  "function": "parse_mrz",
+  "text": "P<HKGLI<<MARY<ANN<<<<<<<<<<<<<<<<<<<<<<<<<<<VXU4EV<<<7ITA9404151M4307109<<<<<<<<<<<<<<06",
+  "data": {
+   "full_name": "Mary Ann Li",
+   "first_name": "Mary Ann",
+   "last_name": "Li",
+   "document_number": "VXU4EV",
+   "date_of_birth": "1994-04-15",
+   "expiration_date": "2043-07-10",
+   "nationality": "Italy",
+   "nationality_code": "ITA",
+   "issuing_country": "Hong Kong",
+   "issuing_country_code": "HKG",
+   "gender": "M"
+  },
+  "valid": true
+ },
+ {
+  "name": "mut-1610",
+  "function": "parse_mrz",
+  "text": "P<CHNANDERSSON<<MARIA<DEL<CARMEN<<<<<<<<<<<<\nATWA1V<<<3GBS8212281F4507264<<<<<<<<<<<<<<06",
+  "data": {
+   "full_name": "Maria Del Carmen Andersson",
+   "first_name": "Maria Del Carmen",
+   "last_name": "Andersson",
+   "document_number": "ATWA1V",
+   "date_of_birth": "1982-12-28",
+   "expiration_date": "2045-07-26",
+   "nationality": "British Subject",
+   "nationality_code": "GBS",
+   "issuing_country": "China",
+   "issuing_country_code": "CHN",
+   "gender": "F"
+  },
+  "valid": true
+ },
+ {
+  "name": "mut-1604",
+  "function": "parse_mrz",
+  "text": "P<ITALI<<MARIA<DEL<CARMEN<<<<<<<<<<<<<<<<<<<\n0H2SQQ<<<3PHL5309199F4003261ZE184226B<<<<<12",
+  "data": {
+   "full_name": "Maria Del Carmen Li",
+   "first_name": "Maria Del Carmen",
+   "last_name": "Li",
+   "document_number": "0H2SQQ",
+   "date_of_birth": "1953-09-19",
+   "expiration_date": "2040-03-26",
+   "nationality": "Philippines",
+   "nationality_code": "PHL",
+   "issuing_country": "Italy",
+   "issuing_country_code": "ITA",
+   "gender": "F"
+  },
+  "valid": true
+ },
+ {
+  "name": "mut-1499",
+  "function": "parse_mrz",
+  "text": "P<AFGSMITH<<BO<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<\n4VMTV<<<<9XCO9106204M3202078<<<<<<<<<<<<<<00",
+  "data": {
+   "full_name": "Bo Smith",
+   "first_name": "Bo",
+   "last_name": "Smith",
+   "document_number": "4VMTV",
+   "date_of_birth": "1991-06-20",
+   "expiration_date": "2032-02-07",
+   "nationality": "Comesa",
+   "nationality_code": "XCO",
+   "issuing_country": "Afghanistan",
+   "issuing_country_code": "AFG",
+   "gender": "M"
+  },
+  "valid": true
+ },
+ {
+  "name": "mut-172",
+  "function": "parse_mrz",
+  "text": "P<MLILI<<A<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<\n5K4DG<<<<8DZA6502137<04061071234567890123454",
+  "data": {
+   "full_name": "A Li",
+   "first_name": "A",
+   "last_name": "Li",
+   "document_number": "5K4DG",
+   "date_of_birth": "1965-02-13",
+   "expiration_date": "2004-06-10",
+   "nationality": "Algeria",
+   "nationality_code": "DZA",
+   "issuing_country": "Mali",
+   "issuing_country_code": "MLI",
+   "gender": null
+  },
+  "valid": true
+ },
+ {
+  "name": "mut-1487",
+  "function": "parse_mrz",
+  "text": "P<GIBGARCIA<LOPEZ<<JEAN<PIERRE<<<<<<<<<<<<<<\nGNL71954<0MAC7506257F4309103<<<<<<<<<<<<<<06\n",
+  "data": {
+   "full_name": "Jean Pierre Garcia Lopez",
+   "first_name": "Jean Pierre",
+   "last_name": "Garcia Lopez",
+   "document_number": "GNL71954",
+   "date_of_birth": "1975-06-25",
+   "expiration_date": "2043-09-10",
+   "nationality": "Macao",
+   "nationality_code": "MAC",
+   "issuing_country": "Gibraltar",
+   "issuing_country_code": "GIB",
+   "gender": "F"
+  },
+  "valid": true
+ },
+ {
+  "name": "mut-1505",
+  "function": "parse_mrz",
+  "text": "P<ESHONEI L<<MARIA<DEL<CARMEN <<<<<<<<<<<<<<<<\n1RDZJ7 AG<8BGR3405064F20051801234567890123454",
+  "data": {
+   "full_name": "Maria Del Carmen Oneil",
+   "first_name": "Maria Del Carmen",
+   "last_name": "Oneil",
+   "document_number": "1RDZJ7AG",
+   "date_of_birth": "2034-05-06",
+   "expiration_date": "2020-05-18",
+   "nationality": "Bulgaria",
+   "nationality_code": "BGR",
+   "issuing_country": "Western Sahara",
+   "issuing_country_code": "ESH",
+   "gender": "F"
+  },
+  "valid": true
+ },
+ {
+  "name": "mut-1047",
+  "function": "parse_mrz",
+  "text": "P<SAUGARCIA<LOPEZ<<JEAN<PIERRE<<<<<<<<<<<<<<0142DMN1X9MOZ7208274<2301192<<<<<<<<<<<<<<02",
+  "data": {
+   "full_name": "Jean Pierre Garcia Lopez",
+   "first_name": "Jean Pierre",
+   "last_name": "Garcia Lopez",
+   "document_number": "0142DMN1X",
+   "date_of_birth": "1972-08-27",
+   "expiration_date": "2023-01-19",
+   "nationality": "Mozambique",
+   "nationality_code": "MOZ",
+   "issuing_country": "Saudi Arabia",
+   "issuing_country_code": "SAU",
+   "gender": null
+  },
+  "valid": true
+ },
+ {
+  "name": "mut-138",
+  "function": "parse_mrz",
+  "text": "P<AFGSMITH<<BO<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<4VMTV<<<<9XCO9106204M3202078<<<<<<<<<<<<<<00",
+  "data": {
+   "full_name": "Bo Smith",
+   "first_name": "Bo",
+   "last_name": "Smith",
+   "document_number": "4VMTV",
+   "date_of_birth": "1991-06-20",
+   "expiration_date": "2032-02-07",
+   "nationality": "Comesa",
+   "nationality_code": "XCO",
+   "issuing_country": "Afghanistan",
+   "issuing_country_code": "AFG",
+   "gender": "M"
+  },
+  "valid": true
+ },
+ {
+  "name": "mut-681",
+  "function": "parse_mrz",
+  "text": "P<GTMSMITH<<JEAN<PIERRE<<<<<<<<<<<<<<<<<<<<<\nD33S4J<<<0TWN310707004006284<<<<<<<<<<<<<<02",
+  "data": {
+   "full_name": "Jean Pierre Smith",
+   "first_name": "Jean Pierre",
+   "last_name": "Smith",
+   "document_number": "D33S4J",
+   "date_of_birth": "2031-07-07",
+   "expiration_date": "2040-06-28",
+   "nationality": "Taiwan, Province of China",
+   "nationality_code": "TWN",
+   "issuing_country": "Guatemala",
+   "issuing_country_code": "GTM",
+   "gender": null
+  },
+  "valid": false
+ },
+ {
+  "name": "mut-155",
+  "function": "parse_mrz",
+  "text": "P<PSEDE<LA<CRUZ<<ZOE<<<<<<<<<<<<<<<<<<<<<<<<\n7J59GKLM<5BTN<<<<<<8<1905102ZE184226B<<<<<16",
+  "data": {
+   "full_name": "Zoe De La Cruz",
+   "first_name": "Zoe",
+   "last_name": "De La Cruz",
+   "document_number": "7J59GKLM",
+   "date_of_birth": null,
+   "expiration_date": "2019-05-10",
+   "nationality": "Bhutan",
+   "nationality_code": "BTN",
+   "issuing_country": "Palestine, State of",
+   "issuing_country_code": "PSE",
+   "gender": null
+  },
+  "valid": false
+ },
+ {
+  "name": "mut-1742",
+  "function": "parse_mrz",
+  "text": "P<TC0NGUYEN<<MARY<ANN<<<<<<<<<<<<<<<<<<<<<<<\n023WE4<<<9GUF1011094<4103183<<<<<<<<<<<<<<08",
+  "data": {
+   "full_name": "Mary Ann Nguyen",
+   "first_name": "Mary Ann",
+   "last_name": "Nguyen",
+   "document_number": "023WE4",
+   "date_of_birth": "2010-11-09",
+   "expiration_date": "2041-03-18",
+   "nationality": "French Guiana",
+   "nationality_code": "GUF",
+   "issuing_country": "TC0",
+   "issuing_country_code": "TC0",
+   "gender": null
+  },
+  "valid": false
+ },
+ {
+  "name": "mut-418",
+  "function": "parse_mrz",
+  "text": "P<BLMONEIL<<A<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<\nBG4R2U<<<4UNA1206212N1410273<<<<<<<<<<<<<<00",
+  "data": {
+   "full_name": "A Oneil",
+   "first_name": "A",
+   "last_name": "Oneil",
+   "document_number": "BG4R2U",
+   "date_of_birth": "2012-06-21",
+   "expiration_date": "2014-10-27",
+   "nationality": "United Nations Agency",
+   "nationality_code": "UNA",
+   "issuing_country": "Saint Barthélemy",
+   "issuing_country_code": "BLM",
+   "gender": null
+  },
+  "valid": false
+ },
+ {
+  "name": "mut-902",
+  "function": "parse_mrz",
+  "text": "P<CHNANDERSSON<<MARIA<DEL<CARMEN<<<<<<<<<<<<\nATWA1V<<<3GBS8212281F4507266<<<<<<<<<<<<<<06",
+  "data": {
+   "full_name": "Maria Del Carmen Andersson",
+   "first_name": "Maria Del Carmen",
+   "last_name": "Andersson",
+   "document_number": "ATWA1V",
+   "date_of_birth": "1982-12-28",
+   "expiration_date": "2045-07-26",
+   "nationality": "British Subject",
+   "nationality_code": "GBS",
+   "issuing_country": "China",
+   "issuing_country_code": "CHN",
+   "gender": "F"
+  },
+  "valid": false
+ },
+ {
+  "name": "mut-1294",
+  "function": "parse_mrz",
+  "text": "P<AFGSMITH<<MARY<ANN<<<<<<<<<<<<<<<<<<<<<<<<\n1MXJJCA7<9BBL5807248<0612243<<<<<<<<<<<<<<06",
+  "data": {
+   "full_name": "Mary Ann Smith",
+   "first_name": "Mary Ann",
+   "last_name": "Smith",
+   "document_number": "1MXJJCA7",
+   "date_of_birth": "1958-07-24",
+   "expiration_date": "2006-12-24",
+   "nationality": "BBL",
+   "nationality_code": "BBL",
+   "issuing_country": "Afghanistan",
+   "issuing_country_code": "AFG",
+   "gender": null
+  },
+  "valid": false
+ },
+ {
+  "name": "mut-439",
+  "function": "parse_mrz",
+  "text": "P<GAMLI<<MARIA<DEL<CARMEN<<<<<<<<<<<<<<<<<<<\nYF987J9X<0ISR7102268M3104242ZE184226B<<<<<10",
+  "data": {
+   "full_name": "Maria Del Carmen Li",
+   "first_name": "Maria Del Carmen",
+   "last_name": "Li",
+   "document_number": "YF987J9X",
+   "date_of_birth": "1971-02-26",
+   "expiration_date": "2031-04-24",
+   "nationality": "Israel",
+   "nationality_code": "ISR",
+   "issuing_country": "GAM",
+   "issuing_country_code": "GAM",
+   "gender": "M"
+  },
+  "valid": false
+ },
+ {
+  "name": "mut-1686",
+  "function": "parse_mrz",
+  "text": "P<BELANDERSSON<<MARY<ANN<<<<<<<<<<<<<<<<<<<<\nTKRHKPD968ARE9A01014<3712029<<<<<<<<<<<<<<08",
+  "data": {
+   "full_name": "Mary Ann Andersson",
+   "first_name": "Mary Ann",
+   "last_name": "Andersson",
+   "document_number": "TKRHKPD96",
+   "date_of_birth": null,
+   "expiration_date": "2037-12-02",
+   "nationality": "United Arab Emirates",
+   "nationality_code": "ARE",
+   "issuing_country": "Belgium",
+   "issuing_country_code": "BEL",
+   "gender": null
+  },
+  "valid": false
+ },
+ {
+  "name": "mut-368",
+  "function": "parse_mrz",
+  "text": "P<SMRONEIL<<MARIA<DEL<CARMEN<<<<<<<<<<<<<<<<\nE5JML9J0<ILUX8706238F4406035<<<<<<<<<<<<<<06",
+  "data": {
+   "full_name": "Maria Del Carmen Oneil",
+   "first_name": "Maria Del Carmen",
+   "last_name": "Oneil",
+   "document_number": "E5JML9J0",
+   "date_of_birth": "1987-06-23",
+   "expiration_date": "2044-06-03",
+   "nationality": "Luxembourg",
+   "nationality_code": "LUX",
+   "issuing_country": "San Marino",
+   "issuing_country_code": "SMR",
+   "gender": "F"
+  },
+  "valid": false
+ },
+ {
+  "name": "mut-1768",
+  "function": "parse_mrz",
+  "text": "P<BRBMUELLER<<JEAN<PIERRE<<<<<<<<<<<<<<<<<<<\nMXY0V8Y7<7VGB9707069<<<<<<<61234567890123450",
+  "data": {
+   "full_name": "Jean Pierre Mueller",
+   "first_name": "Jean Pierre",
+   "last_name": "Mueller",
+   "document_number": "MXY0V8Y7",
+   "date_of_birth": "1997-07-06",
+   "expiration_date": null,
+   "nationality": "Virgin Islands, British",
+   "nationality_code": "VGB",
+   "issuing_country": "Barbados",
+   "issuing_country_code": "BRB",
+   "gender": null
+  },
+  "valid": false
+ },
+ {
+  "name": "mut-957",
+  "function": "parse_mrz",
+  "text": "P<GOHGARCIA<LOPEZ<<A<<<<<<<<<<<<<<<<<<<<<<<<\n5KR9F<<<<0BLR9412240<1711280<<<<<<<<<<<<<<06",
+  "data": {
+   "full_name": "A Garcia Lopez",
+   "first_name": "A",
+   "last_name": "Garcia Lopez",
+   "document_number": "5KR9F",
+   "date_of_birth": "1994-12-24",
+   "expiration_date": "2017-11-28",
+   "nationality": "Belarus",
+   "nationality_code": "BLR",
+   "issuing_country": "GOH",
+   "issuing_country_code": "GOH",
+   "gender": null
+  },
+  "valid": false
+ },
+ {
+  "name": "mut-1747",
+  "function": "parse_mrz",
+  "text": "P<XSAGARCIA<LOPEZ<<JEAN<PIERRE<<<<<<<<<<<<<<\nFARL8PLH39FRO5705137<2710187<<<<<<<<<<<<<<04",
+  "data": {
+   "full_name": "Jean Pierre Garcia Lopez",
+   "first_name": "Jean Pierre",
+   "last_name": "Garcia Lopez",
+   "document_number": "FARL8PLH3",
+   "date_of_birth": "1957-05-13",
+   "expiration_date": "2027-10-18",
+   "nationality": "Faroe Islands",
+   "nationality_code": "FRO",
+   "issuing_country": "XSA",
+   "issuing_country_code": "XSA",
+   "gender": null
+  },
+  "valid": false
+ },
+ {
+  "name": "mut-2134",
+  "function": "parse_mrz",
+  "text": "P<5TIANDERSSON<<JEAN<PIERRE<<<<<<<<<<<<<<<<<\n89S7QN<<<1CAF6612050M11091281234567890123458",
+  "data": {
+   "full_name": "Jean Pierre Andersson",
+   "first_name": "Jean Pierre",
+   "last_name": "Andersson",
+   "document_number": "89S7QN",
+   "date_of_birth": "1966-12-05",
+   "expiration_date": "2011-09-12",
+   "nationality": "Central African Republic",
+   "nationality_code": "CAF",
+   "issuing_country": "5TI",
+   "issuing_country_code": "5TI",
+   "gender": "M"
+  },
+  "valid": false
+ },
+ {
+  "name": "mut-573",
+  "function": "parse_mrz",
+  "text": "P<EWTNGUYEN<<A<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<\nN8Z4E8FV<6WLF5008148F1405255<<<<<<<<<<<<<<08",
+  "data": {
+   "full_name": "A Nguyen",
+   "first_name": "A",
+   "last_name": "Nguyen",
+   "document_number": "N8Z4E8FV",
+   "date_of_birth": "1950-08-14",
+   "expiration_date": "2014-05-25",
+   "nationality": "Wallis and Futuna",
+   "nationality_code": "WLF",
+   "issuing_country": "EWT",
+   "issuing_country_code": "EWT",
+   "gender": "F"
+  },
+  "valid": false
+ },
+ {
+  "name": "mut-327",
+  "function": "parse_mrz",
+  "text": "P<UMIGARCIA<L0PEZ<<MARY<ANN<<<<<<<<<<<<<<<<<\nFUUF9<<<<7NIU3209136<1204241123456789O123450",
+  "data": {
+   "full_name": "Mary Ann Garcia L0Pez",
+   "first_name": "Mary Ann",
+   "last_name": "Garcia L0Pez",
+   "document_number": "FUUF9",
+   "date_of_birth": "2032-09-13",
+   "expiration_date": "2012-04-24",
+   "nationality": "Niue",
+   "nationality_code": "NIU",
+   "issuing_country": "United States Minor Outlying Islands",
+   "issuing_country_code": "UMI",
+   "gender": null
+  },
+  "valid": false
+ },
+ {
+  "name": "mut-1811",
+  "function": "parse_mrz",
+  "text": "P<NLDNGUYEN<<A<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<\nDBWG1D6J<3HNI7207093F0311214<<<<<<<<<<<<<<06",
+  "data": {
+   "full_name": "A Nguyen",
+   "first_name": "A",
+   "last_name": "Nguyen",
+   "document_number": "DBWG1D6J",
+   "date_of_birth": "1972-07-09",
+   "expiration_date": "2003-11-21",
+   "nationality": "HNI",
+   "nationality_code": "HNI",
+   "issuing_country": "Netherlands",
+   "issuing_country_code": "NLD",
+   "gender": "F"
+  },
+  "valid": false
+ },
+ {
+  "name": "mut-1969",
+  "function": "parse_mrz",
+  "text": "P<MDVGARCIA<LOPEZ<<ZOE<<<<<<<<<<<<<<<<<<<<<<\nRDUQPK38<0TCA6302094<9913996<<<<<<<<<<<<<<04",
+  "data": {
+   "full_name": "Zoe Garcia Lopez",
+   "first_name": "Zoe",
+   "last_name": "Garcia Lopez",
+   "document_number": "RDUQPK38",
+   "date_of_birth": "1963-02-09",
+   "expiration_date": "1999-13-99",
+   "nationality": "Turks and Caicos Islands",
+   "nationality_code": "TCA",
+   "issuing_country": "Maldives",
+   "issuing_country_code": "MDV",
+   "gender": null
+  },
+  "valid": false
+ },
+ {
+  "name": "mut-607",
+  "function": "parse_mrz",
+  "text": "P<SMRSMITH<<MARIA<DEL<CARMEN<<<<<<<<<<<<<<<<\n13SYV<<<<5GUM9206126M4811206ZE184226B<<<<1<6",
+  "data": {
+   "full_name": "Maria Del Carmen Smith",
+   "first_name": "Maria Del Carmen",
+   "last_name": "Smith",
+   "document_number": "13SYV",
+   "date_of_birth": "1992-06-12",
+   "expiration_date": "2048-11-20",
+   "nationality": "Guam",
+   "nationality_code": "GUM",
+   "issuing_country": "San Marino",
+   "issuing_country_code": "SMR",
+   "gender": "M"
+  },
+  "valid": false
+ },
+ {
+  "name": "mut-1155",
+  "function": "parse_mrz",
+  "text": "P<GB<GARCIA<LOPEZ<<JOHN<<<<<<<<<<<<<<<<<<<<<\nRU0TBV<<<6ISL0702142<9A01014<<<<<<<<<<<<<<06",
+  "data": {
+   "full_name": "John Garcia Lopez",
+   "first_name": "John",
+   "last_name": "Garcia Lopez",
+   "document_number": "RU0TBV",
+   "date_of_birth": "2007-02-14",
+   "expiration_date": null,
+   "nationality": "Iceland",
+   "nationality_code": "ISL",
+   "issuing_country": "United Kingdom of Great Britain and Northern Ireland",
+   "issuing_country_code": "GB",
+   "gender": null
+  },
+  "valid": false
+ },
+ {
+  "name": "mut-311",
+  "function": "parse_mrz",
+  "text": "P<XXBONEIL<<JEAN<PIERRE<<<<<<<<<<<<<<<<<<<<<\nQCKDTN3<<0ATF9913995F04121881234567890123458",
+  "data": {
+   "full_name": "Jean Pierre Oneil",
+   "first_name": "Jean Pierre",
+   "last_name": "Oneil",
+   "document_number": "QCKDTN3",
+   "date_of_birth": "1999-13-99",
+   "expiration_date": "2004-12-18",
+   "nationality": "French Southern Territories",
+   "nationality_code": "ATF",
+   "issuing_country": "Refugee B",
+   "issuing_country_code": "XXB",
+   "gender": "F"
+  },
+  "valid": false
+ },
+ {
+  "name": "mut-1707",
+  "function": "parse_mrz",
+  "text": "P<BIHDE<LA<CRUZ<<MARY<ANN<<<<<<<<<<<<<<<<<<<\nVWED4LK<<1NER7603259<9A01011<<<<<<<<<<<<<<00",
+  "data": {
+   "full_name": "Mary Ann De La Cruz",
+   "first_name": "Mary Ann",
+   "last_name": "De La Cruz",
+   "document_number": "VWED4LK",
+   "date_of_birth": "1976-03-25",
+   "expiration_date": null,
+   "nationality": "Niger",
+   "nationality_code": "NER",
+   "issuing_country": "Bosnia and Herzegovina",
+   "issuing_country_code": "BIH",
+   "gender": null
+  },
+  "valid": false
+ },
+ {
+  "name": "mut-2227",
+  "function": "parse_mrz",
+  "text": "P<INDLI<<JOHN<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<\nUQ35CPB<<4KOR3703245<4612115<<<<<<<<<<<<<<02",
+  "data": {
+   "full_name": "John Li",
+   "first_name": "John",
+   "last_name": "Li",
+   "document_number": "UQ35CPB",
+   "date_of_birth": "2037-03-24",
+   "expiration_date": "2046-12-11",
+   "nationality": "Korea, Republic of",
+   "nationality_code": "KOR",
+   "issuing_country": "India",
+   "issuing_country_code": "IND",
+   "gender": null
+  },
+  "valid": false
+ },
+ {
+  "name": "mut-209",
+  "function": "parse_mrz",
+  "text": "P<NTZDE<LA<CRUZ<<MARIA<DEL<CARMEN<<<<<<<<<<<\nDZQPW6JC<9NLD1908169<2905235123456789O123456",
+  "data": {
+   "full_name": "Maria Del Carmen De La Cruz",
+   "first_name": "Maria Del Carmen",
+   "last_name": "De La Cruz",
+   "document_number": "DZQPW6JC",
+   "date_of_birth": "2019-08-16",
+   "expiration_date": "2029-05-23",
+   "nationality": "Netherlands",
+   "nationality_code": "NLD",
+   "issuing_country": "Neutral Zone",
+   "issuing_country_code": "NTZ",
+   "gender": null
+  },
+  "valid": false
+ },
+ {
+  "name": "mut-1756",
+  "function": "parse_mrz",
+  "text": "P<YEMONEIL<<MARY<ANN<<<<<<<<<<<<<<<<<<<<<<<<\nH8BA6<<<<2CCL7702222M16042541234567890123452",
+  "data": {
+   "full_name": "Mary Ann Oneil",
+   "first_name": "Mary Ann",
+   "last_name": "Oneil",
+   "document_number": "H8BA6",
+   "date_of_birth": "1977-02-22",
+   "expiration_date": "2016-04-25",
+   "nationality": "CCL",
+   "nationality_code": "CCL",
+   "issuing_country": "Yemen",
+   "issuing_country_code": "YEM",
+   "gender": "M"
+  },
+  "valid": false
+ },
+ {
+  "name": "mut-197",
+  "function": "parse_mrz",
+  "text": "P<BSHANDERSSON<<JOHN<<<<<<<<<<<<<<<<<<<<<<<<\nY0298F4G<8GNB0601223F2608075<<<<<<<<<<<<<<06",
+  "data": {
+   "full_name": "John Andersson",
+   "first_name": "John",
+   "last_name": "Andersson",
+   "document_number": "Y0298F4G",
+   "date_of_birth": "2006-01-22",
+   "expiration_date": "2026-08-07",
+   "nationality": "Guinea-Bissau",
+   "nationality_code": "GNB",
+   "issuing_country": "BSH",
+   "issuing_country_code": "BSH",
+   "gender": "F"
+  },
+  "valid": false
+ },
+ {
+  "name": "mut-892",
+  "function": "parse_mrz",
+  "text": "P<AFGSMITH<<BO<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<\n4VMTV<<<<9XCO9106204M3202078<<<<<<<<<<<<<<00<",
+  "data": {
+   "full_name": null,
+   "first_name": null,
+   "last_name": null,
+   "document_number": null,
+   "date_of_birth": null,
+   "expiration_date": null,
+   "nationality": null,
+   "nationality_code": null,
+   "issuing_country": null,
+   "issuing_country_code": null,
+   "gender": null
+  },
+  "valid": false
+ },
+ {
+  "name": "mut-2248",
+  "function": "parse_mrz",
+  "text": "P<MLINGUYEN<<MARY<ANN<<<<<<<<<<<<<<<<<<<<<<\n1BAXSB<<<6BHR1508075<35050781234567890123456",
+  "data": {
+   "full_name": null,
+   "first_name": null,
+   "last_name": null,
+   "document_number": null,
+   "date_of_birth": null,
+   "expiration_date": null,
+   "nationality": null,
+   "nationality_code": null,
+   "issuing_country": null,
+   "issuing_country_code": null,
+   "gender": null
+  },
+  "valid": false
+ },
+ {
+  "name": "mut-2427",
+  "function": "parse_mrz",
+  "text": "P<SLBMUELLER<<JOHN<<<<<<<<<<<<<<<<<<<<<<<<<<\n4GRMT<<<<4YEM6406279<4103057<<<<<<<<<<<<<06",
+  "data": {
+   "full_name": null,
+   "first_name": null,
+   "last_name": null,
+   "document_number": null,
+   "date_of_birth": null,
+   "expiration_date": null,
+   "nationality": null,
+   "nationality_code": null,
+   "issuing_country": null,
+   "issuing_country_code": null,
+   "gender": null
+  },
+  "valid": false
+ },
+ {
+  "name": "mut-1943",
+  "function": "parse_mrz",
+  "text": "P<TCASMITH<<MARY<ANN<<<<<<<<<<<<<<<<<<<<<<<<\nLMRXC2GM<7CCK2405207<2611099<<<<<<<<<<<<<<08A",
+  "data": {
+   "full_name": null,
+   "first_name": null,
+   "last_name": null,
+   "document_number": null,
+   "date_of_birth": null,
+   "expiration_date": null,
+   "nationality": null,
+   "nationality_code": null,
+   "issuing_country": null,
+   "issuing_country_code": null,
+   "gender": null
+  },
+  "valid": false
+ },
+ {
+  "name": "mut-1414",
+  "function": "parse_mrz",
+  "text": "P<LKALI<<JOHN<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<\r\nFYR1QMA3H7COM3905232M1406148ZE184226B<<<<<12",
+  "data": {
+   "full_name": null,
+   "first_name": null,
+   "last_name": null,
+   "document_number": null,
+   "date_of_birth": null,
+   "expiration_date": null,
+   "nationality": null,
+   "nationality_code": null,
+   "issuing_country": null,
+   "issuing_country_code": null,
+   "gender": null
+  },
+  "valid": false
+ },
+ {
+  "name": "mut-2075",
+  "function": "parse_mrz",
+  "text": "P<NERNGUYEN<<JEAN<PIERRE<<<<<<<<<<<<<<<<<<<<\nN6209DD<<2KR4811088<3805262<<<<<<<<<<<<<<04",
+  "data": {
+   "full_name": null,
+   "first_name": null,
+   "last_name": null,
+   "document_number": null,
+   "date_of_birth": null,
+   "expiration_date": null,
+   "nationality": null,
+   "nationality_code": null,
+   "issuing_country": null,
+   "issuing_country_code": null,
+   "gender": null
+  },
+  "valid": false
+ }
+]

@@ -9,17 +9,15 @@ Supports:
 Uses:
 - python-stdnum: Document number formatting
 - iso3166: Country code lookups
-- mrz: Passport MRZ parsing (ICAO 9303)
 """
 
 import re
 from dataclasses import dataclass
 
 import iso3166
-from mrz.base.countries_ops import get_country as mrz_get_country
-from mrz.base.countries_ops import is_code
-from mrz.checker.td3 import TD3CodeChecker
 from stdnum.do import cedula as do_cedula
+
+from .mrz import icao_only_country_name, is_icao_country_code, parse_td3
 
 
 @dataclass
@@ -53,24 +51,24 @@ _OCR_SUBSTITUTIONS = [
 
 def correct_country_code(code: str) -> tuple[str, bool]:
     """
-    Attempt to correct OCR errors in country code using mrz library validation.
+    Attempt to correct OCR errors in an MRZ country code, validated against ICAO 9303 codes.
 
     Returns:
         tuple: (corrected_code, was_corrected)
     """
-    if is_code(code):
+    if is_icao_country_code(code):
         return code, False  # Already valid
 
     # Try single character substitutions
     for wrong, right in _OCR_SUBSTITUTIONS:
         # Try replacing wrong with right
         corrected = code.replace(wrong, right)
-        if corrected != code and is_code(corrected):
+        if corrected != code and is_icao_country_code(corrected):
             return corrected, True
 
         # Try the reverse (right with wrong) - in case OCR read letter as digit
         corrected = code.replace(right, wrong)
-        if corrected != code and is_code(corrected):
+        if corrected != code and is_icao_country_code(corrected):
             return corrected, True
 
     return code, False  # Could not correct
@@ -168,7 +166,7 @@ def get_country_name(code: str) -> str | None:
     """
     Get country name from ISO 3166-1 alpha-3 code.
 
-    Uses iso3166 as primary (lightweight), mrz library as fallback.
+    Uses iso3166 as primary (lightweight), ICAO-only codes as fallback.
     """
     if not code:
         return None
@@ -178,8 +176,8 @@ def get_country_name(code: str) -> str | None:
     if country:
         return country.name
 
-    # mrz also knows ICAO-only codes (for example "D" for Germany) that iso3166 lacks
-    return mrz_get_country(code) or None
+    # ICAO-only codes (for example "D" for Germany) that iso3166 lacks
+    return icao_only_country_name(code)
 
 
 def parse_date_to_iso(date_str: str) -> str | None:
@@ -334,13 +332,13 @@ def _mrz_date_to_iso(date_str: str) -> str | None:
 
 def parse_mrz(mrz_text: str) -> tuple[ExtractedData, bool]:
     """
-    Parse passport MRZ using ICAO 9303 standard library.
+    Parse a passport MRZ (ICAO 9303 TD3).
 
     Returns:
-        tuple: (ExtractedData, is_valid) where is_valid indicates checksum passed
+        tuple: (ExtractedData, is_valid) where is_valid indicates the check digits and
+        field formats passed
     """
     data = ExtractedData()
-    is_valid = False
 
     # Clean and normalize MRZ text
     lines = mrz_text.strip().replace(" ", "").split("\n")
@@ -351,48 +349,34 @@ def parse_mrz(mrz_text: str) -> tuple[ExtractedData, bool]:
         else:
             return data, False
 
-    try:
-        # Use standard library for parsing
-        mrz_string = "\n".join(lines[:2])
-        checker = TD3CodeChecker(mrz_string)
-        fields = checker.fields()
-        is_valid = bool(checker)  # Checksums valid
+    # None when OCR did not produce two 44-character MRZ lines
+    mrz = parse_td3(lines[0], lines[1])
+    if mrz is None:
+        return data, False
 
-        # Map to ExtractedData
-        data.last_name = fields.surname.title() if fields.surname else None
-        data.first_name = fields.name.title() if fields.name else None
-        data.document_number = fields.document_number
-        data.date_of_birth = _mrz_date_to_iso(fields.birth_date)
-        data.expiration_date = _mrz_date_to_iso(fields.expiry_date)
-        data.gender = fields.sex if fields.sex in ("M", "F") else None
+    # Map to ExtractedData
+    data.last_name = mrz.surname.title() if mrz.surname else None
+    data.first_name = mrz.given_names.title() if mrz.given_names else None
+    data.document_number = mrz.document_number
+    data.date_of_birth = _mrz_date_to_iso(mrz.birth_date)
+    data.expiration_date = _mrz_date_to_iso(mrz.expiry_date)
+    data.gender = mrz.sex if mrz.sex in ("M", "F") else None
 
-        # Handle nationality with OCR error correction
-        nationality_code = fields.nationality
-        corrected_code, _ = correct_country_code(nationality_code)
-        data.nationality_code = corrected_code
+    # Handle nationality with OCR error correction
+    corrected_code, _ = correct_country_code(mrz.nationality)
+    data.nationality_code = corrected_code
+    data.nationality = get_country_name(corrected_code) or corrected_code
 
-        # Use library's country name lookup (iso3166 + mrz fallback)
-        country_name = get_country_name(corrected_code)
-        data.nationality = country_name or corrected_code
+    # Extract issuing country (separate from nationality)
+    if mrz.issuing_state:
+        corrected_issuing, _ = correct_country_code(mrz.issuing_state)
+        data.issuing_country_code = corrected_issuing
+        data.issuing_country = get_country_name(corrected_issuing) or corrected_issuing
 
-        # Extract issuing country (separate from nationality)
-        # The issuing country is in the "country" field of the MRZ library
-        issuing_code = fields.country
-        if issuing_code:
-            corrected_issuing, _ = correct_country_code(issuing_code)
-            data.issuing_country_code = corrected_issuing
-            issuing_name = get_country_name(corrected_issuing)
-            data.issuing_country = issuing_name or corrected_issuing
+    # Build full name (Given Names + Surname)
+    data.full_name = _build_full_name(data.first_name, data.last_name)
 
-        # Build full name (Given Names + Surname)
-        data.full_name = _build_full_name(data.first_name, data.last_name)
-
-    except (ValueError, AttributeError, IndexError, TypeError):
-        # MRZ library failed to parse - expected when OCR doesn't detect valid MRZ.
-        # Common causes: corrupted MRZ text, partial detection, wrong document type.
-        pass
-
-    return data, is_valid
+    return data, mrz.valid
 
 
 def extract_passport_fields(text: str) -> tuple[ExtractedData, bool]:
