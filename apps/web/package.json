@@ -5,7 +5,7 @@
   "license": "SEE LICENSE IN LICENSE",
   "engines": {
     "node": "26.x",
-    "pnpm": ">=10"
+    "pnpm": ">=12"
   },
   "browserslist": [
     "chrome >= 116",

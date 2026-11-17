@@ -20,8 +20,8 @@ allowBuilds:
   unrs-resolver: false
   utf-8-validate: false
 
-auditConfig:
-  ignoreGhsas:
+audit:
+  ignore:
     # @sd-jwt/* has no stable patched 0.19.x release; the vulnerable copy is pinned by @better-auth/oidc4vci and oidc4vp.
     - GHSA-f9j6-8p6x-r9j6
     # zod 3.x has no patched release (the fix is 4.6.6); the 3.x copies come from @reown/appkit-wallet and @coinbase/cdp-sdk (via @base-org/account).
