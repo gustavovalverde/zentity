@@ -29,6 +29,10 @@ const WEB3_DOMAINS = [
 // IDKit uses the World ID Wallet Bridge from the browser.
 const WORLD_ID_DOMAINS = "https://bridge.worldcoin.org";
 
+// 127.0.0.1 and localhost are different CSP sources; the app's default local
+// Hardhat RPC uses 127.0.0.1.
+const DEFAULT_LOCAL_RPC_URL = "http://127.0.0.1:8545";
+
 export const CSP_NONCE_HEADER = "x-nonce";
 
 export function createCspNonce(): string {
@@ -38,17 +42,26 @@ export function createCspNonce(): string {
 /**
  * Production scripts run only from this origin or with the per-request nonce
  * Next.js stamps on its inline scripts. Development keeps 'unsafe-inline' and
- * 'unsafe-eval' for fast refresh.
+ * 'unsafe-eval' for fast refresh, and lets the browser reach the local Hardhat
+ * RPC at `localRpcUrl`.
  */
 export function buildContentSecurityPolicy(
   nonce: string,
-  isProduction: boolean
+  isProduction: boolean,
+  localRpcUrl?: string
 ): string {
   if (!isProduction) {
+    // The proxy reads the raw variable, so a value env.ts would reject must
+    // not throw on every page. `localhost:8545` parses with the scheme
+    // `localhost:` and has the origin "null".
+    const parsedRpcUrl = localRpcUrl ? URL.parse(localRpcUrl) : null;
+    const localRpcOrigin =
+      parsedRpcUrl?.protocol === "http:" || parsedRpcUrl?.protocol === "https:"
+        ? parsedRpcUrl.origin
+        : new URL(DEFAULT_LOCAL_RPC_URL).origin;
     return [
       "script-src 'self' blob: 'unsafe-eval' 'wasm-unsafe-eval' 'unsafe-inline'",
-      // 127.0.0.1:8545 is the local Hardhat RPC (127.0.0.1 !== localhost in CSP)
-      `connect-src 'self' ws: wss: data: http://127.0.0.1:8545 ${ZKPASSPORT_DOMAINS} ${WEB3_DOMAINS} ${WORLD_ID_DOMAINS}`,
+      `connect-src 'self' ws: wss: data: ${localRpcOrigin} ${ZKPASSPORT_DOMAINS} ${WEB3_DOMAINS} ${WORLD_ID_DOMAINS}`,
       "worker-src 'self' blob:",
     ].join("; ");
   }

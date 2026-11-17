@@ -4,6 +4,7 @@ import { z } from "zod";
 const TRAILING_SLASHES = /\/+$/;
 const WORLD_ID_PRIVATE_KEY_HEX_REGEX = /^(0x)?[0-9a-fA-F]{64}$/;
 const DEFAULT_MCP_PUBLIC_URL = "http://localhost:3300";
+const HTTP_PROTOCOL = /^https?$/;
 const booleanString = z.stringbool({
   truthy: ["true", "1"],
   falsy: ["false", "0"],
@@ -200,7 +201,9 @@ export const env = createEnv({
     CONFIDENTIAL_RELAYER_URL: serviceUrl("https://relayer.testnet.zama.org"),
     CONFIDENTIAL_RELAYER_API_KEY: z.string().optional(),
     LOCAL_REGISTRAR_PRIVATE_KEY: z.string().optional(),
-    LOCAL_RPC_URL: z.string().default("http://127.0.0.1:8545"),
+    LOCAL_RPC_URL: z
+      .url({ protocol: HTTP_PROTOCOL })
+      .default("http://127.0.0.1:8545"),
     BASE_SEPOLIA_RPC_URL: z.string().default("https://sepolia.base.org"),
     BASE_SEPOLIA_REGISTRAR_PRIVATE_KEY: z.string().optional(),
     BASE_SEPOLIA_IDENTITY_REGISTRY_MIRROR: z.string().optional(),
@@ -288,7 +291,9 @@ export const env = createEnv({
     NEXT_PUBLIC_CONFIDENTIAL_CHAIN_RPC_URL: z
       .string()
       .default("https://ethereum-sepolia-rpc.publicnode.com"),
-    NEXT_PUBLIC_LOCAL_RPC_URL: z.string().default("http://127.0.0.1:8545"),
+    NEXT_PUBLIC_LOCAL_RPC_URL: z
+      .url({ protocol: HTTP_PROTOCOL })
+      .default("http://127.0.0.1:8545"),
     NEXT_PUBLIC_BASE_SEPOLIA_RPC_URL: z
       .string()
       .default("https://sepolia.base.org"),

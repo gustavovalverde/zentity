@@ -331,7 +331,7 @@ graph TD
 | State | Meaning |
 |---|---|
 | `not_connected` | No wallet connected or SDK not initialized |
-| `initializing` | The SDK is fetching the network FHE encryption key through the relayer (Sepolia only; Hardhat runs in cleartext mode and starts `ready`) |
+| `initializing` | On Sepolia, the SDK is fetching the network FHE encryption key through the relayer. On local Hardhat, which runs in cleartext mode, the app is reading the gateway EIP-712 domain from the node's FHEVM verifier contracts |
 | `ready` | SDK is usable for encryption/decryption |
 | `error` | Initialization failed |
 
@@ -472,7 +472,7 @@ The token's claims and lifetime are in [Proof of Human](<../(protocols)/oauth-in
 3. **Ciphertext handles** are stored on-chain (no plaintext).
 4. **Compliance checks** operate on ciphertexts (no decryption in contracts).
 5. **Attestation metadata** includes proof and policy hashes for auditability.
-6. **User decryption** requires explicit authorization (signature-based).
+6. **User decryption** requires explicit authorization (signature-based). The Zama SDK keeps decrypted values, its transport key pair, and the decryption permit in memory only, so nothing decrypted reaches browser storage and a page reload asks for a new signature.
 
 ---
 

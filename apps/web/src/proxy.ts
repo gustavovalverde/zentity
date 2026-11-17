@@ -72,7 +72,11 @@ export function proxy(request: NextRequest) {
   );
   const nonce = createCspNonce();
   const csp = isDocument
-    ? buildContentSecurityPolicy(nonce, process.env.NODE_ENV === "production")
+    ? buildContentSecurityPolicy(
+        nonce,
+        process.env.NODE_ENV === "production",
+        process.env.NEXT_PUBLIC_LOCAL_RPC_URL
+      )
     : null;
   if (csp) {
     headers.set(CSP_NONCE_HEADER, nonce);

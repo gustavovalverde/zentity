@@ -1,6 +1,7 @@
+import type { Client } from "viem";
+
 import { type FheChain, hardhat, sepolia } from "@zama-fhe/sdk/chains";
-import { type EIP1193RequestFn, isAddress } from "viem";
-import { z } from "zod";
+import { getEip712Domain } from "viem/actions";
 
 import { env } from "@/env";
 
@@ -86,48 +87,41 @@ export function getConfidentialClientNetwork(
   return networks[chainId] ?? null;
 }
 
-const fhevmAddressSchema = z
-  .string()
-  .refine((value) => isAddress(value), "Invalid address")
-  .transform((value) => value as `0x${string}`);
-
-const hardhatFhevmMetadataSchema = z.object({
-  ACLAddress: fhevmAddressSchema,
-  CoprocessorAddress: fhevmAddressSchema,
-  InputVerifierAddress: fhevmAddressSchema,
-  KMSVerifierAddress: fhevmAddressSchema,
-  gatewayChainId: z.number().int(),
-});
-
 /**
- * Points the Hardhat preset at the contracts the local node deployed.
+ * Points the Hardhat preset at the gateway the local node's FHEVM stack uses.
  *
- * The `@fhevm/hardhat-plugin` mock reports its addresses through the
- * `fhevm_relayer_metadata` RPC method. They drift from the SDK's `hardhat`
- * preset between releases: plugin 0.3 and 0.4 deploy KMSVerifier at the
- * Sepolia address, not the preset's.
+ * `@fhevm/hardhat-plugin-v3` deploys the cleartext host contracts at the
+ * preset's addresses, but they verify input proofs and decryption permits
+ * under a gateway EIP-712 domain that differs from the preset's. Both
+ * verifiers report their domain through EIP-5267, so it is read from the node.
  */
 export async function resolveHardhatFhevmChain(
   chain: FheChain,
-  request: EIP1193RequestFn
+  client: Client
 ): Promise<FheChain> {
-  let metadata: z.infer<typeof hardhatFhevmMetadataSchema>;
+  let inputVerification: Awaited<ReturnType<typeof getEip712Domain>>;
+  let decryption: Awaited<ReturnType<typeof getEip712Domain>>;
   try {
-    metadata = hardhatFhevmMetadataSchema.parse(
-      await request({ method: "fhevm_relayer_metadata" })
-    );
+    [inputVerification, decryption] = await Promise.all([
+      getEip712Domain(client, { address: chain.inputVerifierContractAddress }),
+      getEip712Domain(client, { address: chain.kmsContractAddress }),
+    ]);
   } catch (cause) {
     throw new Error(
-      "The local Hardhat node did not report its FHEVM contracts. Start it from the contracts repository with the FHEVM Hardhat plugin, then reload this page.",
+      "The local Hardhat node did not report its FHEVM contracts. Start it from the contracts repository, which runs @fhevm/hardhat-plugin-v3, then reload this page.",
       { cause }
+    );
+  }
+  if (inputVerification.domain.chainId !== decryption.domain.chainId) {
+    throw new Error(
+      `The local Hardhat node's FHEVM verifiers name different gateway chains: ${inputVerification.domain.chainId} for input proofs and ${decryption.domain.chainId} for decryption.`
     );
   }
   return {
     ...chain,
-    aclContractAddress: metadata.ACLAddress,
-    executorAddress: metadata.CoprocessorAddress,
-    gatewayChainId: metadata.gatewayChainId,
-    inputVerifierContractAddress: metadata.InputVerifierAddress,
-    kmsContractAddress: metadata.KMSVerifierAddress,
+    gatewayChainId: Number(decryption.domain.chainId),
+    verifyingContractAddressDecryption: decryption.domain.verifyingContract,
+    verifyingContractAddressInputVerification:
+      inputVerification.domain.verifyingContract,
   };
 }

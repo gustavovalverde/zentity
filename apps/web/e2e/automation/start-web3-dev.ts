@@ -104,36 +104,15 @@ function deployContracts(): ContractsEnv {
     LOCAL_RPC_URL: hardhatUrl,
     NEXT_PUBLIC_LOCAL_RPC_URL: hardhatUrl,
   };
-  const deploy = spawnSync(
-    "npx",
-    ["hardhat", "deploy", "--network", "localhost", "--reset"],
-    {
-      cwd: contractsPath,
-      stdio: "inherit",
-      env: hardhatEnv,
-    }
-  );
+  // Deploys the contracts, writes the localhost manifest, and validates the
+  // deployment, write path included.
+  const deploy = spawnSync(contractsScriptRunner, ["run", "deploy:local"], {
+    cwd: contractsPath,
+    stdio: "inherit",
+    env: hardhatEnv,
+  });
   if (deploy.status !== 0) {
     process.exit(deploy.status ?? 1);
-  }
-
-  const validate = spawnSync(
-    "npx",
-    [
-      "hardhat",
-      "run",
-      "scripts/validate-deployments.ts",
-      "--network",
-      "localhost",
-    ],
-    {
-      cwd: contractsPath,
-      stdio: "inherit",
-      env: { ...hardhatEnv, DEPLOYMENT_VALIDATION_WRITES: "true" },
-    }
-  );
-  if (validate.status !== 0) {
-    process.exit(validate.status ?? 1);
   }
 
   const printed = spawnSync(

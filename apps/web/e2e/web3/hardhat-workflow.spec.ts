@@ -9,7 +9,7 @@
  * To run locally:
  * E2E_RUN_WEB3=true pnpm test:e2e --project=web3-hardhat
  */
-import { expect, test } from "@playwright/test";
+import { expect, type Page, test } from "@playwright/test";
 
 import {
   connectHardhatWallet,
@@ -35,6 +35,14 @@ const ATTESTED_ON_CONFIDENTIAL_SEPOLIA_TEXT =
   /Attested on Zama Confidential Sepolia/i;
 const LOCAL_HARDHAT_TEXT = /Local \\(Hardhat\\)/i;
 const DECRYPT_VIEW_BUTTON = /Decrypt & View/i;
+const HIDE_DATA_BUTTON = /Hide Data/i;
+// IndexedDB database where earlier releases kept decrypted values, and the
+// function selector of the cleartext KMSVerifier's userDecrypt view.
+const LEGACY_SDK_DATABASE = "ZentityConfidentialCredentials";
+const USER_DECRYPT_SELECTOR = "0xd28e4071";
+// Key prefixes the Zama SDK uses when it persists decrypted values and the
+// transport key pair to the storage it is given.
+const SDK_PERSISTED_KEY_PREFIXES = ["zama:decrypt", "keypair:"];
 const COMPLIANCE_GRANTED_TEXT = /Compliance access granted/i;
 const GRANT_COMPLIANCE_BUTTON = /Grant Compliance Access/i;
 const TOKENS_MINTED_TEXT = /Tokens minted successfully/i;
@@ -56,6 +64,53 @@ const recipientAddress =
 const hardhatChainId = 31_337;
 const hardhatRpcUrl = `http://127.0.0.1:${process.env.E2E_HARDHAT_PORT ?? 8545}`;
 
+/** Lists every browser storage key that holds SDK-persisted decryption state. */
+function findPersistedDecryptionKeys(page: Page): Promise<string[]> {
+  return page.evaluate(async (prefixes) => {
+    const matches = (key: string) =>
+      prefixes.some((prefix) => key.includes(prefix));
+    const found: string[] = [];
+    for (const [area, storage] of [
+      ["localStorage", localStorage],
+      ["sessionStorage", sessionStorage],
+    ] as const) {
+      for (let index = 0; index < storage.length; index++) {
+        const key = storage.key(index);
+        if (key && matches(key)) {
+          found.push(`${area}/${key}`);
+        }
+      }
+    }
+    for (const { name, version } of await indexedDB.databases()) {
+      if (!name) {
+        continue;
+      }
+      const database = await new Promise<IDBDatabase>((resolve, reject) => {
+        const request = indexedDB.open(name, version);
+        request.onsuccess = () => resolve(request.result);
+        request.onerror = () => reject(request.error);
+      });
+      for (const storeName of Array.from(database.objectStoreNames)) {
+        const keys = await new Promise<IDBValidKey[]>((resolve, reject) => {
+          const request = database
+            .transaction(storeName, "readonly")
+            .objectStore(storeName)
+            .getAllKeys();
+          request.onsuccess = () => resolve(request.result);
+          request.onerror = () => reject(request.error);
+        });
+        for (const key of keys) {
+          if (matches(String(key))) {
+            found.push(`${name}/${storeName}/${String(key)}`);
+          }
+        }
+      }
+      database.close();
+    }
+    return found;
+  }, SDK_PERSISTED_KEY_PREFIXES);
+}
+
 test.describe("Web3 workflow (Hardhat + mock relayer)", () => {
   test.describe.configure({ timeout: 180_000 });
 
@@ -64,7 +119,9 @@ test.describe("Web3 workflow (Hardhat + mock relayer)", () => {
     "Web3 tests skipped. Set E2E_RUN_WEB3=true to run. See file header for instructions."
   );
 
-  test("attest, grant compliance, mint, and transfer", async ({ page }) => {
+  test("attest, decrypt after reload, grant compliance, mint, and transfer", async ({
+    page,
+  }) => {
     test.setTimeout(180_000);
     const userId = readTestUserId();
     if (userId) {
@@ -165,6 +222,58 @@ test.describe("Web3 workflow (Hardhat + mock relayer)", () => {
 
     await expect(page.getByText("1990")).toBeVisible({ timeout: 60_000 });
     await expect(page.getByText("Level 2")).toBeVisible();
+    // Decrypted identity attributes must not persist in the browser.
+    expect(await findPersistedDecryptionKeys(page)).toEqual([]);
+
+    // After a reload the values can only come from a new KMSVerifier
+    // userDecrypt call. The legacy database is recreated first to check that
+    // the app deletes it.
+    await page.evaluate(
+      (name) =>
+        new Promise<void>((resolve, reject) => {
+          const request = indexedDB.open(name, 1);
+          request.onsuccess = () => {
+            request.result.close();
+            resolve();
+          };
+          request.onerror = () => reject(request.error);
+        }),
+      LEGACY_SDK_DATABASE
+    );
+    await page.reload();
+    await connectHardhatWallet(page, hardhatChainId);
+    await expect(
+      page.getByText("Your On-Chain Identity", { exact: false })
+    ).toBeVisible({ timeout: 120_000 });
+    await expect
+      .poll(() =>
+        page.evaluate(
+          async (name) =>
+            (await indexedDB.databases()).some(
+              (database) => database.name === name
+            ),
+          LEGACY_SDK_DATABASE
+        )
+      )
+      .toBe(false);
+    const decryptAfterReloadButton = page.getByRole("button", {
+      name: DECRYPT_VIEW_BUTTON,
+    });
+    await expect(decryptAfterReloadButton).toBeEnabled({ timeout: 60_000 });
+    const userDecryptCall = page.waitForRequest(
+      (request) =>
+        request.method() === "POST" &&
+        (request.postData() ?? "").includes(USER_DECRYPT_SELECTOR),
+      { timeout: 60_000 }
+    );
+    await decryptAfterReloadButton.click();
+    await userDecryptCall;
+    await expect(
+      page.getByRole("button", { name: HIDE_DATA_BUTTON })
+    ).toBeVisible({ timeout: 60_000 });
+    await expect(page.getByText("1990")).toBeVisible();
+    await expect(page.getByText("Level 2")).toBeVisible();
+    expect(await findPersistedDecryptionKeys(page)).toEqual([]);
 
     const complianceGrantedText = page.getByText(COMPLIANCE_GRANTED_TEXT, {
       exact: false,
