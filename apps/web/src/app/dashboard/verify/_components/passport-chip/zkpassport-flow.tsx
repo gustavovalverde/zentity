@@ -383,7 +383,7 @@ export function ZkPassportFlow({
     try {
       const verificationSession =
         await trpcClient.passportChip.createSession.mutate();
-      const { VerificationMethod, ZKPassport } = await import(
+      const { NullifierType, VerificationMethod, ZKPassport } = await import(
         "@zkpassport/sdk"
       );
       const zkpassport = new ZKPassport(
@@ -405,6 +405,9 @@ export function ZkPassportFlow({
         // The chip path accepts only documents read from their NFC chip; the
         // server rejects every other verification method too.
         allowedVerificationMethods: [VerificationMethod.ICAO_CHIP],
+        // Sybil checks need a nullifier only the passport determines; the
+        // server rejects salted (OPRF) nullifiers.
+        uniqueIdentifierType: NullifierType.NON_SALTED,
       });
 
       let builder = qb

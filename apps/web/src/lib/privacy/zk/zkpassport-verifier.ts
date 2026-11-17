@@ -10,7 +10,8 @@
  *
  * Every proof of a set must state the same circuit version, which selects the
  * public-input layout and the Barretenberg major (5 or 6) that verifies it.
- * Only documents read from their NFC chip (ICAO) are accepted.
+ * Only documents read from their NFC chip (ICAO) with an unsalted nullifier
+ * are accepted.
  */
 
 import "server-only";
@@ -186,10 +187,8 @@ let prewarmPromise: Promise<void> | null = null;
 const manifestCache = new Map<string, Promise<CircuitManifest>>();
 const vkCache = new Map<string, Promise<Uint8Array>>();
 const rootValidityCache = new Map<string, RootCacheEntry>();
-const verifierBackends = new Map<
-  BarretenbergGeneration,
-  Promise<ProofVerifier>
->();
+let bb6Verifier: Promise<ProofVerifier> | null = null;
+let legacyVerification: Promise<unknown> = Promise.resolve();
 
 /** Canonical proof sort order — matches the SDK's checkPublicInputs. */
 const PROOF_SORT_ORDER = [
@@ -275,31 +274,50 @@ function getProofSetCircuitVersion(proofs: ProofResult[]): string | undefined {
     : undefined;
 }
 
-async function createVerifierBackend(
-  generation: BarretenbergGeneration
-): Promise<ProofVerifier> {
-  if (generation === "v6") {
-    return new UltraHonkVerifierBackend(await getBarretenberg());
+function getBb6Verifier(): Promise<ProofVerifier> {
+  if (!bb6Verifier) {
+    const verifier = getBarretenberg().then(
+      (barretenberg) => new UltraHonkVerifierBackend(barretenberg)
+    );
+    bb6Verifier = verifier;
+    verifier.catch(() => {
+      bb6Verifier = null;
+    });
   }
-  // Circuit releases before 0.22.0 still pass the registry's root check, so
-  // their proofs keep a bb.js 5 instance of their own, started on first use.
-  const barretenberg = await BarretenbergV5.new({
-    crsPath: env.BB_CRS_PATH,
-    backend: BackendTypeV5.Wasm,
-  });
-  return new UltraHonkVerifierBackendV5(barretenberg);
+  return bb6Verifier;
 }
 
-function getVerifierBackend(
-  generation: BarretenbergGeneration
-): Promise<ProofVerifier> {
-  let backend = verifierBackends.get(generation);
-  if (!backend) {
-    backend = createVerifierBackend(generation);
-    verifierBackends.set(generation, backend);
-    backend.catch(() => verifierBackends.delete(generation));
-  }
-  return backend;
+/**
+ * Proof sets from circuit releases before 0.22.0 get a single-threaded bb.js 5
+ * instance that is destroyed afterwards, one set at a time. A resident second
+ * Barretenberg instance would hold hundreds of megabytes for a rare path.
+ */
+function withLegacyVerifier<T>(
+  verify: (verifier: ProofVerifier) => Promise<T>
+): Promise<T> {
+  const run = legacyVerification.then(async () => {
+    const barretenberg = await BarretenbergV5.new({
+      crsPath: env.BB_CRS_PATH,
+      backend: BackendTypeV5.Wasm,
+      threads: 1,
+    });
+    try {
+      return await verify(new UltraHonkVerifierBackendV5(barretenberg));
+    } finally {
+      await barretenberg.destroy();
+    }
+  });
+  legacyVerification = run.catch(() => undefined);
+  return run;
+}
+
+function withVerifierBackend<T>(
+  generation: BarretenbergGeneration,
+  verify: (verifier: ProofVerifier) => Promise<T>
+): Promise<T> {
+  return generation === "v6"
+    ? getBb6Verifier().then(verify)
+    : withLegacyVerifier(verify);
 }
 
 // ---------------------------------------------------------------------------
@@ -2710,14 +2728,80 @@ async function verifyOuterEvmProofOnChain(params: {
   }
 }
 
+async function verifyProofsCryptographic(params: {
+  chainId: number;
+  circuitVersion: string;
+  devMode: boolean;
+  domain: string;
+  proofs: ProofResult[];
+  scope?: string;
+  signal: AbortSignal;
+  validity?: number;
+}): Promise<boolean> {
+  const { chainId, circuitVersion, proofs, signal } = params;
+  // An outer_evm proof always comes alone and is verified on-chain
+  const [onlyProof] = proofs;
+  if (proofs.length === 1 && onlyProof?.name?.startsWith("outer_evm")) {
+    return verifyOuterEvmProofOnChain({
+      proof: onlyProof,
+      domain: params.domain,
+      devMode: params.devMode,
+      ...(params.scope === undefined ? {} : { scope: params.scope }),
+      ...(params.validity === undefined ? {} : { validity: params.validity }),
+    });
+  }
+
+  const manifest = await getCachedManifest(circuitVersion, chainId);
+  return withVerifierBackend(
+    getBarretenbergGeneration(circuitVersion),
+    async (backend) => {
+      for (const proof of proofs) {
+        if (signal.aborted) {
+          throw new Error("ZKPassport verification timed out");
+        }
+        const proofValid = await verifyProofCryptographic(
+          proof,
+          manifest,
+          backend,
+          circuitVersion,
+          chainId
+        );
+        if (!proofValid) {
+          logger.warn(
+            { proofName: proof.name ?? "" },
+            "ZKPassport cryptographic verification failed for a proof"
+          );
+          return false;
+        }
+      }
+      return true;
+    }
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Main API
 // ---------------------------------------------------------------------------
 
-const MOCK_NULLIFIER_TYPES = new Set([
-  NullifierType.NON_SALTED_MOCK,
-  NullifierType.SALTED_MOCK,
-]);
+/**
+ * The chip nullifier must be the unsalted scoped nullifier, which only the
+ * document and the scope determine. A salted (OPRF) nullifier also depends on
+ * an OPRF key the prover chooses, so one passport could present a new
+ * nullifier for every account. Mock documents are accepted only in dev mode.
+ */
+function isAcceptedChipNullifier(
+  nullifier: string | undefined,
+  nullifierType: NullifierType | undefined,
+  devMode: boolean
+): boolean {
+  if (!nullifier || BigInt(nullifier) === BigInt(0)) {
+    return false;
+  }
+  return (
+    nullifierType === NullifierType.NON_SALTED ||
+    (devMode && nullifierType === NullifierType.NON_SALTED_MOCK)
+  );
+}
 
 export async function verifyZkPassportProofs(
   params: VerifyParams
@@ -2789,61 +2873,61 @@ export async function verifyZkPassportProofs(
         scope
       );
 
-    // Mock nullifier rejection (unless devMode)
-    if (
-      nullifierType !== undefined &&
-      MOCK_NULLIFIER_TYPES.has(nullifierType) &&
-      !devMode
-    ) {
-      logger.warn("Mock proof rejected in non-dev mode");
+    if (!isAcceptedChipNullifier(nullifier, nullifierType, devMode)) {
+      logger.warn(
+        { nullifierType },
+        "ZKPassport proofs carry no accepted chip nullifier"
+      );
+      addStructuredError(
+        errors,
+        "nullifier",
+        "type",
+        `${NullifierType.NON_SALTED} (unsalted)`,
+        nullifierType ?? "none",
+        "The proofs must carry an unsalted nullifier"
+      );
       return {
         verified: false,
         chipNullifier: undefined,
         chipNullifierType: undefined,
-        queryResultErrors: Object.keys(errors).length > 0 ? errors : undefined,
+        queryResultErrors: errors,
         verificationTimeMs: performance.now() - start,
       };
     }
 
     // Phase 2: Cryptographic proof verification (only if public inputs passed)
     let verified = isCorrect;
-    const queryResultErrors =
-      Object.keys(errors).length > 0 ? errors : undefined;
     if (verified) {
       const manifest = await getCachedManifest(circuitVersion, chainId);
-      const generation = getBarretenbergGeneration(circuitVersion);
-
-      for (const proof of proofs) {
-        const name = proof.name ?? "";
-        if (controller.signal.aborted) {
-          throw new Error("ZKPassport verification timed out");
-        }
-
-        const proofValid = name.startsWith("outer_evm")
-          ? await verifyOuterEvmProofOnChain({
-              proof,
-              domain,
-              devMode,
-              ...(scope === undefined ? {} : { scope }),
-              ...(validity === undefined ? {} : { validity }),
-            })
-          : await verifyProofCryptographic(
-              proof,
-              manifest,
-              await getVerifierBackend(generation),
-              circuitVersion,
-              chainId
-            );
-        if (!proofValid) {
-          verified = false;
-          logger.warn(
-            { proofName: name },
-            "ZKPassport cryptographic verification failed for a proof"
-          );
-          break;
-        }
+      // Fast-mode proofs state no circuit root; the release's manifest supplies
+      // their verification keys, so the registry must still accept its root
+      const manifestRoot = BigInt(manifest.root).toString(16);
+      if (!(await validateRootOnChain("circuit", manifestRoot, chainId))) {
+        verified = false;
+        addStructuredError(
+          errors,
+          "proofs",
+          "circuit_root",
+          "valid",
+          "invalid",
+          `Circuit release ${circuitVersion} is no longer valid on-chain`
+        );
       }
     }
+    if (verified) {
+      verified = await verifyProofsCryptographic({
+        chainId,
+        circuitVersion,
+        devMode,
+        domain,
+        proofs,
+        signal: controller.signal,
+        ...(scope === undefined ? {} : { scope }),
+        ...(validity === undefined ? {} : { validity }),
+      });
+    }
+    const queryResultErrors =
+      Object.keys(errors).length > 0 ? errors : undefined;
 
     const elapsed = performance.now() - start;
     logger.info(
@@ -2881,8 +2965,8 @@ export function warmupZkPassportVerifier(): Promise<void> {
     const start = performance.now();
     try {
       // The ZKPassport app proves with the newest circuit release; older
-      // releases start their backend on first use
-      await getVerifierBackend("v6");
+      // releases get a backend per proof set
+      await getBb6Verifier();
       const elapsed = performance.now() - start;
       logger.info(
         { durationMs: Math.round(elapsed) },
@@ -2919,7 +3003,8 @@ interface VerifierTestApi {
     vkCache.clear();
     rootValidityCache.clear();
     registryClients.clear();
-    verifierBackends.clear();
+    bb6Verifier = null;
+    legacyVerification = Promise.resolve();
     prewarmPromise = null;
   },
   computeExpectedDisclosureCommitment,

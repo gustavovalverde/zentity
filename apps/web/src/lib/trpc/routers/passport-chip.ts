@@ -76,6 +76,7 @@ function expectedQueryHash(): string {
       facematch: "strict-when-supported",
       bind: "custom_data",
       verificationMethods: ["icao-chip"],
+      uniqueIdentifier: "non-salted",
       scope: PASSPORT_CHIP_PROOF_SCOPE,
     })
   );

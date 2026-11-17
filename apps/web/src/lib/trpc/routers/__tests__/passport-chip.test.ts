@@ -203,7 +203,7 @@ describe("passportChip.submitResult", () => {
       proofScope: "zentity:nfc-chip:identity-verification:v1",
       proofBinding: "proof-binding-123",
       queryHash:
-        "0677f8cabf5a7dd55e02f3207314e236e8f1b083d37d20a816405e209c5a3ef3",
+        "5773690e1c812a6a531e4215c994bc0995df1d65bf7c57f7e2d4755e2d14907e",
       createdAt: Date.now(),
       expiresAt: Date.now() + 60_000,
       consumedAt: null,
@@ -272,7 +272,7 @@ describe("passportChip.submitResult", () => {
       proofScope: "zentity:nfc-chip:identity-verification:v1",
       proofBinding: "proof-binding-123",
       queryHash:
-        "0677f8cabf5a7dd55e02f3207314e236e8f1b083d37d20a816405e209c5a3ef3",
+        "5773690e1c812a6a531e4215c994bc0995df1d65bf7c57f7e2d4755e2d14907e",
       createdAt: Date.now(),
       expiresAt: Date.now() + 60_000,
       consumedAt: Date.now(),
@@ -299,7 +299,7 @@ describe("passportChip.submitResult", () => {
       proofScope: "zentity:nfc-chip:identity-verification:v1",
       proofBinding: "proof-binding-123",
       queryHash:
-        "0677f8cabf5a7dd55e02f3207314e236e8f1b083d37d20a816405e209c5a3ef3",
+        "5773690e1c812a6a531e4215c994bc0995df1d65bf7c57f7e2d4755e2d14907e",
       createdAt: Date.now() - 120_000,
       expiresAt: Date.now() - 60_000,
       consumedAt: null,

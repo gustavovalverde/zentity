@@ -21,9 +21,13 @@ const {
   mockLoggerWarn,
   mockReadContract,
   mockRegistryClient,
+  mockBarretenbergV5New,
+  mockDestroyV5,
   mockVerifyProofV5,
   mockVerifyProofV6,
 } = vi.hoisted(() => ({
+  mockBarretenbergV5New: vi.fn(),
+  mockDestroyV5: vi.fn(),
   mockGetSolidityVerifierDetails: vi.fn(),
   mockGetSolidityVerifierParameters: vi.fn(),
   mockLoggerWarn: vi.fn(),
@@ -63,7 +67,7 @@ vi.mock("@zkpassport/sdk", () => ({
 // Records which Barretenberg major verified each proof
 vi.mock("@aztec/bb.js", () => ({
   BackendType: { Wasm: "Wasm" },
-  Barretenberg: { new: () => Promise.resolve({}) },
+  Barretenberg: { new: mockBarretenbergV5New },
   UltraHonkVerifierBackend: class {
     verifyProof = mockVerifyProofV5;
   },
@@ -301,6 +305,10 @@ interface ProofSetOptions {
   integrityMethod?: number;
   /** Per-proof nullifier overrides, by proof name */
   nullifiers?: Record<string, bigint>;
+  /** The nullifier type the non-face-match disclosure proofs state */
+  nullifierType?: NullifierType;
+  /** The OPRF public key hash the disclosure proofs state */
+  oprfPkHash?: bigint;
   version: NonNullable<ProofResult["version"]>;
 }
 
@@ -345,7 +353,7 @@ async function buildChipProofSet(options: ProofSetOptions): Promise<{
       paramCommitment,
       nullifierType,
       options.nullifiers?.[name] ?? nullifier,
-      0n,
+      nullifierType === NullifierType.NONE ? 0n : (options.oprfPkHash ?? 0n),
     ]),
     committedInputs: committedInputs as ProofResult["committedInputs"],
   });
@@ -391,14 +399,14 @@ async function buildChipProofSet(options: ProofSetOptions): Promise<{
     await disclosure(
       "compare_age",
       ageCommitment,
-      NullifierType.NON_SALTED,
+      options.nullifierType ?? NullifierType.NON_SALTED,
       NULLIFIER,
       { compare_age: { minAge: 18, maxAge: 0 } }
     ),
     await disclosure(
       "bind",
       bindCommitment,
-      NullifierType.NON_SALTED,
+      options.nullifierType ?? NullifierType.NON_SALTED,
       NULLIFIER,
       { bind: { data: { custom_data: BINDING } } }
     ),
@@ -424,9 +432,14 @@ async function buildChipProofSet(options: ProofSetOptions): Promise<{
   return { proofs, queryResult };
 }
 
-async function verifyProofSet(proofs: ProofResult[], queryResult: QueryResult) {
+async function verifyProofSet(
+  proofs: ProofResult[],
+  queryResult: QueryResult,
+  devMode = false
+) {
   const { verifyZkPassportProofs } = await getVerifierModule();
   return verifyZkPassportProofs({
+    devMode,
     domain: DOMAIN,
     proofs,
     queryResult,
@@ -442,6 +455,10 @@ describe("zkpassport-verifier proof sets", () => {
       mock.mockReset();
     }
     mockLoggerWarn.mockReset();
+    mockDestroyV5.mockReset().mockResolvedValue(undefined);
+    mockBarretenbergV5New
+      .mockReset()
+      .mockResolvedValue({ destroy: mockDestroyV5 });
     mockVerifyProofV5.mockReset().mockResolvedValue(true);
     mockVerifyProofV6.mockReset().mockResolvedValue(true);
     mockRegistryClient.isCertificateRootValid.mockResolvedValue(true);
@@ -505,6 +522,98 @@ describe("zkpassport-verifier proof sets", () => {
     expect(result.chipNullifier).toBe(NULLIFIER.toString(10));
     expect(mockVerifyProofV5).toHaveBeenCalledTimes(proofs.length);
     expect(mockVerifyProofV6).not.toHaveBeenCalled();
+  });
+
+  it("releases the Barretenberg 5 instance after each legacy proof set", async () => {
+    const { proofs, queryResult } = await buildChipProofSet({
+      version: "0.21.1",
+    });
+
+    await Promise.all([
+      verifyProofSet(proofs, queryResult),
+      verifyProofSet(proofs, queryResult),
+    ]);
+    mockVerifyProofV5.mockRejectedValueOnce(new Error("wasm abort"));
+    const failed = await verifyProofSet(proofs, queryResult);
+
+    expect(failed.verified).toBe(false);
+    expect(mockBarretenbergV5New).toHaveBeenCalledTimes(3);
+    expect(mockBarretenbergV5New).toHaveBeenCalledWith(
+      expect.objectContaining({ threads: 1 })
+    );
+    expect(mockDestroyV5).toHaveBeenCalledTimes(3);
+    // Sets run one at a time, so no two instances are alive together
+    for (const [
+      index,
+      order,
+    ] of mockDestroyV5.mock.invocationCallOrder.entries()) {
+      const nextStart =
+        mockBarretenbergV5New.mock.invocationCallOrder[index + 1];
+      if (nextStart !== undefined) {
+        expect(order).toBeLessThan(nextStart);
+      }
+    }
+  });
+
+  it("rejects a release whose circuit root the registry no longer holds", async () => {
+    mockRegistryClient.isCircuitRootValid.mockResolvedValue(false);
+    const { proofs, queryResult } = await buildChipProofSet({
+      version: "0.20.0",
+    });
+
+    const result = await verifyProofSet(proofs, queryResult);
+
+    expect(result.verified).toBe(false);
+    expect(result.queryResultErrors).toHaveProperty("proofs.circuit_root");
+    expect(mockRegistryClient.isCircuitRootValid).toHaveBeenCalledWith("1");
+    expect(mockBarretenbergV5New).not.toHaveBeenCalled();
+  });
+
+  it("rejects a salted nullifier, whose OPRF key the prover chooses", async () => {
+    const { proofs, queryResult } = await buildChipProofSet({
+      nullifierType: NullifierType.SALTED,
+      oprfPkHash: 0x5a17n,
+      version: "0.23.0",
+    });
+
+    const result = await verifyProofSet(proofs, queryResult);
+
+    expect(result.verified).toBe(false);
+    expect(result.chipNullifier).toBeUndefined();
+    expect(result.queryResultErrors).toHaveProperty(
+      "nullifier.type.received",
+      String(NullifierType.SALTED)
+    );
+    expect(mockVerifyProofV6).not.toHaveBeenCalled();
+  });
+
+  it("rejects a proof set that carries no nullifier", async () => {
+    const { proofs, queryResult } = await buildChipProofSet({
+      nullifierType: NullifierType.NONE,
+      nullifiers: { bind: 0n, compare_age: 0n },
+      version: "0.23.0",
+    });
+
+    const result = await verifyProofSet(proofs, queryResult);
+
+    expect(result.verified).toBe(false);
+    expect(result.queryResultErrors).toHaveProperty("nullifier.type");
+  });
+
+  it("accepts a mock document's nullifier only in dev mode", async () => {
+    const { proofs, queryResult } = await buildChipProofSet({
+      nullifierType: NullifierType.NON_SALTED_MOCK,
+      version: "0.23.0",
+    });
+
+    const production = await verifyProofSet(proofs, queryResult);
+    const development = await verifyProofSet(proofs, queryResult, true);
+
+    expect(production.verified).toBe(false);
+    expect(production.queryResultErrors).toHaveProperty("nullifier.type");
+    expect(development.queryResultErrors).toBeUndefined();
+    expect(development.verified).toBe(true);
+    expect(development.chipNullifierType).toBe(NullifierType.NON_SALTED_MOCK);
   });
 
   it("fails when the backend for the proof version rejects a proof", async () => {

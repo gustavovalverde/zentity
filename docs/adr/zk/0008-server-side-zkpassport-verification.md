@@ -26,6 +26,8 @@ The pipeline follows the SDK's rules for reading a proof set:
 
 * Every proof must state the same well-formed circuit version. The version selects the public-input layout, the circuit manifest, and the Barretenberg major that verifies the proofs. Circuit releases from 0.22.0 are built with Barretenberg 6 (`@aztec-foundation/bb.js`), and earlier releases with Barretenberg 5 (`@aztec/bb.js`). Proofs of one major do not verify under the other.
 * The chip path accepts only documents read from their NFC chip (`VerificationMethod.ICAO_CHIP`). Circuit releases from 0.23.0 state the verification method in the integrity and outer proofs, and add base proofs for credentials that need no chip (Aadhaar, camera captures attested by the device). The server rejects those proofs and any method other than an ICAO chip read. The request the browser sends to the ZKPassport app asks for the same method, so the app refuses other credentials before proving.
+* The chip nullifier must be the unsalted scoped nullifier (`NullifierType.NON_SALTED`), which only the document and the scope determine. A salted nullifier also depends on an OPRF key, and the proof only commits to that key's hash, so a prover with their own key could present a new nullifier for each account. The browser requests the unsalted type, and the server rejects every other type; mock documents pass only in dev mode.
+* The registry must still hold the circuit root of the proof set's release. Outer proofs state that root; for fast-mode proof sets the server checks the root of the release's manifest, which supplies their verification keys.
 
 The SDK's `verify()` is unusable here at `@zkpassport/sdk` 0.14.2:
 
@@ -38,7 +40,7 @@ The SDK's `verify()` is unusable here at `@zkpassport/sdk` 0.14.2:
 * One warmed pipeline serves all verifications; latency stays bounded under load.
 * Server policy lives next to the proof checks that enforce it.
 * The `validate*QueryResult` functions and `checkPublicInputs` mirror the SDK's unexported `check*PublicInputs` internals. They are a deliberate reimplementation and must be re-diffed against upstream on every `@zkpassport/sdk` bump.
-* The server keeps a Barretenberg instance for each major it has verified a proof with. The ZKPassport circuit registry still accepts circuit roots of releases before 0.22.0, so the Barretenberg 5 verifier stays until those roots expire.
+* The server keeps one warmed Barretenberg 6 instance, shared with its other proof checks. The registry still accepts circuit roots of releases before 0.22.0, so their proof sets get a single-threaded Barretenberg 5 instance that is destroyed after the set, one set at a time. A resident second instance would hold several hundred megabytes for a rare path; a per-set instance costs about a quarter of a second to start. The Barretenberg 5 dependency can go once the registry retires those roots.
 
 ## Alternatives Considered
 
@@ -52,4 +54,4 @@ The SDK's `verify()` is unusable here at `@zkpassport/sdk` 0.14.2:
 
 ## Revision History
 
-* 2026-11-17: Re-diffed against `@zkpassport/sdk` 0.21.0 (`@zkpassport/utils` 0.41.1). The pipeline requires one circuit version per proof set, selects Barretenberg 5 or 6 by that version, and accepts only ICAO chip reads. It also adopts the SDK's checks that an outer proof comes alone, that every disclosure proof is one of the known circuits and has its parameter commitment checked, that the disclosure proofs share one nullifier, that a disclosed document code fixes the MRZ layout, and that an Android face match was checked against a revocation root the registry holds. `verify()` still re-creates its Barretenberg instance and registry client on every call and still requires `originalQuery`.
+* 2026-11-17: Re-diffed against `@zkpassport/sdk` 0.21.0 (`@zkpassport/utils` 0.41.1). The pipeline requires one circuit version per proof set, selects Barretenberg 5 or 6 by that version, and accepts only ICAO chip reads. It also adopts the SDK's checks that an outer proof comes alone, that every disclosure proof is one of the known circuits and has its parameter commitment checked, that the disclosure proofs share one nullifier, that a disclosed document code fixes the MRZ layout, and that an Android face match was checked against a revocation root the registry holds. Beyond the SDK, the server requires an unsalted nullifier instead of checking the OPRF key hash of a salted one, and checks the circuit root of fast-mode proof sets, which the SDK checks only for outer proofs. `verify()` still re-creates its Barretenberg instance and registry client on every call and still requires `originalQuery`.
