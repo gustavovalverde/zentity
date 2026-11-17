@@ -241,7 +241,7 @@ test.describe("Web3 workflow (Hardhat + mock relayer)", () => {
       LEGACY_SDK_DATABASE
     );
     await page.reload();
-    await connectHardhatWallet(page, hardhatNetwork.chainId);
+    await connectHardhatWallet(page, hardhatChainId);
     await expect(
       page.getByText("Your On-Chain Identity", { exact: false })
     ).toBeVisible({ timeout: 120_000 });

@@ -69,20 +69,20 @@ describe("content security policy", () => {
     expect(connectSrc(policy)).not.toContain("http://127.0.0.1:8545");
   });
 
-  it.each([
-    "127.0.0.1:8565",
-    "localhost:8565",
-  ])("falls back to the default local RPC when %s has no HTTP scheme", (value) => {
-    vi.stubEnv("NODE_ENV", "development");
-    vi.stubEnv("NEXT_PUBLIC_LOCAL_RPC_URL", value);
+  it.each(["127.0.0.1:8565", "localhost:8565"])(
+    "falls back to the default local RPC when %s has no HTTP scheme",
+    (value) => {
+      vi.stubEnv("NODE_ENV", "development");
+      vi.stubEnv("NEXT_PUBLIC_LOCAL_RPC_URL", value);
 
-    const policy = proxy(
-      new NextRequest("http://localhost:3000/dashboard")
-    ).headers.get("Content-Security-Policy");
+      const policy = proxy(
+        new NextRequest("http://localhost:3000/dashboard")
+      ).headers.get("Content-Security-Policy");
 
-    expect(connectSrc(policy)).toContain(" http://127.0.0.1:8545 ");
-    expect(connectSrc(policy)).not.toContain("null");
-  });
+      expect(connectSrc(policy)).toContain(" http://127.0.0.1:8545 ");
+      expect(connectSrc(policy)).not.toContain("null");
+    }
+  );
 
   it("leaves API responses and the service worker to their own headers", () => {
     vi.stubEnv("NODE_ENV", "production");
