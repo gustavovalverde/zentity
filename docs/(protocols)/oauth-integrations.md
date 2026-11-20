@@ -78,14 +78,14 @@ The endpoints above define the protocol surface. The next section traces the thr
 
 ## Upgrade from Better Auth beta.10
 
-Apply the web schema to the deployment database before starting the beta.11 web release.
+Set `TURSO_DATABASE_URL` and `TURSO_AUTH_TOKEN` for the deployed web database and run the migration before starting beta.11.
 
 ```sh
 cd apps/web
-pnpm db:push
+pnpm exec tsx scripts/migrate-better-auth-beta-11.ts
 ```
 
-The schema adds `actor` and `approved_via_consent` to `ciba_request` and `access_token_format` to `oauth_resource`. It also permits null in `oauth_client.dpop_bound_access_tokens` so a refreshed client metadata document can clear that optional value.
+The migration adds `actor` and `approved_via_consent` to `ciba_request` and `access_token_format` to `oauth_resource`. It also permits null in `oauth_client.dpop_bound_access_tokens` so a refreshed client metadata document can clear that optional value. The column keeps its false default for new clients. All four changes run in one transaction and the migration can be rerun safely.
 
 Review existing resource rows before rollout. Beta.11 treats an empty stored `allowed_scopes` list as unrestricted. Disable any resource where an empty list was intended to deny access.
 
