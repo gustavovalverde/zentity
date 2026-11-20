@@ -228,32 +228,28 @@ function readChallengeType(body: ChallengeBody): "opaque" | "siwe" {
   throw new Error(`Unsupported challenge type: ${String(body.challenge_type)}`);
 }
 
-/**
- * Posts one round to the Authorization Challenge Endpoint. The initial
- * request must be form-encoded (draft-ietf-oauth-first-party-apps §5.1);
- * later rounds that carry an `auth_session` are sent as JSON.
- */
-async function postChallenge(
-  dpopClient: DpopClient,
-  endpoint: string,
-  body: Record<string, string>,
-  encoding: "form" | "json" = "json"
-): Promise<ChallengeRound> {
-  const response = await dpopClient.fetch(endpoint, {
-    method: "POST",
-    headers: {
-      "Content-Type":
-        encoding === "form"
-          ? "application/x-www-form-urlencoded"
-          : "application/json",
-    },
-    body:
-      encoding === "form"
-        ? new URLSearchParams(body).toString()
-        : JSON.stringify(body),
-  });
+type PostChallenge = (body: Record<string, string>) => Promise<ChallengeRound>;
 
-  return { body: await parseChallengeBody(response.clone()), response };
+function registeredClientAuthentication(
+  state: StoredFirstPartyAuthState | undefined,
+  clientId: string | undefined,
+  issuer: string
+) {
+  if (
+    !clientId ||
+    state?.clientId !== clientId ||
+    state.clientAuthMethod !== "private_key_jwt" ||
+    !state.clientAuthKeyPair
+  ) {
+    return;
+  }
+
+  return {
+    clientId,
+    privateJwk: state.clientAuthKeyPair.privateJwk,
+    signingAlgorithm: "ES256" as const,
+    clientAssertionAudience: issuer,
+  };
 }
 
 /**
@@ -634,9 +630,43 @@ export function createFirstPartyAuth(
     return body.client_id;
   }
 
+  async function createChallengeSender(
+    clientId?: string
+  ): Promise<PostChallenge> {
+    const document = await discovery.read();
+    const endpoint = requireChallengeEndpoint(document);
+    const dpopClient = await getOrCreateDpopClient();
+    const state = await loadState();
+    const client = registeredClientAuthentication(
+      state,
+      clientId ?? state?.clientId,
+      document.issuer
+    );
+
+    return async (fields) => {
+      if (client || !fields.auth_session) {
+        const { response, body } = await requestTokenEndpoint(
+          dpopClient,
+          endpoint,
+          new URLSearchParams(fields),
+          client
+        );
+        return {
+          response,
+          body: challengeBodySchema.safeParse(body).data ?? {},
+        };
+      }
+      const response = await dpopClient.fetch(endpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(fields),
+      });
+      return { response, body: await parseChallengeBody(response.clone()) };
+    };
+  }
+
   async function completeOpaqueChallenge(
-    dpopClient: DpopClient,
-    endpoint: string,
+    postChallenge: PostChallenge,
     authSession: string,
     passwordStrategy: PasswordAuthorizationStrategy
   ): Promise<AuthorizationCodeResult> {
@@ -645,7 +675,7 @@ export function createFirstPartyAuth(
       password: passwordStrategy.password,
     });
     const round2 = await requireChallenge(
-      await postChallenge(dpopClient, endpoint, {
+      await postChallenge({
         auth_session: authSession,
         opaque_login_request: opaqueStart.startLoginRequest,
       }),
@@ -667,7 +697,7 @@ export function createFirstPartyAuth(
     }
 
     const authorizationCode = await requireAuthorizationCode(
-      await postChallenge(dpopClient, endpoint, {
+      await postChallenge({
         auth_session: authSession,
         opaque_finish_request: finishResult.finishLoginRequest,
       }),
@@ -685,8 +715,7 @@ export function createFirstPartyAuth(
   }
 
   async function completeWalletChallenge(
-    dpopClient: DpopClient,
-    endpoint: string,
+    postChallenge: PostChallenge,
     authSession: string,
     walletStrategy: WalletAuthorizationStrategy,
     round1Body: ChallengeBody
@@ -695,7 +724,7 @@ export function createFirstPartyAuth(
       required(round1Body.message, "SIWE challenge missing message")
     );
     const authorizationCode = await requireAuthorizationCode(
-      await postChallenge(dpopClient, endpoint, {
+      await postChallenge({
         auth_session: authSession,
         siwe_signature: signature,
       }),
@@ -712,8 +741,7 @@ export function createFirstPartyAuth(
   }
 
   async function continueAuthorization(
-    dpopClient: DpopClient,
-    endpoint: string,
+    postChallenge: PostChallenge,
     round1Body: ChallengeBody,
     strategies: AuthorizationStrategies
   ): Promise<AuthorizationCodeResult> {
@@ -728,8 +756,7 @@ export function createFirstPartyAuth(
         throw new Error("OPAQUE challenge requires a password strategy");
       }
       return completeOpaqueChallenge(
-        dpopClient,
-        endpoint,
+        postChallenge,
         authSession,
         strategies.password
       );
@@ -740,8 +767,7 @@ export function createFirstPartyAuth(
     }
 
     return completeWalletChallenge(
-      dpopClient,
-      endpoint,
+      postChallenge,
       authSession,
       strategies.wallet,
       round1Body
@@ -758,51 +784,42 @@ export function createFirstPartyAuth(
       throw new TypeError("claims requires scope to include openid");
     }
 
-    const document = await discovery.read();
-    const endpoint = requireChallengeEndpoint(document);
-    const dpopClient = await getOrCreateDpopClient();
+    const postChallenge = await createChallengeSender(
+      authorizeOptions.clientId
+    );
     const round1 = await requireChallenge(
-      await postChallenge(
-        dpopClient,
-        endpoint,
-        {
-          client_id: authorizeOptions.clientId,
-          response_type: "code",
-          login_hint: authorizeOptions.identifier,
-          scope: authorizeOptions.scope,
-          code_challenge: authorizeOptions.pkce.codeChallenge,
-          code_challenge_method: authorizeOptions.pkce.codeChallengeMethod,
-          ...(authorizeOptions.resource
-            ? { resource: authorizeOptions.resource }
-            : {}),
-          ...(authorizeOptions.claims
-            ? { claims: authorizeOptions.claims }
-            : {}),
-          ...(authorizeOptions.strategies.wallet?.chainId
-            ? { chain_id: String(authorizeOptions.strategies.wallet.chainId) }
-            : {}),
-        },
-        "form"
-      ),
+      await postChallenge({
+        client_id: authorizeOptions.clientId,
+        response_type: "code",
+        login_hint: authorizeOptions.identifier,
+        scope: authorizeOptions.scope,
+        code_challenge: authorizeOptions.pkce.codeChallenge,
+        code_challenge_method: authorizeOptions.pkce.codeChallengeMethod,
+        ...(authorizeOptions.resource
+          ? { resource: authorizeOptions.resource }
+          : {}),
+        ...(authorizeOptions.claims ? { claims: authorizeOptions.claims } : {}),
+        ...(authorizeOptions.strategies.wallet?.chainId
+          ? { chain_id: String(authorizeOptions.strategies.wallet.chainId) }
+          : {}),
+      }),
       "Authorization challenge"
     );
 
     return continueAuthorization(
-      dpopClient,
-      endpoint,
+      postChallenge,
       round1,
       authorizeOptions.strategies
     );
   }
 
   async function resumeAuthorization(
-    resumeOptions: ResumeAuthorizationOptions
+    resumeOptions: ResumeAuthorizationOptions,
+    clientId?: string
   ): Promise<AuthorizationCodeResult> {
-    const document = await discovery.read();
-    const endpoint = requireChallengeEndpoint(document);
-    const dpopClient = await getOrCreateDpopClient();
+    const postChallenge = await createChallengeSender(clientId);
     const outcome = await readChallengeRound(
-      await postChallenge(dpopClient, endpoint, {
+      await postChallenge({
         auth_session: resumeOptions.authSession,
         ...(resumeOptions.pkce
           ? {
@@ -823,8 +840,7 @@ export function createFirstPartyAuth(
     }
 
     return continueAuthorization(
-      dpopClient,
-      endpoint,
+      postChallenge,
       outcome.body,
       resumeOptions.strategies
     );
@@ -845,14 +861,11 @@ export function createFirstPartyAuth(
       code: exchangeOptions.code,
       codeVerifier: exchangeOptions.codeVerifier,
       dpopClient,
-      ...(state?.clientAuthMethod === "private_key_jwt" &&
-      state.clientAuthKeyPair?.privateJwk
-        ? {
-            privateJwk: state.clientAuthKeyPair.privateJwk,
-            signingAlgorithm: "ES256" as const,
-            clientAssertionAudience: document.issuer,
-          }
-        : {}),
+      ...registeredClientAuthentication(
+        state,
+        exchangeOptions.clientId,
+        document.issuer
+      ),
       ...(exchangeOptions.redirectUri
         ? { redirectUri: exchangeOptions.redirectUri }
         : {}),
@@ -891,14 +904,11 @@ export function createFirstPartyAuth(
       ...(exchangeOptions.clientSecret === undefined
         ? {}
         : { clientSecret: exchangeOptions.clientSecret }),
-      ...(state?.clientAuthMethod === "private_key_jwt" &&
-      state.clientAuthKeyPair?.privateJwk
-        ? {
-            privateJwk: state.clientAuthKeyPair.privateJwk,
-            signingAlgorithm: "ES256" as const,
-            clientAssertionAudience: document.issuer,
-          }
-        : {}),
+      ...registeredClientAuthentication(
+        state,
+        exchangeOptions.clientId,
+        document.issuer
+      ),
       dpopClient: await getOrCreateDpopClient(),
       ...(exchangeOptions.scope ? { scope: exchangeOptions.scope } : {}),
       subjectToken: exchangeOptions.subjectToken,
@@ -948,14 +958,7 @@ export function createFirstPartyAuth(
       requestBody,
       {
         clientId,
-        ...(state.clientAuthMethod === "private_key_jwt" &&
-        state.clientAuthKeyPair?.privateJwk
-          ? {
-              privateJwk: state.clientAuthKeyPair.privateJwk,
-              signingAlgorithm: "ES256" as const,
-              clientAssertionAudience: document.issuer,
-            }
-          : {}),
+        ...registeredClientAuthentication(state, clientId, document.issuer),
         ...(state.clientSecret ? { clientSecret: state.clientSecret } : {}),
       }
     );
@@ -1050,11 +1053,14 @@ export function createFirstPartyAuth(
     saveState,
     async stepUp(stepUpOptions: StepUpOptions) {
       const pkce = await generatePkceChallenge();
-      const authorization = await resumeAuthorization({
-        authSession: stepUpOptions.authSession,
-        pkce,
-        strategies: stepUpOptions.strategies,
-      });
+      const authorization = await resumeAuthorization(
+        {
+          authSession: stepUpOptions.authSession,
+          pkce,
+          strategies: stepUpOptions.strategies,
+        },
+        stepUpOptions.clientId
+      );
       const token = await exchangeAuthorizationCodeInstance({
         clientId: stepUpOptions.clientId,
         code: authorization.authorizationCode,

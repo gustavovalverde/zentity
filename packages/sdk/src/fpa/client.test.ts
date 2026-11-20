@@ -1,3 +1,4 @@
+import { exportJWK, generateKeyPair, jwtVerify } from "jose";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { DpopClient, DpopKeyPair } from "../rp/dpop-client";
 
@@ -601,6 +602,108 @@ describe("createFirstPartyAuth", () => {
       registrationFingerprint: '{"client_name":"@zentity/mcp-server"}',
       registrationMethod: "dcr",
     });
+  });
+
+  it("signs each private-key challenge round and signs again after a DPoP nonce challenge", async () => {
+    const issuer = "https://issuer.example";
+    const endpoint = issuer + "/authorize-challenge";
+    const clientId = "installed-client";
+    const keys = await generateKeyPair("ES256", { extractable: true });
+    const storage = createMemoryAuthStateStorage({
+      clientId,
+      clientAuthMethod: "private_key_jwt",
+      clientAuthKeyPair: {
+        privateJwk: await exportJWK(keys.privateKey),
+        publicJwk: await exportJWK(keys.publicKey),
+      },
+    });
+    const auth = createFirstPartyAuth({
+      issuerUrl: issuer,
+      storage: storage.storage,
+    });
+    const { createDpopClient } =
+      await vi.importActual<typeof import("../rp/dpop-client")>(
+        "../rp/dpop-client"
+      );
+    const dpop = await createDpopClient();
+    fpaMocks.createDpopClientFromKeyPair.mockResolvedValueOnce({
+      ...mockDpopClient,
+      fetch: dpop.fetch,
+    });
+    const jtis: string[] = [];
+    const fields: URLSearchParams[] = [];
+    vi.spyOn(globalThis, "fetch")
+      .mockImplementation(async (_url, init) => {
+        const params = new URLSearchParams(String(init?.body));
+        fields.push(params);
+        expect(String(_url)).toBe(endpoint);
+        expect(params.get("client_id")).toBe(clientId);
+        expect(params.get("client_assertion_type")).toBe(
+          "urn:ietf:params:oauth:client-assertion-type:jwt-bearer"
+        );
+        const { payload } = await jwtVerify(
+          params.get("client_assertion") ?? "",
+          keys.publicKey,
+          {
+            audience: issuer,
+            issuer: clientId,
+            subject: clientId,
+            algorithms: ["ES256"],
+          }
+        );
+        expect(typeof payload.jti).toBe("string");
+        jtis.push(payload.jti!);
+        if (fields.length === 1) {
+          return Response.json(
+            { error: "use_dpop_nonce" },
+            {
+              status: 400,
+              headers: { "DPoP-Nonce": "test-nonce" },
+            }
+          );
+        }
+        if (params.has("login_hint")) {
+          return Response.json(
+            {
+              error: "insufficient_authorization",
+              challenge_type: "siwe",
+              auth_session: "wallet-session",
+              message: "Confirm sign-in",
+            },
+            { status: 403 }
+          );
+        }
+        return Response.json({ authorization_code: "approved-code" });
+      })
+      .mockResolvedValueOnce(
+        Response.json({
+          issuer,
+          authorization_endpoint: issuer + "/authorize",
+          token_endpoint: issuer + "/token",
+          authorization_challenge_endpoint: endpoint,
+        })
+      );
+    await auth.authorize({
+      clientId,
+      pkce: TEST_PKCE,
+      scope: "openid",
+      identifier: "wallet",
+      strategies: { wallet: { signMessage: () => "signature" } },
+    });
+    await auth.resumeAuthorization({
+      authSession: "step-up",
+      pkce: TEST_PKCE,
+      strategies: {},
+    });
+    expect(fields.map((p) => p.get("auth_session"))).toEqual([
+      null,
+      null,
+      "wallet-session",
+      "step-up",
+    ]);
+    expect(fields[2]?.get("siwe_signature")).toBe("signature");
+    expect(fields[3]?.get("code_challenge")).toBe(TEST_PKCE.codeChallenge);
+    expect(new Set(jtis).size).toBe(4);
   });
 
   it("registers a persistent ES256 key for installed private_key_jwt clients", async () => {
