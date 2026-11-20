@@ -1,3 +1,4 @@
+import { exportJWK, generateKeyPair, jwtVerify } from "jose";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { DpopClient, DpopKeyPair } from "../rp/dpop-client";
 
@@ -26,8 +27,7 @@ const TEST_PKCE = {
 const mockDpopClient = {
   keyPair: TEST_KEY_PAIR,
   proofFor: vi.fn().mockResolvedValue("mock-dpop-proof"),
-  fetch: (url: string | URL, init?: RequestInit) =>
-    globalThis.fetch(url, init),
+  fetch: (url: string | URL, init?: RequestInit) => globalThis.fetch(url, init),
 } satisfies DpopClient;
 
 const fpaMocks = vi.hoisted(() => ({
@@ -67,17 +67,15 @@ vi.mock("./pkce", async () => {
 });
 
 import {
+  createFirstPartyAuth,
+  detectStepUp,
   RedirectToWebError,
   StepUpRequiredError,
   TokenExpiredError,
   TokenRefreshError,
-  createFirstPartyAuth,
-  detectStepUp,
 } from "./client";
 
-function createMemoryAuthStateStorage(
-  initialState?: Record<string, unknown>
-) {
+function createMemoryAuthStateStorage(initialState?: Record<string, unknown>) {
   let state = initialState;
 
   return {
@@ -152,7 +150,8 @@ describe("createFirstPartyAuth", () => {
       scopes: ["openid", "offline_access"],
     });
 
-    const fetchSpy = vi.spyOn(globalThis, "fetch")
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
       .mockResolvedValueOnce(
         new Response(
           JSON.stringify({
@@ -274,7 +273,8 @@ describe("createFirstPartyAuth", () => {
       serverStaticPublicKey: "server-public-key",
     });
 
-    vi.spyOn(globalThis, "fetch")
+    const fetchSpy = vi.spyOn(globalThis, "fetch");
+    fetchSpy
       .mockResolvedValueOnce(
         new Response(
           JSON.stringify({
@@ -344,7 +344,7 @@ describe("createFirstPartyAuth", () => {
 
     fpaMocks.exchangeAuthorizationCode.mockResolvedValue({
       accessToken: "expired-access-token",
-      expiresAt: Date.now() - 5_000,
+      expiresAt: Date.now() - 5000,
       refreshToken: "refresh-token",
       scopes: ["openid"],
     });
@@ -599,16 +599,298 @@ describe("createFirstPartyAuth", () => {
 
     expect(authStateStorage.read()).toEqual({
       clientId: "registered-client-2",
-      registrationFingerprint: "{\"client_name\":\"@zentity/mcp-server\"}",
+      registrationFingerprint: '{"client_name":"@zentity/mcp-server"}',
       registrationMethod: "dcr",
     });
+  });
+
+  it("signs each private-key challenge round and signs again after a DPoP nonce challenge", async () => {
+    const issuer = "https://issuer.example";
+    const endpoint = issuer + "/authorize-challenge";
+    const clientId = "installed-client";
+    const keys = await generateKeyPair("ES256", { extractable: true });
+    const storage = createMemoryAuthStateStorage({
+      clientId,
+      clientAuthMethod: "private_key_jwt",
+      clientAuthKeyPair: {
+        privateJwk: await exportJWK(keys.privateKey),
+        publicJwk: await exportJWK(keys.publicKey),
+      },
+    });
+    const auth = createFirstPartyAuth({
+      issuerUrl: issuer,
+      storage: storage.storage,
+    });
+    const { createDpopClient } =
+      await vi.importActual<typeof import("../rp/dpop-client")>(
+        "../rp/dpop-client"
+      );
+    const dpop = await createDpopClient();
+    fpaMocks.createDpopClientFromKeyPair.mockResolvedValueOnce({
+      ...mockDpopClient,
+      fetch: dpop.fetch,
+    });
+    const jtis: string[] = [];
+    const fields: URLSearchParams[] = [];
+    vi.spyOn(globalThis, "fetch")
+      .mockImplementation(async (_url, init) => {
+        const params = new URLSearchParams(String(init?.body));
+        fields.push(params);
+        expect(String(_url)).toBe(endpoint);
+        expect(params.get("client_id")).toBe(clientId);
+        expect(params.get("client_assertion_type")).toBe(
+          "urn:ietf:params:oauth:client-assertion-type:jwt-bearer"
+        );
+        const { payload } = await jwtVerify(
+          params.get("client_assertion") ?? "",
+          keys.publicKey,
+          {
+            audience: issuer,
+            issuer: clientId,
+            subject: clientId,
+            algorithms: ["ES256"],
+          }
+        );
+        expect(typeof payload.jti).toBe("string");
+        jtis.push(payload.jti!);
+        if (fields.length === 1) {
+          return Response.json(
+            { error: "use_dpop_nonce" },
+            {
+              status: 400,
+              headers: { "DPoP-Nonce": "test-nonce" },
+            }
+          );
+        }
+        if (params.has("login_hint")) {
+          return Response.json(
+            {
+              error: "insufficient_authorization",
+              challenge_type: "siwe",
+              auth_session: "wallet-session",
+              message: "Confirm sign-in",
+            },
+            { status: 403 }
+          );
+        }
+        return Response.json({ authorization_code: "approved-code" });
+      })
+      .mockResolvedValueOnce(
+        Response.json({
+          issuer,
+          authorization_endpoint: issuer + "/authorize",
+          token_endpoint: issuer + "/token",
+          authorization_challenge_endpoint: endpoint,
+        })
+      );
+    await auth.authorize({
+      clientId,
+      pkce: TEST_PKCE,
+      scope: "openid",
+      identifier: "wallet",
+      strategies: { wallet: { signMessage: () => "signature" } },
+    });
+    await auth.resumeAuthorization({
+      authSession: "step-up",
+      pkce: TEST_PKCE,
+      strategies: {},
+    });
+    expect(fields.map((p) => p.get("auth_session"))).toEqual([
+      null,
+      null,
+      "wallet-session",
+      "step-up",
+    ]);
+    expect(fields[2]?.get("siwe_signature")).toBe("signature");
+    expect(fields[3]?.get("code_challenge")).toBe(TEST_PKCE.codeChallenge);
+    expect(new Set(jtis).size).toBe(4);
+  });
+
+  it("registers a persistent ES256 key for installed private_key_jwt clients", async () => {
+    const authStateStorage = createMemoryAuthStateStorage();
+    const auth = createFirstPartyAuth({
+      issuerUrl: "https://issuer.example",
+      storage: authStateStorage.storage,
+    });
+    vi.spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            issuer: "https://issuer.example",
+            authorization_endpoint: "https://issuer.example/oauth/authorize",
+            registration_endpoint: "https://issuer.example/oauth/register",
+            token_endpoint: "https://issuer.example/oauth/token",
+          }),
+          { status: 200 }
+        )
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            client_id: "installed-client",
+          }),
+          { status: 200 }
+        )
+      );
+
+    await auth.ensureClientRegistration({
+      privateKeyJwt: true,
+      request: { client_name: "Installed client" },
+    });
+
+    const requestBody = JSON.parse(
+      String(vi.mocked(fetch).mock.calls[1]?.[1]?.body)
+    ) as Record<string, unknown>;
+    expect(requestBody.token_endpoint_auth_method).toBe("private_key_jwt");
+    expect(requestBody.token_endpoint_auth_signing_alg).toBe("ES256");
+    expect(
+      (requestBody.jwks as { keys: Record<string, unknown>[] }).keys
+    ).toMatchObject([{ kty: "EC", crv: "P-256", alg: "ES256" }]);
+    const persisted = authStateStorage.read() as {
+      clientAuthKeyPair?: { privateJwk?: unknown; publicJwk?: unknown };
+      clientAuthMethod?: string;
+    };
+    expect(persisted.clientAuthKeyPair?.privateJwk).toBeDefined();
+    expect(persisted.clientAuthKeyPair?.publicJwk).toBeDefined();
+    expect(persisted.clientAuthMethod).toBe("private_key_jwt");
+  });
+
+  it("keeps a public client usable when private DCR fails", async () => {
+    const initialState = {
+      accessToken: "expired-public-token",
+      clientId: "public-client",
+      expiresAt: Date.now() - 5000,
+      refreshToken: "public-refresh-token",
+      registrationFingerprint: '{"client_name":"Installed client"}',
+      registrationMethod: "dcr" as const,
+      scopes: ["openid"],
+    };
+    const authStateStorage = createMemoryAuthStateStorage(initialState);
+    const auth = createFirstPartyAuth({
+      issuerUrl: "https://issuer.example",
+      storage: authStateStorage.storage,
+    });
+    const fetchSpy = vi.spyOn(globalThis, "fetch");
+    fetchSpy
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            authorization_endpoint: "https://issuer.example/oauth/authorize",
+            issuer: "https://issuer.example",
+            registration_endpoint: "https://issuer.example/oauth/register",
+            token_endpoint: "https://issuer.example/oauth/token",
+          }),
+          { status: 200 }
+        )
+      )
+      .mockResolvedValueOnce(new Response("DCR unavailable", { status: 503 }))
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({ access_token: "refreshed-public-token" }),
+          { status: 200 }
+        )
+      );
+
+    await expect(
+      auth.ensureClientRegistration({
+        privateKeyJwt: true,
+        request: { client_name: "Installed client" },
+      })
+    ).rejects.toThrow("DCR failed: 503 DCR unavailable");
+    expect(authStateStorage.read()).toEqual(initialState);
+
+    await expect(auth.getAccessToken()).resolves.toBe("refreshed-public-token");
+    const refreshRequest = fetchSpy.mock.calls[2]?.[1] as RequestInit;
+    const body = new URLSearchParams(refreshRequest.body as string);
+    expect(body.get("client_id")).toBe("public-client");
+    expect(body.has("client_assertion")).toBe(false);
+    expect(new Headers(refreshRequest.headers).has("Authorization")).toBe(
+      false
+    );
+  });
+
+  it("drops the signing key when a client opts back out of private_key_jwt", async () => {
+    const authStateStorage = createMemoryAuthStateStorage();
+    const auth = createFirstPartyAuth({
+      issuerUrl: "https://issuer.example",
+      storage: authStateStorage.storage,
+    });
+    const fetchSpy = vi.spyOn(globalThis, "fetch");
+    fetchSpy
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            authorization_endpoint: "https://issuer.example/oauth/authorize",
+            issuer: "https://issuer.example",
+            registration_endpoint: "https://issuer.example/oauth/register",
+            token_endpoint: "https://issuer.example/oauth/token",
+          }),
+          { status: 200 }
+        )
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ client_id: "signed-client" }), {
+          status: 200,
+        })
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ client_id: "public-client" }), {
+          status: 200,
+        })
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            access_token: "refreshed-public-token",
+            expires_in: 3600,
+          }),
+          { status: 200 }
+        )
+      );
+
+    await auth.ensureClientRegistration({
+      privateKeyJwt: true,
+      request: { client_name: "Signed client" },
+    });
+    expect(authStateStorage.read()).toMatchObject({
+      clientAuthMethod: "private_key_jwt",
+      clientId: "signed-client",
+    });
+
+    await auth.ensureClientRegistration({
+      force: true,
+      request: { client_name: "Public client" },
+    });
+    expect(authStateStorage.read()).toMatchObject({
+      clientId: "public-client",
+      registrationFingerprint: '{"client_name":"Public client"}',
+    });
+    expect(authStateStorage.read()).not.toHaveProperty("clientAuthMethod");
+    expect(authStateStorage.read()).not.toHaveProperty("clientAuthKeyPair");
+
+    const publicState = await auth.loadState();
+    if (!publicState) throw new Error("Public registration state is missing");
+    await auth.saveState({
+      ...publicState,
+      accessToken: "expired-public-token",
+      expiresAt: Date.now() - 5000,
+      refreshToken: "public-refresh-token",
+    });
+    await expect(auth.getAccessToken()).resolves.toBe("refreshed-public-token");
+    const refreshRequest = fetchSpy.mock.calls[3]?.[1] as RequestInit;
+    const body = new URLSearchParams(refreshRequest.body as string);
+    expect(body.get("client_id")).toBe("public-client");
+    expect(body.has("client_assertion")).toBe(false);
+    expect(new Headers(refreshRequest.headers).has("Authorization")).toBe(
+      false
+    );
   });
 
   it("clears stored tokens when refresh_token is invalid", async () => {
     const authStateStorage = createMemoryAuthStateStorage({
       accessToken: "expired-access-token",
       clientId: "client-123",
-      expiresAt: Date.now() - 5_000,
+      expiresAt: Date.now() - 5000,
       refreshToken: "stale-refresh-token",
     });
     const auth = createFirstPartyAuth({

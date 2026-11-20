@@ -2,10 +2,9 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 
 import { clearPendingOauthDisclosure } from "@/lib/auth/oidc/disclosure/context";
-import { isIdentityScope } from "@/lib/auth/oidc/disclosure/registry";
 import { handleIdentityUnstage } from "@/lib/auth/oidc/disclosure/route-handlers";
 import {
-  computeOAuthRequestKey,
+  computeOAuthDisclosureRequestKey,
   verifySignedOAuthQuery,
 } from "@/lib/auth/oidc/oauth-request";
 
@@ -40,17 +39,9 @@ export function POST(request: Request): Promise<Response> {
         );
       }
 
-      const stripped = new URLSearchParams(queryParams);
-      const scope = stripped.get("scope");
-      if (scope) {
-        stripped.set(
-          "scope",
-          [
-            ...new Set(scope.split(" ").filter((s) => !isIdentityScope(s))),
-          ].join(" ")
-        );
-      }
-      return { oauthRequestKey: computeOAuthRequestKey(stripped) };
+      return {
+        oauthRequestKey: computeOAuthDisclosureRequestKey(queryParams),
+      };
     },
     async (result) => {
       await clearPendingOauthDisclosure(

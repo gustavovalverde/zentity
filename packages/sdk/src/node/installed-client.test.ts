@@ -135,6 +135,47 @@ describe("createInstalledClientAuth", () => {
     });
   });
 
+  it("returns the persisted client signer and discovered issuer audience", async () => {
+    const privateJwk = {
+      crv: "P-256",
+      d: "private",
+      kty: "EC" as const,
+      x: "x",
+      y: "y",
+    };
+    mockFirstPartyAuth.loadState.mockResolvedValue({
+      clientAuthMethod: "private_key_jwt",
+      clientAuthKeyPair: {
+        privateJwk,
+        publicJwk: { crv: "P-256", kty: "EC", x: "x", y: "y" },
+      },
+      dpopKeyPair: {
+        privateJwk: { crv: "P-256", kty: "EC" },
+        publicJwk: { crv: "P-256", kty: "EC" },
+      },
+      scopes: ["openid"],
+    });
+    const auth = createInstalledClientAuth({
+      clientRegistrationRequest: { client_name: "Example CLI" },
+      issuerUrl: "http://localhost:3000",
+      loginScope: "openid offline_access",
+      privateKeyJwt: true,
+      storage: { load: vi.fn(), save: vi.fn() },
+    });
+
+    const session = await auth.ensureOAuthSession();
+
+    expect(mockFirstPartyAuth.ensureClientRegistration).toHaveBeenCalledWith({
+      request: { client_name: "Example CLI" },
+      privateKeyJwt: true,
+    });
+    expect(session.clientAuth).toEqual({
+      clientAssertionAudience: "http://localhost:3000/api/auth",
+      privateJwk,
+      signingAlgorithm: "ES256",
+    });
+  });
+
   it("exchanges the stored login token for a token limited to the requested scope", async () => {
     mockExchangeToken.mockResolvedValue({
       accessToken: "bootstrap-access-token",

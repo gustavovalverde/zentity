@@ -27,6 +27,14 @@ import {
 const X402_PURCHASE_SCOPE = "openid poh";
 
 export interface AgentConfig {
+  /** Client credentials for confidential CIBA clients. */
+  clientAuth?: Pick<
+    CibaRequest,
+    | "clientSecret"
+    | "privateJwk"
+    | "signingAlgorithm"
+    | "clientAssertionAudience"
+  >;
   clientId: string;
   dpopClient: DpopClient;
   fetch?: typeof globalThis.fetch;
@@ -42,7 +50,9 @@ export interface AgentConfig {
    * with `signAgentAssertion`. Called with each request as it will be sent,
    * so the assertion's `task_hash` covers that exact request.
    */
-  signAgentAssertion?: ((request: TaskHashInput) => Promise<string>) | undefined;
+  signAgentAssertion?:
+    | ((request: TaskHashInput) => Promise<string>)
+    | undefined;
   /**
    * Signs x402 payments on Base Sepolia, for example
    * `new ExactEvmScheme(signer)` from `@x402/evm/exact/client`. Without it,
@@ -165,6 +175,9 @@ export function createAgent(config: AgentConfig): Agent {
       bindingMessage: options.bindingMessage,
       cibaEndpoint: discovery.backchannel_authentication_endpoint,
       clientId: config.clientId,
+      ...(config.clientAuth ?? {}),
+      clientAssertionAudience:
+        config.clientAuth?.clientAssertionAudience ?? discovery.issuer,
       dpopClient,
       fetch: fetchFn,
       loginHint: options.loginHint ?? config.loginHint ?? "",

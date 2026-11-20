@@ -1,6 +1,7 @@
 import crypto from "node:crypto";
 import { AGENT_SESSION_INACTIVE_DESCRIPTION } from "@zentity/sdk/agent-contract";
 import {
+  authenticateClientRequest,
   createDpopClient,
   type DpopClient,
   fetchUserInfo,
@@ -87,16 +88,12 @@ async function handleAuthorize(
   const notificationToken = crypto.randomUUID();
 
   const form = new URLSearchParams({
-    client_id: client.clientId,
     scope: data.scope,
     login_hint: data.loginHint,
     resource: env.ZENTITY_URL,
     // Sent back only to clients registered for ping delivery.
     client_notification_token: notificationToken,
   });
-  if (client.clientSecret) {
-    form.set("client_secret", client.clientSecret);
-  }
   if (data.bindingMessage) {
     form.set("binding_message", data.bindingMessage);
   }
@@ -108,14 +105,24 @@ async function handleAuthorize(
   }
 
   const send = async (agentAssertion: string | null) => {
+    const requestForm = new URLSearchParams(form);
+    const headers: Record<string, string> = {
+      "Content-Type": "application/x-www-form-urlencoded",
+      ...(agentAssertion ? { "Agent-Assertion": agentAssertion } : {}),
+    };
+    await authenticateClientRequest(
+      {
+        clientId: client.clientId,
+        ...(client.clientSecret ? { clientSecret: client.clientSecret } : {}),
+      },
+      requestForm,
+      headers,
+      `${env.ZENTITY_URL}/api/auth/oauth2/bc-authorize`
+    );
     const res = await fetch(`${env.ZENTITY_URL}/api/auth/oauth2/bc-authorize`, {
       method: "POST",
-      headers: {
-        // CIBA §7.1: the backchannel authentication request is form-encoded.
-        "Content-Type": "application/x-www-form-urlencoded",
-        ...(agentAssertion ? { "Agent-Assertion": agentAssertion } : {}),
-      },
-      body: form,
+      headers,
+      body: requestForm,
     });
     return { res, body: (await res.json()) as Record<string, unknown> };
   };
@@ -141,14 +148,19 @@ async function handleAuthorize(
 
 async function fetchTokenWithDpop(
   tokenUrl: string,
-  params: Record<string, string>
+  params: Record<string, string>,
+  client: DcrClient
 ): Promise<{ body: unknown; dpop: DpopClient; status: number }> {
   cibaDpopClient ??= createDpopClient();
   const dpop = await cibaDpopClient;
   const { body, response } = await requestTokenEndpoint(
     dpop,
     tokenUrl,
-    new URLSearchParams(params)
+    new URLSearchParams(params),
+    {
+      clientId: client.clientId,
+      ...(client.clientSecret ? { clientSecret: client.clientSecret } : {}),
+    }
   );
   return { body, dpop, status: response.status };
 }
@@ -261,8 +273,6 @@ async function handleCibaToken(
 ): Promise<NextResponse> {
   const params: Record<string, string> = {
     grant_type: CIBA_GRANT_TYPE,
-    client_id: client.clientId,
-    ...(client.clientSecret ? { client_secret: client.clientSecret } : {}),
     auth_req_id: data.authReqId,
     resource: env.ZENTITY_URL,
   };
@@ -271,7 +281,7 @@ async function handleCibaToken(
     body,
     dpop: cibaTokenDpop,
     status,
-  } = await fetchTokenWithDpop(tokenUrl, params);
+  } = await fetchTokenWithDpop(tokenUrl, params, client);
   const cibaBody = body as Record<string, unknown>;
 
   if (

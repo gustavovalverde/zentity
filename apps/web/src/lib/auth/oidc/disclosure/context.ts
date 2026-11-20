@@ -89,6 +89,18 @@ export function releaseIdFor(
     .digest("base64url");
 }
 
+/**
+ * Mirrors the OAuth provider's authorization-code grant ID so the disclosure
+ * binding can be finalized before the provider consumes the one-time code.
+ */
+export function authorizationCodeGrantIdFor(
+  authorizationCodeId: string
+): string {
+  return createHash("sha256")
+    .update(`oauth-code-grant:${authorizationCodeId}`)
+    .digest("base64url");
+}
+
 async function cleanupExpiredIntentJtis(): Promise<void> {
   try {
     await db
@@ -360,6 +372,7 @@ export async function clearPendingOauthDisclosure(
 
 export async function finalizeOauthDisclosureFromVerification(input: {
   authorizationId: string;
+  oauthRequestKey?: string;
   query: Record<string, unknown>;
   userId: string;
 }): Promise<ReleaseContext | null> {
@@ -367,7 +380,8 @@ export async function finalizeOauthDisclosureFromVerification(input: {
   await cleanupExpiredReleaseContexts();
 
   const claimsRequest = parseClaimsParameter(input.query.claims);
-  const oauthRequestKey = computeOAuthRequestKey(input.query);
+  const oauthRequestKey =
+    input.oauthRequestKey ?? computeOAuthRequestKey(input.query);
   const pending = await getPendingOauthDisclosure(oauthRequestKey);
   const needsBinding = releaseContextNeedsBinding(claimsRequest, pending);
   if (!needsBinding) {

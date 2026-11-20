@@ -4,7 +4,6 @@ import { calculateJwkThumbprint } from "jose";
 import { beforeEach, describe, expect, it } from "vitest";
 
 import { createAuthenticationContext } from "@/lib/auth/auth-context";
-import { mintOpaqueAccessToken } from "@/lib/auth/oidc/haip/opaque-access-token";
 import { db } from "@/lib/db/connection";
 import { oauthClients } from "@/lib/db/schema/oauth-provider";
 import { createTestUser, resetDatabase } from "@/test-utils/db-test-utils";
@@ -13,6 +12,7 @@ import {
   createTestDpopKeyPair,
   type DpopKeyPair,
 } from "@/test-utils/dpop-test-utils";
+import { mintOpaqueAccessToken } from "@/test-utils/opaque-access-token";
 
 import { requireBootstrapAccessToken } from "../resource-auth";
 

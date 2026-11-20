@@ -4,7 +4,6 @@ import { client, ready, server } from "@serenity-kit/opaque";
 import { AGENT_HOST_REGISTER_SCOPE } from "@zentity/sdk/agent-contract";
 import { encodeEd25519DidKeyFromJwk } from "@zentity/sdk/protocol";
 import { makeSignature } from "better-auth/crypto";
-import { eq } from "drizzle-orm";
 import {
   calculateJwkThumbprint,
   exportJWK,
@@ -21,17 +20,24 @@ import { GET as trpcGet } from "@/app/api/trpc/[trpc]/route";
 import { env } from "@/env";
 import { AGENT_BOOTSTRAP_TOKEN_USE } from "@/lib/agents/session";
 import { auth } from "@/lib/auth/auth-config";
-import { mintOpaqueAccessToken } from "@/lib/auth/oidc/haip/opaque-access-token";
+import {
+  authorizationCodeGrantIdFor,
+  loadReleaseContext,
+  releaseIdFor,
+} from "@/lib/auth/oidc/disclosure/context";
 import { TOKEN_EXCHANGE_GRANT_TYPE } from "@/lib/auth/oidc/token-exchange";
 import { db } from "@/lib/db/connection";
 import { accounts, verifications } from "@/lib/db/schema/auth";
 import { humanityCredentials } from "@/lib/db/schema/identity";
 import { oauthClients } from "@/lib/db/schema/oauth-provider";
+import { seedTestCodeConsent } from "@/test-utils/authorization-code-test-utils";
 import {
   createTestCibaRequest,
   createTestSession,
   createTestUser,
   resetDatabase,
+  TEST_CIBA_CLIENT_SECRET,
+  testCibaClientCredentials,
 } from "@/test-utils/db-test-utils";
 import {
   buildDpopProof,
@@ -42,6 +48,7 @@ import {
   readDpopNonceChallenge,
   runDpopNonceRoundTrip,
 } from "@/test-utils/dpop-test-utils";
+import { mintOpaqueAccessToken } from "@/test-utils/opaque-access-token";
 
 const APP_URL = "http://localhost:3000";
 const AUTH_URL = `${APP_URL}/api/auth`;
@@ -242,7 +249,11 @@ describe("server-provided DPoP nonces", () => {
       authContextId,
     } = await createTestSession(userId));
     await insertClient(CODE_CLIENT_ID, ["authorization_code", "refresh_token"]);
-    await insertClient(CIBA_CLIENT_ID, [CIBA_GRANT_TYPE]);
+    await insertClient(
+      CIBA_CLIENT_ID,
+      [CIBA_GRANT_TYPE],
+      testCibaClientCredentials
+    );
     await insertClient(
       EXCHANGE_CLIENT_ID,
       ["authorization_code", TOKEN_EXCHANGE_GRANT_TYPE],
@@ -265,9 +276,17 @@ describe("server-provided DPoP nonces", () => {
 
   /** Stores an authorization code as the authorize endpoint would. */
   async function insertAuthorizationCode(
-    overrides: { referenceId?: string } = {}
+    overrides: { claims?: string } = {}
   ): Promise<string> {
     const code = crypto.randomUUID();
+    const referenceId = crypto.randomUUID();
+    await seedTestCodeConsent({
+      clientId: CODE_CLIENT_ID,
+      referenceId,
+      resource: APP_URL,
+      scope: "openid offline_access",
+      userId,
+    });
     const now = Date.now();
     await db
       .insert(verifications)
@@ -276,7 +295,7 @@ describe("server-provided DPoP nonces", () => {
         identifier: sha256(code),
         value: JSON.stringify({
           type: "authorization_code",
-          ...overrides,
+          referenceId,
           query: {
             client_id: CODE_CLIENT_ID,
             response_type: "code",
@@ -285,6 +304,7 @@ describe("server-provided DPoP nonces", () => {
             code_challenge: CODE_CHALLENGE,
             code_challenge_method: "S256",
             resource: APP_URL,
+            claims: overrides.claims,
           },
           userId,
           sessionId,
@@ -346,27 +366,21 @@ describe("server-provided DPoP nonces", () => {
     it("asks for the nonce before Zentity's token hooks stage the grant", async () => {
       const keyPair = await createTestDpopKeyPair();
       const code = await insertAuthorizationCode({
-        referenceId: "consent-reference",
+        claims: JSON.stringify({ id_token: { acr: null } }),
       });
-      const storedReference = async () => {
-        const row = await db
-          .select({ value: verifications.value })
-          .from(verifications)
-          .where(eq(verifications.identifier, sha256(code)))
-          .get();
-        return (JSON.parse(row?.value ?? "{}") as { referenceId?: string })
-          .referenceId;
-      };
-
+      const release = releaseIdFor(
+        authorizationCodeGrantIdFor(sha256(code)),
+        CODE_CLIENT_ID
+      );
       const send = tokenSender(keyPair, authorizationCodeBody(code));
       const nonce = await readDpopNonceChallenge(
         await send(null),
         "authorization_server"
       );
 
-      // The hook that rebinds the code to its own reference has not run.
-      expect(await storedReference()).toBe("consent-reference");
+      expect(await loadReleaseContext(release)).toBeNull();
       expect((await send(nonce)).status).toBe(200);
+      expect(await loadReleaseContext(release)).not.toBeNull();
     });
 
     it("asks for a nonce on a refresh token grant", async () => {
@@ -406,6 +420,7 @@ describe("server-provided DPoP nonces", () => {
           });
           return tokenSender(keyPair, {
             grant_type: CIBA_GRANT_TYPE,
+            client_secret: TEST_CIBA_CLIENT_SECRET,
             auth_req_id: authReqId,
             client_id: CIBA_CLIENT_ID,
           });

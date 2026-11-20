@@ -17,7 +17,7 @@ const RESOURCE_CONFIG = {
 describe("protected resource registry", () => {
   it("returns deduplicated audiences including MCP", () => {
     expect(getProtectedResourceAudiences(RESOURCE_CONFIG)).toEqual([
-      "http://localhost:3000",
+      { identifier: "http://localhost:3000", accessTokenFormat: "opaque" },
       "http://localhost:3000/api/auth",
       "http://localhost:3200",
       "http://localhost:3000/api/auth/oidc4vci/credential",
@@ -40,7 +40,7 @@ describe("protected resource registry", () => {
       authIssuer: RESOURCE_CONFIG.appUrl,
     });
     const appUrlCount = audiences.filter(
-      (a) => a === "http://localhost:3000"
+      (a) => typeof a === "object" && a.identifier === RESOURCE_CONFIG.appUrl
     ).length;
     expect(appUrlCount).toBe(1);
   });

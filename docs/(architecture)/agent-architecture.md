@@ -129,6 +129,8 @@ This host/session split answers the core lifecycle question up front: continuity
 The bootstrap token is intentionally narrow and short-lived; it exists only to authorize host/session bootstrap and revocation, not to replace the login token everywhere else.
 Credentials an MCP stdio process stored before its login carried the bootstrap scopes cannot register an agent. The process detects this (the stored scopes lack a bootstrap scope, or the exchange answers `invalid_scope` or `invalid_request`), clears the stored tokens, and signs in again once.
 
+The stdio MCP registers as a confidential `private_key_jwt` client with a per-install ES256 signing key. Its issuer-scoped state file under `~/.zentity/mcp-server/first-party-auth/` stores the key alongside the DPoP key and tokens. The SDK writes the directory as `0700` and the file as `0600`. Preserve this file across restarts so refresh, bootstrap exchange, and CIBA continue to use the registered key. On first startup after upgrading from a public registration, the SDK registers a new confidential client and clears the old client's tokens, so the user signs in once more. Only the public JWK is sent to Zentity.
+
 ---
 
 ## Trust Tiers
@@ -750,6 +752,8 @@ On startup, the stdio transport:
 3. ensures the durable host is registered
 4. registers a fresh agent session for the current process
 5. stores runtime state in the `agentRuntimeStateStore`
+
+Its native OAuth registration uses `private_key_jwt` with a fresh ES256 keypair generated per installation. The SDK stores the private key beside the installation's DPoP key in its mode-0600 first-party auth file, publishes only the public JWK during registration, and signs assertions with the discovered issuer URI as `aud` to match Zentity's configured private-key-JWT audience profile. It authenticates PAR, code exchange, refresh, token exchange, CIBA initiation, and CIBA polling with that key. A registration fingerprint change replaces an older public-client registration and clears its cached login tokens, so an existing installation signs in again once after upgrading.
 
 Access-token refresh does not destroy runtime identity. The OAuth session can rotate while the live session key and session ID remain stable for that process.
 

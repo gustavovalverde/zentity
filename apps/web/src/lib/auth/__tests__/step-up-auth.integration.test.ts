@@ -376,15 +376,18 @@ describe("step-up authentication: direct authorize requests", () => {
     expect(fragment.get("iss")).toBe(getAuthIssuer());
   });
 
-  it("never redirects the tier rejection to an unregistered redirect_uri", async () => {
+  it("sends an unregistered redirect_uri to the authorization server's error page", async () => {
     const response = await auth.handler(
-      buildDirectAuthorizeRequest("https://attacker.example/callback")
+      buildDirectAuthorizeRequest("https://unregistered.example/callback")
     );
 
-    expect(response.status).toBe(400);
-    expect(response.headers.get("location")).toBeNull();
-    const body = (await response.json()) as { error?: string };
-    expect(body.error).toBe("invalid_request");
+    expect(response.status).toBe(302);
+    const location = new URL(
+      response.headers.get("location") ?? "",
+      getAuthIssuer()
+    );
+    expect(location.origin).toBe(new URL(getAuthIssuer()).origin);
+    expect(location.searchParams.get("error")).toBe("invalid_redirect");
   });
 
   function buildPostAuthorizeRequest(params: Record<string, string>) {

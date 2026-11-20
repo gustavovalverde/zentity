@@ -38,7 +38,7 @@
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
-    "@better-auth/core": "1.8.0-beta.10",
+    "@better-auth/core": "1.8.0-beta.11",
     "@types/node": "^26.6.6",
     "tsdown": "0.23.7",
     "typescript": "^7.0.2",
@@ -46,6 +46,7 @@
   },
   "dependencies": {
     "@noble/curves": "^2.4.0",
+    "@noble/hashes": "2.4.0",
     "@serenity-kit/opaque": "^1.1.0",
     "@x402/core": "^2.31.0",
     "jose": "^6.2.17",

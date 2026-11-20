@@ -40,27 +40,33 @@ const WALLET_ACCESS_TOKEN_TTL_SECONDS = 120;
 export function getProtectedResourceAudiences(
   config: ProtectedResourceConfig
 ): Array<string | OAuthResourceInput> {
-  const raw = [
-    config.appUrl,
-    config.authIssuer,
-    config.mcpPublicUrl,
-    config.oidc4vciCredentialAudience,
-    config.rpApiAudience,
-  ];
-  const present = raw.filter((value): value is string => Boolean(value));
-  const identifiers = [...new Set(present.map(normalizeResource))];
-  if (!config.walletAudience) {
-    return identifiers;
-  }
-  const walletAudience = normalizeResource(config.walletAudience);
-  return [
-    ...identifiers.filter((identifier) => identifier !== walletAudience),
-    {
-      identifier: walletAudience,
-      accessTokenTtl: WALLET_ACCESS_TOKEN_TTL_SECONDS,
-      dpopBoundAccessTokensRequired: true,
-    },
-  ];
+  const app = normalizeResource(config.appUrl);
+  const wallet =
+    config.walletAudience && normalizeResource(config.walletAudience);
+  const identifiers = new Set(
+    [
+      app,
+      config.authIssuer,
+      config.mcpPublicUrl,
+      config.oidc4vciCredentialAudience,
+      config.rpApiAudience,
+      wallet,
+    ]
+      .filter((identifier): identifier is string => Boolean(identifier))
+      .map(normalizeResource)
+  );
+  return Array.from(identifiers, (identifier) => {
+    if (identifier === wallet) {
+      return {
+        identifier,
+        accessTokenTtl: WALLET_ACCESS_TOKEN_TTL_SECONDS,
+        dpopBoundAccessTokensRequired: true,
+      };
+    }
+    return identifier === app
+      ? { identifier, accessTokenFormat: "opaque" }
+      : identifier;
+  });
 }
 
 /** Whether a resource indicator or audience names the agent wallet. */

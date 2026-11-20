@@ -13,7 +13,6 @@ import {
   POST as authRoutePost,
 } from "@/app/api/auth/[...all]/route";
 import { GET as getValidity } from "@/app/api/auth/oauth2/validity/route";
-import { mintOpaqueAccessToken } from "@/lib/auth/oidc/haip/opaque-access-token";
 import { encryptPrivateKey } from "@/lib/auth/oidc/jwt-signer";
 import {
   resolveProtectedResourcePrincipal,
@@ -32,6 +31,7 @@ import {
   createTestDpopKeyPair,
   type DpopKeyPair,
 } from "@/test-utils/dpop-test-utils";
+import { mintOpaqueAccessToken } from "@/test-utils/opaque-access-token";
 
 const authIssuer = getAuthIssuer();
 const CLIENT_ID = "resource-test-client";

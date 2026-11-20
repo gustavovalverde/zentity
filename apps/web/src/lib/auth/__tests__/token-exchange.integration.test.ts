@@ -60,6 +60,8 @@ const REMOTE_HOST_ID = "exchange-remote-host";
 // The MCP HTTP server: a confidential client linked to the MCP resource.
 const MCP_ID = "exchange-mcp-server";
 const MCP_SECRET = "exchange-mcp-secret";
+const CIBA_SUBJECT_ID = "exchange-ciba-subject";
+const CIBA_SUBJECT_SECRET = "exchange-ciba-subject-secret";
 const MCP_SCOPES = [
   "openid",
   "email",
@@ -271,6 +273,9 @@ describe("Token Exchange (RFC 8693)", () => {
     await resetDatabase();
     userId = await createTestUser();
     await insertClient(AGENT_ID, {
+      // CIBA's approval is its own user-consent ceremony; these seeded CIBA
+      // grants must not depend on a separate front-channel OAuth consent row.
+      skipConsent: true,
       scopes: JSON.stringify([
         "openid",
         "email",
@@ -279,9 +284,35 @@ describe("Token Exchange (RFC 8693)", () => {
         ...BOOTSTRAP_SCOPE.split(" "),
       ]),
     });
+    await insertClient(CIBA_SUBJECT_ID, {
+      clientSecret: hashToken(CIBA_SUBJECT_SECRET),
+      tokenEndpointAuthMethod: "client_secret_basic",
+      redirectUris: JSON.stringify([]),
+      grantTypes: JSON.stringify([CIBA_GRANT_TYPE, TOKEN_EXCHANGE_GRANT_TYPE]),
+      responseTypes: JSON.stringify([]),
+      scopes: JSON.stringify(["openid"]),
+      skipConsent: true,
+    });
     await insertClient(REMOTE_HOST_ID);
     await insertResourceServer(MCP_ID, { linked: true, skipConsent: true });
   });
+
+  async function approvedCibaSubject() {
+    const { authReqId, authReqIdHash } = await createTestCibaRequest({
+      clientId: CIBA_SUBJECT_ID,
+      userId,
+      status: "approved",
+    });
+    const poll = await postTokenWithDpop(
+      {
+        grant_type: CIBA_GRANT_TYPE,
+        auth_req_id: authReqId,
+      },
+      undefined,
+      basicAuth(CIBA_SUBJECT_ID, CIBA_SUBJECT_SECRET)
+    );
+    return { authReqIdHash, poll };
+  }
 
   afterEach(() => {
     vi.useRealTimers();
@@ -335,16 +366,38 @@ describe("Token Exchange (RFC 8693)", () => {
       );
 
       expect(status).toBe(200);
-      expect(json).toEqual({
+      const allowedResponseFields = new Set([
+        "access_token",
+        "issued_token_type",
+        "token_type",
+        "expires_in",
+        "expires_at",
+        "scope",
+      ]);
+      expect(
+        Object.keys(json).every((key) => allowedResponseFields.has(key))
+      ).toBe(true);
+      expect(json).toMatchObject({
         access_token: expect.any(String),
         issued_token_type: ACCESS_TOKEN_TYPE,
         token_type: "DPoP",
         expires_in: expect.any(Number),
         scope: BOOTSTRAP_SCOPE,
       });
+      expect(json).not.toHaveProperty("id_token");
+      expect(json).not.toHaveProperty("refresh_token");
       const token = json.access_token as string;
       expect(token.split(".")).toHaveLength(1);
+      const subject = await introspectZentityAccessToken(login.token);
       const stored = await findStoredOpaqueAccessToken(token);
+      if (typeof json.expires_at === "number") {
+        expect(json.expires_at).toBeLessThanOrEqual(
+          subject.payload.exp as number
+        );
+        expect(
+          Math.floor(new Date(stored?.expiresAt ?? 0).getTime() / 1000)
+        ).toBe(json.expires_at);
+      }
       expect(stored).toMatchObject({
         act: null,
         accessTokenClaims: { zentity_token_use: "agent_bootstrap" },
@@ -739,11 +792,9 @@ describe("Token Exchange (RFC 8693)", () => {
       expect(userInfo.status).toBe(401);
     });
 
-    // R19 as built: a remote host's grant ends with the browser session. Its
-    // offline_access refresh token survives sign-out, but an `openid` refresh
-    // has no authentication context for the ID token, and any access token a
-    // refresh yields carries the ended `sid`, which the provider treats as
-    // revoked.
+    // The refresh token survives sign-out. Beta.11 omits `sid` once its
+    // session row is gone; token exchange still refuses the refreshed token
+    // because it no longer has an authentication context.
     it("refuses a remote host's token, and refreshes it, once its browser session ends", async () => {
       const remote = await remoteHostToken();
       const withoutOpenid = await remoteHostToken(
@@ -781,10 +832,11 @@ describe("Token Exchange (RFC 8693)", () => {
         },
       });
       expect(scopedRefresh.status).toBe(200);
-      expect(decodeJwt(refreshedToken).sid).toBe(
-        withoutOpenid.session.sessionId
-      );
-      expect(fromRefresh).toMatchObject({ status: 400, json: INVALID_SUBJECT });
+      expect(decodeJwt(refreshedToken).sid).toBeUndefined();
+      expect(fromRefresh).toMatchObject({
+        status: 400,
+        json: invalidRequest("subject_token has no authentication context"),
+      });
     });
 
     // D24: no context is read from the refresh row or a claim, so a JWT
@@ -855,21 +907,15 @@ describe("Token Exchange (RFC 8693)", () => {
 
     // R4, R11: agent and CIBA tokens are delegated.
     it("refuses a CIBA token", async () => {
-      const { authReqId } = await createTestCibaRequest({
-        clientId: AGENT_ID,
-        userId,
-        status: "approved",
-      });
-      const poll = await postTokenWithDpop({
-        grant_type: CIBA_GRANT_TYPE,
-        auth_req_id: authReqId,
-        client_id: AGENT_ID,
-      });
+      const { poll } = await approvedCibaSubject();
       expect(poll.status).toBe(200);
 
       const { status, json } = await exchange(
         { subject_token: poll.json.access_token as string },
-        { keyPair: poll.dpopKeyPair }
+        {
+          keyPair: poll.dpopKeyPair,
+          headers: basicAuth(CIBA_SUBJECT_ID, CIBA_SUBJECT_SECRET),
+        }
       );
 
       expect({ status, json }).toEqual({
@@ -880,16 +926,7 @@ describe("Token Exchange (RFC 8693)", () => {
 
     // R30: the approval record refuses a CIBA token even without its actor.
     it("refuses a CIBA token whose stored actor was removed", async () => {
-      const { authReqId, authReqIdHash } = await createTestCibaRequest({
-        clientId: AGENT_ID,
-        userId,
-        status: "approved",
-      });
-      const poll = await postTokenWithDpop({
-        grant_type: CIBA_GRANT_TYPE,
-        auth_req_id: authReqId,
-        client_id: AGENT_ID,
-      });
+      const { authReqIdHash, poll } = await approvedCibaSubject();
       await db
         .update(oauthAccessTokens)
         .set({ act: null })
@@ -902,7 +939,10 @@ describe("Token Exchange (RFC 8693)", () => {
 
       const { status, json } = await exchange(
         { subject_token: poll.json.access_token as string },
-        { keyPair: poll.dpopKeyPair }
+        {
+          keyPair: poll.dpopKeyPair,
+          headers: basicAuth(CIBA_SUBJECT_ID, CIBA_SUBJECT_SECRET),
+        }
       );
 
       expect({ status, json }).toEqual({

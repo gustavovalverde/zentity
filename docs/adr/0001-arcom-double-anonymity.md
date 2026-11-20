@@ -29,7 +29,7 @@ We recognize that not all RPs are equal. A bank needs an ongoing identity relati
 | Example | Adult site age gate | Bank, exchange |
 | Scopes | `proof:*` only | `identity.*` + `proof:*` |
 | `subjectType` | `pairwise` | `public` |
-| Consent record | Deleted after authorization code issuance | Persistent, shown in dashboard |
+| Consent record | Deleted after code redemption or expiry | Persistent, shown in dashboard |
 | Access token record | Deleted after JWT issuance | Kept for revocation |
 | User model | "Prove and forget" | "Ongoing relationship I manage" |
 
@@ -41,7 +41,7 @@ We recognize that not all RPs are equal. A bank needs an ongoing identity relati
 
 2. **`PAIRWISE_SECRET` is required.** No longer optional. The setup script already generates it; making it required prevents accidental deployment without pairwise support.
 
-3. **Consent records deleted for pairwise proof-only flows.** After the `oauth-provider` plugin writes the consent record and issues the authorization code, the `after` hook deletes the row if: the client is pairwise AND the original requested scopes contain no `identity.*` scopes.
+3. **Consent records are transient for pairwise proof-only flows.** Their reference is HMAC-bound to the PKCE challenge, so pending codes for one session have independent rows. After successful code redemption, the exact proof-only row is deleted. Abandoned rows are deleted after the provider's 10-minute authorization-code lifetime by the authenticated cleanup route and by a client/user-scoped prune when the user authorizes again. The scoped prune uses existing client and user indexes. Consents that include `identity.*` remain available for revocation.
 
 4. **Access token records deleted for pairwise proof-only flows.** After token issuance, the `after` hook deletes the DB row if the same classification applies. JWT access tokens are self-contained (the RP validates the signature, not a DB lookup), so revocation becomes eventual (valid until expiry). For short-lived proof-only tokens this is acceptable.
 
@@ -64,7 +64,7 @@ We recognize that not all RPs are equal. A bank needs an ongoing identity relati
 
 - **No revocation for pairwise proof-only tokens.** If a proof-only JWT is compromised, it remains valid until expiry. Mitigated by short token lifetimes.
 - **Transient knowledge window.** During the authorize flow (~seconds), Zentity does see `(user, client_id)` in memory. Server logs could theoretically capture this. Mitigated by not logging OAuth query parameters (already the case) and IP scrubbing.
-- **DB queries in after hooks.** Each consent and token flow adds 1-2 DB reads (client lookup) and potentially 1 delete. Acceptable overhead for the privacy guarantee.
+- **Transient consent cleanup depends on the cleanup trigger.** The authenticated cron route should run on the deployment's normal cleanup cadence and deletes at most 500 expired rows per run. Authorization requests also prune rows for the current client and user. An idle database retains abandoned proof-only rows until a cleanup trigger runs.
 
 ### Neutral
 
@@ -80,10 +80,11 @@ User -> RP (adult site)
   -> Zentity /oauth2/authorize?client_id=X&scope=openid+proof:age
     [transient: Zentity sees (user, X) in memory]
   -> /oauth/consent (user approves proof:age)
-    [plugin writes consent row]
-    [after hook: client X is pairwise + no identity.* -> DELETE consent row]
+    [consent reference binds client, session, scopes, and PKCE challenge]
+    [plugin writes one consent row for each pending code]
   -> RP callback with auth code
   -> RP exchanges code at /oauth2/token
+    [after successful issuance: DELETE this code's consent row]
     [plugin writes access_token row, issues JWT]
     [after hook: client X is pairwise -> DELETE access_token row]
   -> RP receives JWT with pairwise sub, proof:age claims
@@ -118,3 +119,4 @@ This approach is compliant with all relevant OAuth/OIDC specifications:
 
 - 2026-09-27: Replaced the pairwise-client token guard with the access-token rule: opaque tokens for Zentity-served endpoints, and JWT access tokens that carry the client's subject identifier for resource servers outside Zentity.
 - 2026-11-16: JWT access tokens carry the provider-written `ba_sub`, so Zentity resolves their user without the pairwise subject index.
+- 2026-11-20: Pairwise proof-only consent is bound to each PKCE challenge, removed after its own code redemption, and pruned after the provider's 10-minute code lifetime.

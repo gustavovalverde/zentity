@@ -10,6 +10,8 @@ import {
   createTestUser,
   findPushedAuthorizationQueries,
   resetDatabase,
+  TEST_CIBA_CLIENT_SECRET,
+  testCibaClientCredentials,
 } from "@/test-utils/db-test-utils";
 import { postTokenWithDpop } from "@/test-utils/dpop-test-utils";
 
@@ -26,7 +28,7 @@ async function createTestClient() {
       name: "RFC 8707 Test",
       redirectUris: JSON.stringify(["http://localhost/callback"]),
       grantTypes: JSON.stringify(["authorization_code", CIBA_GRANT_TYPE]),
-      tokenEndpointAuthMethod: "none",
+      ...testCibaClientCredentials,
     })
     .run();
 }
@@ -36,7 +38,10 @@ async function postPar(body: Record<string, string>) {
     new Request(PAR_URL, {
       method: "POST",
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body: new URLSearchParams(body),
+      body: new URLSearchParams({
+        client_secret: TEST_CIBA_CLIENT_SECRET,
+        ...body,
+      }),
     })
   );
   const text = await response.text();
@@ -186,6 +191,7 @@ describe("RFC 8707: Resource Indicator Enforcement", () => {
 
       const { status } = await postTokenWithDpop({
         grant_type: CIBA_GRANT_TYPE,
+        client_secret: TEST_CIBA_CLIENT_SECRET,
         auth_req_id: authReqId,
         client_id: TEST_CLIENT_ID,
       });
@@ -201,16 +207,17 @@ describe("RFC 8707: Resource Indicator Enforcement", () => {
       userId = await createTestUser();
     });
 
-    it("issues JWT access token with aud when CIBA request has resource", async () => {
+    it("issues a JWT bound to the external MCP audience", async () => {
       const { authReqId } = await createTestCibaRequest({
         clientId: TEST_CLIENT_ID,
         userId,
         status: "approved",
-        resources: JSON.stringify([VALID_RESOURCE]),
+        resources: JSON.stringify([env.MCP_PUBLIC_URL]),
       });
 
       const { status, json } = await postTokenWithDpop({
         grant_type: CIBA_GRANT_TYPE,
+        client_secret: TEST_CIBA_CLIENT_SECRET,
         auth_req_id: authReqId,
         client_id: TEST_CLIENT_ID,
       });
@@ -220,34 +227,31 @@ describe("RFC 8707: Resource Indicator Enforcement", () => {
 
       const payload = decodeJwt(json.access_token as string);
       // aud includes both the resource and the userinfo endpoint (openid scope)
-      expect(payload.aud).toContain(VALID_RESOURCE);
+      expect([payload.aud].flat()).toContain(env.MCP_PUBLIC_URL);
     });
 
-    it("issues opaque access token when CIBA request has no resource", async () => {
-      const { authReqId } = await createTestCibaRequest({
-        clientId: TEST_CLIENT_ID,
-        userId,
-        status: "approved",
-      });
+    it.each([undefined, VALID_RESOURCE])(
+      "issues an opaque token for a local CIBA resource (%s)",
+      async (resource) => {
+        const { authReqId } = await createTestCibaRequest({
+          clientId: TEST_CLIENT_ID,
+          userId,
+          status: "approved",
+          resources: resource ? JSON.stringify([resource]) : undefined,
+        });
 
-      const { status, json } = await postTokenWithDpop({
-        grant_type: CIBA_GRANT_TYPE,
-        auth_req_id: authReqId,
-        client_id: TEST_CLIENT_ID,
-      });
+        const { status, json } = await postTokenWithDpop({
+          grant_type: CIBA_GRANT_TYPE,
+          client_secret: TEST_CIBA_CLIENT_SECRET,
+          auth_req_id: authReqId,
+          client_id: TEST_CLIENT_ID,
+        });
 
-      expect(status).toBe(200);
-      expect(json.access_token).toBeDefined();
+        expect(status).toBe(200);
+        expect(json.access_token).toBeDefined();
 
-      // Opaque tokens are not JWTs — they don't have dots
-      const token = json.access_token as string;
-      const isDot = token.split(".").length === 3;
-      // Could be JWT or opaque depending on framework behavior
-      // The key assertion: no explicit aud claim if opaque
-      if (!isDot) {
-        // Opaque token — no aud to verify
-        expect(token).toBeTruthy();
+        expect(json.access_token).not.toContain(".");
       }
-    });
+    );
   });
 });

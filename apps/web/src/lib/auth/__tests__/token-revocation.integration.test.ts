@@ -9,7 +9,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { GET as listRevocations } from "@/app/api/auth/oauth2/revoked/route";
 import { env } from "@/env";
 import { auth } from "@/lib/auth/auth-config";
-import { mintOpaqueAccessToken } from "@/lib/auth/oidc/haip/opaque-access-token";
 import { db } from "@/lib/db/connection";
 import { verifications } from "@/lib/db/schema/auth";
 import {
@@ -17,6 +16,7 @@ import {
   oauthRefreshTokens,
 } from "@/lib/db/schema/oauth-provider";
 import { revokedTokens } from "@/lib/db/schema/revoked-tokens";
+import { seedTestAuthorizationCode } from "@/test-utils/authorization-code-test-utils";
 import {
   createTestSession,
   createTestUser,
@@ -27,10 +27,11 @@ import {
   type DpopKeyPair,
   postTokenWithDpop,
 } from "@/test-utils/dpop-test-utils";
+import { mintOpaqueAccessToken } from "@/test-utils/opaque-access-token";
 
 const AUTH_URL = "http://localhost:3000/api/auth";
 const REDIRECT_URI = "http://127.0.0.1/callback";
-const RESOURCE = "http://localhost:3000";
+const RESOURCE = env.MCP_PUBLIC_URL;
 const OWNER = { id: "revoke-owner", secret: "owner-secret-value" };
 const OTHER = { id: "revoke-other", secret: "other-secret-value" };
 const PUBLIC_CLIENT = "revoke-public";
@@ -73,47 +74,19 @@ function credentialsFor(clientId: string): Record<string, string> {
 
 async function issueTokens(
   userId: string,
-  sessionId: string,
+  session: Awaited<ReturnType<typeof createTestSession>>,
   clientId: string
 ): Promise<IssuedTokens> {
-  const code = crypto.randomUUID();
-  const verifier = crypto.randomBytes(32).toString("base64url");
-  const challenge = crypto
-    .createHash("sha256")
-    .update(verifier)
-    .digest("base64url");
-  const now = Date.now();
-  await db
-    .insert(verifications)
-    .values({
-      id: crypto.randomUUID(),
-      identifier: crypto.createHash("sha256").update(code).digest("base64url"),
-      value: JSON.stringify({
-        type: "authorization_code",
-        query: {
-          client_id: clientId,
-          response_type: "code",
-          redirect_uri: REDIRECT_URI,
-          scope: "openid email offline_access",
-          code_challenge: challenge,
-          code_challenge_method: "S256",
-          resource: RESOURCE,
-        },
-        userId,
-        sessionId,
-      }),
-      createdAt: new Date(now),
-      updatedAt: new Date(now),
-      expiresAt: new Date(now + 5 * 60 * 1000),
-    })
-    .run();
-
-  const { status, json, dpopKeyPair } = await postTokenWithDpop({
-    grant_type: "authorization_code",
-    code,
-    code_verifier: verifier,
-    redirect_uri: REDIRECT_URI,
+  const { tokenRequest } = await seedTestAuthorizationCode({
+    clientId,
+    userId,
+    redirectUri: REDIRECT_URI,
     resource: RESOURCE,
+    scope: "openid email offline_access",
+    session,
+  });
+  const { status, json, dpopKeyPair } = await postTokenWithDpop({
+    ...tokenRequest,
     ...credentialsFor(clientId),
   });
   if (status !== 200) {
@@ -238,12 +211,12 @@ async function revokedJtis(): Promise<string[]> {
 
 describe("RFC 7009 token revocation", () => {
   let userId: string;
-  let sessionId: string;
+  let session: Awaited<ReturnType<typeof createTestSession>>;
 
   beforeEach(async () => {
     await resetDatabase();
     userId = await createTestUser({ emailVerified: true });
-    ({ sessionId } = await createTestSession(userId));
+    session = await createTestSession(userId);
     await registerClient(OWNER.id, OWNER.secret);
     await registerClient(OTHER.id, OTHER.secret);
     await registerClient(PUBLIC_CLIENT);
@@ -264,7 +237,7 @@ describe("RFC 7009 token revocation", () => {
   });
 
   it("rejects a confidential client that does not authenticate", async () => {
-    const tokens = await issueTokens(userId, sessionId, OWNER.id);
+    const tokens = await issueTokens(userId, session, OWNER.id);
 
     const basic = (secret: string) =>
       `Basic ${Buffer.from(`${OWNER.id}:${secret}`).toString("base64")}`;
@@ -290,7 +263,7 @@ describe("RFC 7009 token revocation", () => {
   });
 
   it("refuses a confidential client revoking a token it was not issued", async () => {
-    const tokens = await issueTokens(userId, sessionId, OWNER.id);
+    const tokens = await issueTokens(userId, session, OWNER.id);
 
     for (const token of [tokens.accessToken, tokens.refreshToken]) {
       const result = await revoke({ token, ...credentialsFor(OTHER.id) });
@@ -306,7 +279,7 @@ describe("RFC 7009 token revocation", () => {
   });
 
   it("does not record a forged JWT that reuses a real token's jti", async () => {
-    const tokens = await issueTokens(userId, sessionId, OWNER.id);
+    const tokens = await issueTokens(userId, session, OWNER.id);
     const { jti } = decodeJwt(tokens.accessToken);
     const forged = await new SignJWT({
       jti,
@@ -324,7 +297,7 @@ describe("RFC 7009 token revocation", () => {
   });
 
   it("revokes the owner's JWT access token", async () => {
-    const tokens = await issueTokens(userId, sessionId, OWNER.id);
+    const tokens = await issueTokens(userId, session, OWNER.id);
     expect(tokens.accessToken.split(".")).toHaveLength(3);
     expect(await introspectionActive(tokens.accessToken)).toBe(true);
 
@@ -343,7 +316,7 @@ describe("RFC 7009 token revocation", () => {
   });
 
   it("challenges a revoked JWT at UserInfo in the scheme it was presented with", async () => {
-    const tokens = await issueTokens(userId, sessionId, OWNER.id);
+    const tokens = await issueTokens(userId, session, OWNER.id);
     await revoke({
       token: tokens.accessToken,
       token_type_hint: "access_token",
@@ -376,7 +349,7 @@ describe("RFC 7009 token revocation", () => {
   });
 
   it("keeps a JWT access token live when its revocation cannot be recorded", async () => {
-    const tokens = await issueTokens(userId, sessionId, OWNER.id);
+    const tokens = await issueTokens(userId, session, OWNER.id);
     const insert = db.insert.bind(db);
     const failFeedWrite = vi.spyOn(db, "insert").mockImplementation(((
       table: Parameters<typeof db.insert>[0]
@@ -401,7 +374,7 @@ describe("RFC 7009 token revocation", () => {
   });
 
   it("revokes the JWT access tokens of a revoked refresh token's grant", async () => {
-    const tokens = await issueTokens(userId, sessionId, OWNER.id);
+    const tokens = await issueTokens(userId, session, OWNER.id);
     expect(await userInfoStatus(tokens.accessToken, tokens.dpopKeyPair)).toBe(
       200
     );
@@ -420,7 +393,7 @@ describe("RFC 7009 token revocation", () => {
   });
 
   it("revokes the owner's refresh token", async () => {
-    const tokens = await issueTokens(userId, sessionId, OWNER.id);
+    const tokens = await issueTokens(userId, session, OWNER.id);
 
     const result = await revoke({
       token: tokens.refreshToken,
@@ -445,7 +418,7 @@ describe("RFC 7009 token revocation", () => {
       expiresAt: new Date(Date.now() + 3_600_000),
       referenceId: crypto.randomUUID(),
       scopes: ["openid"],
-      sessionId,
+      sessionId: session.sessionId,
       userId,
     });
 
@@ -459,7 +432,7 @@ describe("RFC 7009 token revocation", () => {
   });
 
   it("backfills provider marks for JWTs an earlier release revoked", async () => {
-    const tokens = await issueTokens(userId, sessionId, OWNER.id);
+    const tokens = await issueTokens(userId, session, OWNER.id);
     const { jti } = decodeJwt(tokens.accessToken);
     if (typeof jti !== "string") {
       throw new Error("access token has no jti");
@@ -496,7 +469,7 @@ describe("RFC 7009 token revocation", () => {
   });
 
   it("lets a public client revoke its own token with its client_id", async () => {
-    const tokens = await issueTokens(userId, sessionId, PUBLIC_CLIENT);
+    const tokens = await issueTokens(userId, session, PUBLIC_CLIENT);
 
     const result = await revoke({
       token: tokens.accessToken,

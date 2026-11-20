@@ -1,3 +1,4 @@
+import { importJWK, type JWK, SignJWT } from "jose";
 import type { DpopClient } from "./dpop-client";
 
 export interface TokenEndpointResult {
@@ -7,9 +8,14 @@ export interface TokenEndpointResult {
 
 /** How a client identifies itself to the token or backchannel endpoint. */
 export interface ClientAuthentication {
+  /** Issuer audience required by authorization servers using that profile. */
+  clientAssertionAudience?: string | undefined;
   clientId: string;
   /** Sends `client_secret_basic` (RFC 6749 §2.3.1); a public client omits it. */
   clientSecret?: string | undefined;
+  /** Per-install signing key registered through the client's public JWKS. */
+  privateJwk?: JWK | undefined;
+  signingAlgorithm?: "ES256" | undefined;
 }
 
 function formUrlEncode(value: string): string {
@@ -17,16 +23,47 @@ function formUrlEncode(value: string): string {
 }
 
 /**
- * Applies the client's authentication to a form request: `client_id` in the
- * body for a public client, or an `Authorization: Basic` header (both values
- * form-url-encoded first, RFC 6749 §2.3.1) and no `client_id` for a
- * confidential one.
+ * Applies public, client-secret-basic, or private-key-jwt authentication to a
+ * form request. Assertions are short-lived and target the configured audience,
+ * defaulting to the endpoint URL.
  */
-export function authenticateClientRequest(
+export async function authenticateClientRequest(
   client: ClientAuthentication,
   params: URLSearchParams,
-  headers: Record<string, string>
-): void {
+  headers: Record<string, string>,
+  endpoint?: string
+): Promise<void> {
+  if (client.privateJwk) {
+    if (!endpoint) {
+      throw new Error("private_key_jwt requires the endpoint URL");
+    }
+    params.delete("client_secret");
+    params.set("client_id", client.clientId);
+    params.set(
+      "client_assertion_type",
+      "urn:ietf:params:oauth:client-assertion-type:jwt-bearer"
+    );
+    const key = await importJWK(
+      client.privateJwk,
+      client.signingAlgorithm ?? "ES256"
+    );
+    params.set(
+      "client_assertion",
+      await new SignJWT({})
+        .setProtectedHeader({
+          alg: client.signingAlgorithm ?? "ES256",
+          typ: "JWT",
+        })
+        .setIssuer(client.clientId)
+        .setSubject(client.clientId)
+        .setAudience(client.clientAssertionAudience ?? endpoint)
+        .setIssuedAt()
+        .setExpirationTime("60s")
+        .setJti(globalThis.crypto.randomUUID())
+        .sign(key)
+    );
+    return;
+  }
   if (client.clientSecret === undefined) {
     params.set("client_id", client.clientId);
     return;
@@ -46,12 +83,18 @@ export async function requestTokenEndpoint(
     "Content-Type": "application/x-www-form-urlencoded",
   };
   if (client) {
-    authenticateClientRequest(client, params, headers);
+    await authenticateClientRequest(client, params, headers, tokenEndpoint);
   }
   const response = await dpopClient.fetch(tokenEndpoint, {
     method: "POST",
     headers,
     body: params,
+    ...(client?.privateJwk
+      ? {
+          onNonceRetry: () =>
+            authenticateClientRequest(client, params, headers, tokenEndpoint),
+        }
+      : {}),
   });
 
   const text = await response.clone().text();

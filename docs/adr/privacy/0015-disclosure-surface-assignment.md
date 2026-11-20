@@ -64,6 +64,7 @@ Identity claims:
 * are staged ephemerally
 * are consumed once
 * are not embedded in long-lived token artifacts
+* for an authorization-code grant, bind to the provider's grant ID so the provider can recheck the original consent reference at redemption
 
 Rationale:
 
@@ -196,3 +197,4 @@ What does not change by channel:
 * 2026-11-16: Rule 4: dynamic registration refuses `subject_type: "public"`, and clients from `/oauth2/create-client` are pairwise.
 * 2026-11-16: Rule 4: proof-of-human tokens have two modes. A client-mode token projects the client's subject; a merchant-mode token for an x402 purchase projects a subject pairwise for the client and the merchant together. Neither carries `client_id`. See [ADR privacy/0016](0016-proof-of-human-audience-binding.md).
 * 2026-11-16: Rule 4: the built-in OIDC4VCI wallet client is pairwise, credentials carry no `sub`, and the credential endpoint's JWT access token is recorded as the one exception to opaque tokens for Zentity-hosted audiences.
+* 2026-11-20: Authorization-code identity releases use the provider's per-grant ID, while consent keeps its own stable reference through code redemption. Identity scopes remain absent from reusable consent, so a later identity request returns to the approval flow.

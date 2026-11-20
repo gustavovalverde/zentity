@@ -37,11 +37,13 @@ export type InteractiveToolOutcome<T> =
 
 interface InteractiveToolFlowEntry {
   browserUrl: string;
+  clientAuth?: NonNullable<OAuthSessionContext["clientAuth"]>;
   clientId: string;
   clientSecret?: string | undefined;
   dpopClient: DpopClient;
   expiresAt: number;
   pendingAuthorization: CibaPendingAuthorization;
+  privateJwk?: CibaRequest["privateJwk"];
   tokenEndpoint: string;
 }
 
@@ -83,6 +85,7 @@ async function buildCibaRequest(
     cibaEndpoint: discovery.backchannel_authentication_endpoint,
     clientId: oauth.clientId,
     ...(oauth.clientSecret ? { clientSecret: oauth.clientSecret } : {}),
+    ...(oauth.clientAuth ? oauth.clientAuth : {}),
     dpopClient,
     loginHint: oauth.accountSub,
     resource: config.zentityUrl,
@@ -147,6 +150,7 @@ async function resumeInteractiveFlow<T>(
       {
         clientId: entry.clientId,
         ...(entry.clientSecret ? { clientSecret: entry.clientSecret } : {}),
+        ...(entry.clientAuth ?? {}),
         dpopClient: entry.dpopClient,
         tokenEndpoint: entry.tokenEndpoint,
       },
@@ -215,6 +219,7 @@ export async function beginOrResumeInteractiveFlow<T>(
     ...(params.oauth.clientSecret
       ? { clientSecret: params.oauth.clientSecret }
       : {}),
+    ...(params.oauth.clientAuth ? { clientAuth: params.oauth.clientAuth } : {}),
     dpopClient,
     tokenEndpoint: cibaRequest.tokenEndpoint,
   };

@@ -51,6 +51,7 @@ async function requestApproval(
   input: {
     authorizationDetails?: unknown[];
     clientId: string;
+    clientSecret: string;
     scope: string;
     userId: string;
   }
@@ -58,6 +59,7 @@ async function requestApproval(
   const response = await request.post(`${AUTH_BASE_URL}/oauth2/bc-authorize`, {
     form: {
       client_id: input.clientId,
+      client_secret: input.clientSecret,
       login_hint: await cibaLoginHint(input.clientId, input.userId),
       scope: input.scope,
       binding_message: "Approval ceremony E2E",
@@ -77,7 +79,7 @@ async function requestApproval(
 
 async function pollToken(
   request: APIRequestContext,
-  input: { authReqId: string; clientId: string }
+  input: { authReqId: string; clientId: string; clientSecret: string }
 ) {
   const binding = await createDpopBinding();
   const response = await sendDpopRequest(
@@ -89,6 +91,7 @@ async function pollToken(
           grant_type: CIBA_GRANT_TYPE,
           auth_req_id: input.authReqId,
           client_id: input.clientId,
+          client_secret: input.clientSecret,
         },
         headers: { Origin: BASE_URL, DPoP: proof },
       })
@@ -114,9 +117,9 @@ test.describe("CIBA approval ceremony", () => {
     });
     await registerPasskeyForUser(page, password);
     const userId = await signedInUserId(page);
-    const clientId = await registerCibaClient(request, "ceremony-e2e");
+    const client = await registerCibaClient(request, "ceremony-e2e");
     const { authReqId, requestId } = await requestApproval(request, {
-      clientId,
+      ...client,
       scope: "openid identity.name",
       userId,
     });
@@ -129,7 +132,7 @@ test.describe("CIBA approval ceremony", () => {
     });
     expect(await authenticator.signCount()).toBe(assertionsBefore + 1);
 
-    const token = await pollToken(request, { authReqId, clientId });
+    const token = await pollToken(request, { authReqId, ...client });
     expect(token.status, JSON.stringify(token.json)).toBe(200);
     expect(token.json.oversight).toEqual({
       method: "user_verification",
@@ -150,9 +153,9 @@ test.describe("CIBA approval ceremony", () => {
     });
     await registerPasskeyForUser(page, password);
     const userId = await signedInUserId(page);
-    const clientId = await registerCibaClient(request, "ceremony-e2e");
+    const client = await registerCibaClient(request, "ceremony-e2e");
     const { authReqId, requestId } = await requestApproval(request, {
-      clientId,
+      ...client,
       scope: "openid identity.name",
       userId,
     });
@@ -165,7 +168,7 @@ test.describe("CIBA approval ceremony", () => {
       timeout: 30_000,
     });
     await expect(page.getByText("Request Approved")).toHaveCount(0);
-    const token = await pollToken(request, { authReqId, clientId });
+    const token = await pollToken(request, { authReqId, ...client });
     expect(token.json.error).toBe("authorization_pending");
   });
 
@@ -176,9 +179,9 @@ test.describe("CIBA approval ceremony", () => {
     await page.goto("/");
     await createPasswordVaultUser(page, { firstName: "Ada" });
     const userId = await signedInUserId(page);
-    const clientId = await registerCibaClient(request, "ceremony-e2e");
+    const client = await registerCibaClient(request, "ceremony-e2e");
     const { authReqId, requestId } = await requestApproval(request, {
-      clientId,
+      ...client,
       scope: "openid compliance:read",
       userId,
     });
@@ -190,7 +193,7 @@ test.describe("CIBA approval ceremony", () => {
       timeout: 30_000,
     });
 
-    const token = await pollToken(request, { authReqId, clientId });
+    const token = await pollToken(request, { authReqId, ...client });
     expect(token.status, JSON.stringify(token.json)).toBe(200);
     expect(token.json.oversight).toEqual(
       expect.objectContaining({ method: "session" })
@@ -205,11 +208,11 @@ test.describe("CIBA approval ceremony", () => {
     await createPasswordVaultUser(page, { firstName: "Ada" });
     const userId = await signedInUserId(page);
     // A payment client declares the RAR type it requests (RFC 9396 §10).
-    const clientId = await registerCibaClient(request, "ceremony-e2e", {
+    const client = await registerCibaClient(request, "ceremony-e2e", {
       authorization_details_types: ["payment_authorization"],
     });
     const { authReqId, requestId } = await requestApproval(request, {
-      clientId,
+      ...client,
       scope: "openid",
       authorizationDetails: [PAYMENT_ENTRY],
       userId,
@@ -227,7 +230,7 @@ test.describe("CIBA approval ceremony", () => {
       timeout: 30_000,
     });
 
-    const token = await pollToken(request, { authReqId, clientId });
+    const token = await pollToken(request, { authReqId, ...client });
     expect(token.json.error).toBe("access_denied");
   });
 });

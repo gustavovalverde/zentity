@@ -12,6 +12,7 @@ const {
   buildCredentialClaims,
   buildOidcVerifiedClaims,
   buildProofClaims,
+  consentScopesMatchApproved,
   computeConsentReferenceId,
 } = await import("../claims");
 
@@ -305,5 +306,34 @@ describe("consent reference", () => {
     expect(computeConsentReferenceId(secret, base)).not.toBe(
       computeConsentReferenceId("another-key", base)
     );
+  });
+
+  it("can isolate concurrent proof-only code consent by PKCE challenge", () => {
+    const first = computeConsentReferenceId(secret, {
+      ...base,
+      codeChallenge: "challenge-one",
+    });
+    const second = computeConsentReferenceId(secret, {
+      ...base,
+      codeChallenge: "challenge-two",
+    });
+    expect(first).not.toBe(second);
+  });
+});
+
+describe("consent scopes match", () => {
+  it("accepts the same persisted storage scopes regardless of order", () => {
+    expect(
+      consentScopesMatchApproved(
+        ["openid", "offline_access"],
+        ["offline_access", "openid"]
+      )
+    ).toBe(true);
+  });
+
+  it("rejects an unsigned row whose persisted scopes exceed the approved code", () => {
+    expect(
+      consentScopesMatchApproved(["openid", "offline_access"], ["openid"])
+    ).toBe(false);
   });
 });

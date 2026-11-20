@@ -185,7 +185,11 @@ async function exchangeBootstrapAccessToken(
       client_id: client.clientId,
       audience: env.ZENTITY_URL,
       scope: AGENT_BOOTSTRAP_SCOPE,
-    })
+    }),
+    {
+      clientId: client.clientId,
+      ...(client.clientSecret ? { clientSecret: client.clientSecret } : {}),
+    }
   );
 
   if (!response.ok) {

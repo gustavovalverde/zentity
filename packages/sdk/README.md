@@ -44,6 +44,32 @@ const agent = createAgent({
 
 The session's `accessToken` is the login token itself, bound to `session.dpopKey`, and `session.accountSub` is the subject UserInfo returns for it.
 
+Installed apps that initiate CIBA should register as confidential clients with a per-install signing key. With `privateKeyJwt: true`, the SDK generates and persists an ES256 keypair, registers its public JWK, and exposes the private signing material on `InstalledOAuthSession.clientAuth`. Pass it to `createAgent` to sign CIBA assertions. The SDK uses the issuer URI advertised by discovery as `aud`, matching Zentity's configured private-key-JWT audience profile. The same key is used for PAR, code exchange, token exchange, and refresh.
+
+`createFirstPartyAuthFileStorage` keeps this key beside the install's DPoP key and tokens in its issuer-scoped state file under `~/.zentity/<namespace>/first-party-auth/`, with directory mode `0700` and file mode `0600`. Keep that file across restarts so the registered client remains usable. Turning on `privateKeyJwt` for an install that previously used a public registration changes its registration metadata. The SDK creates a new confidential registration, clears tokens bound to the old client, and asks the user to sign in again. The existing file and its other installation keys remain in place.
+
+```ts
+const installedAuth = createInstalledClientAuth({
+  issuerUrl,
+  storage: createFirstPartyAuthFileStorage({ issuerUrl, namespace: "example-agent" }),
+  clientRegistrationRequest: buildLoopbackClientRegistration({
+    clientName: "Example agent",
+    grantTypes: ["authorization_code", "refresh_token", "urn:openid:params:grant-type:ciba"],
+    scope: "openid email",
+  }),
+  loginScope: "openid email",
+  privateKeyJwt: true,
+});
+
+const session = await installedAuth.ensureOAuthSession();
+const agent = createAgent({
+  issuerUrl,
+  clientId: session.clientId,
+  clientAuth: session.clientAuth,
+  dpopClient: await createDpopClientFromKeyPair(session.dpopKey),
+});
+```
+
 ## Agent Bootstrap
 
 Zentity's token exchange issues only scopes the login token was granted. An agent that registers with Zentity therefore adds the bootstrap scopes from `@zentity/sdk/agent-contract` (`AGENT_BOOTSTRAP_SCOPES`) to `loginScope` and to the registration's `scope`, then exchanges the login token for a bootstrap token with `exchangeLoginToken` when it registers its host and sessions.
@@ -83,7 +109,9 @@ const bootstrap = await installedAuth.exchangeLoginToken({
 
 ## Confidential Clients
 
-`exchangeToken` (`@zentity/sdk/fpa`), `beginCibaApproval`, `pollCibaTokenOnce`, and `requestCibaApproval` take an optional `clientSecret`. With it, the request authenticates with `client_secret_basic` (RFC 6749 §2.3.1) and sends no `client_id` in the body; without it, the client is public and sends `client_id`.
+Zentity requires client authentication for CIBA. Register the client as confidential, then provide its credentials in `createAgent`'s `clientAuth` option. Use `clientAuth: { clientSecret }` for `client_secret_basic`, or pass `session.clientAuth` from an installed client registered with `privateKeyJwt: true` to sign `private_key_jwt` assertions. Use the method that matches the client's registration.
+
+The lower-level `exchangeToken` (`@zentity/sdk/fpa`), `beginCibaApproval`, `pollCibaTokenOnce`, and `requestCibaApproval` functions also accept an optional `clientSecret`. With it, the request authenticates with `client_secret_basic` (RFC 6749 §2.3.1) and sends no `client_id` in the body. Without it, the request sends `client_id` without client authentication, which does not satisfy Zentity's CIBA requirement.
 
 ## Sub-paths
 
@@ -236,12 +264,15 @@ A failure throws `ProofOfHumanPresentationError` with `code`, `status`, and, for
 
 An agent pays an x402 merchant that requires a Zentity Proof-of-Human with `createX402Fetch()`, or with `agent.fetch(url, { x402: { maxAmount, maxIdentityStrength } })` from `createAgent()`.
 
+The agent's CIBA client must be confidential. For a client registered with `client_secret_basic`, pass its secret through `clientAuth`:
+
 ```ts
 import { ExactEvmScheme } from "@x402/evm/exact/client";
 import { createAgent } from "@zentity/sdk";
 
 const agent = createAgent({
   clientId,
+  clientAuth: { clientSecret },
   dpopClient,
   issuerUrl: "https://app.zentity.xyz/api/auth",
   loginHint,

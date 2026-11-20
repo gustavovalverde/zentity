@@ -43,6 +43,8 @@ import {
   createTestUser,
   hashCibaAuthReqId,
   resetDatabase,
+  TEST_CIBA_CLIENT_SECRET,
+  testCibaClientCredentials,
 } from "@/test-utils/db-test-utils";
 import {
   buildDpopProof,
@@ -85,7 +87,7 @@ async function createAgentClient() {
         CIBA_GRANT_TYPE,
         TOKEN_EXCHANGE_GRANT_TYPE,
       ]),
-      tokenEndpointAuthMethod: "none",
+      ...testCibaClientCredentials,
       metadata: JSON.stringify({
         backchannel_token_delivery_mode: "poll",
         authorization_details_types: ["payment_authorization"],
@@ -125,6 +127,7 @@ async function issueBootstrapToken(
       audience: APP_URL,
       client_id: CLIENT_ID,
       grant_type: TOKEN_EXCHANGE_GRANT_TYPE,
+      client_secret: TEST_CIBA_CLIENT_SECRET,
       scope: BOOTSTRAP_SCOPE,
       subject_token: loginToken,
       subject_token_type: "urn:ietf:params:oauth:token-type:access_token",
@@ -257,7 +260,10 @@ async function requestBackchannelAuth(
         "Agent-Assertion": await signAgentAssertion(agent, body),
         "Content-Type": "application/x-www-form-urlencoded",
       },
-      body: new URLSearchParams(body),
+      body: new URLSearchParams({
+        client_secret: TEST_CIBA_CLIENT_SECRET,
+        ...body,
+      }),
     })
   );
   const json = (await response.json()) as Record<string, unknown>;
@@ -364,6 +370,7 @@ describe("CIBA approval from capability grants", () => {
 
     const token = await postTokenWithDpop({
       grant_type: CIBA_GRANT_TYPE,
+      client_secret: TEST_CIBA_CLIENT_SECRET,
       auth_req_id: authReqId,
       client_id: CLIENT_ID,
     });
@@ -404,6 +411,7 @@ describe("CIBA approval from capability grants", () => {
 
     const poll = await postTokenWithDpop({
       grant_type: CIBA_GRANT_TYPE,
+      client_secret: TEST_CIBA_CLIENT_SECRET,
       auth_req_id: second,
       client_id: CLIENT_ID,
     });

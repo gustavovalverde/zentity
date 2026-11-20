@@ -31,7 +31,7 @@
  * `/Users/gustavovalverde/dev/zfnd/zpay/docs/proposals/0003-agent-wallet-production-architecture.md`.
  */
 
-import { createHash } from "node:crypto";
+import { sha256 } from "@noble/hashes/sha2.js";
 import { base64url } from "jose";
 
 export const INTENT_HASH_DOMAIN_SEPARATOR = "zentity.payauth.v1";
@@ -61,22 +61,22 @@ export class IntentHashError extends Error {
 }
 
 export function intentHash(input: IntentInput): Uint8Array {
-	const buffers: Buffer[] = [];
+	const parts: Uint8Array[] = [];
 
-	buffers.push(Buffer.from(INTENT_HASH_DOMAIN_SEPARATOR, "utf8"));
-	buffers.push(lenPrefixed("chainNamespace", input.chainNamespace));
-	buffers.push(lenPrefixed("chainReference", input.chainReference));
-	buffers.push(lenPrefixed("recipientCaip10", input.recipientCaip10));
-	buffers.push(u64BigEndian(input.amountValue));
-	buffers.push(Buffer.from([amountUnitByte(input.amountUnit)]));
-	buffers.push(lenPrefixed("paymentId", input.paymentId));
-	buffers.push(u64BigEndian(input.expiryHeight));
+	parts.push(new TextEncoder().encode(INTENT_HASH_DOMAIN_SEPARATOR));
+	parts.push(lenPrefixed("chainNamespace", input.chainNamespace));
+	parts.push(lenPrefixed("chainReference", input.chainReference));
+	parts.push(lenPrefixed("recipientCaip10", input.recipientCaip10));
+	parts.push(u64BigEndian(input.amountValue));
+	parts.push(Uint8Array.of(amountUnitByte(input.amountUnit)));
+	parts.push(lenPrefixed("paymentId", input.paymentId));
+	parts.push(u64BigEndian(input.expiryHeight));
 
-	const sha = createHash("sha256");
-	for (const buf of buffers) {
-		sha.update(buf);
+	const hash = sha256.create();
+	for (const part of parts) {
+		hash.update(part);
 	}
-	return new Uint8Array(sha.digest());
+	return hash.digest();
 }
 
 export function intentHashToWireString(digest: Uint8Array): string {
@@ -115,24 +115,28 @@ export function intentHashFromWireString(s: string): Uint8Array {
 	return new Uint8Array(raw);
 }
 
-function lenPrefixed(field: string, value: string): Buffer {
-	const bytes = Buffer.from(value, "utf8");
+function lenPrefixed(field: string, value: string): Uint8Array {
+	const bytes = new TextEncoder().encode(value);
 	if (bytes.length > MAX_FIELD_LEN) {
 		throw new IntentHashError(
 			"field-too-long",
 			`intent field ${field} too long: ${bytes.length} bytes (max ${MAX_FIELD_LEN})`,
 		);
 	}
-	const prefix = Buffer.allocUnsafe(2);
-	prefix.writeUInt16BE(bytes.length, 0);
-	return Buffer.concat([prefix, bytes]);
+	const result = new Uint8Array(2 + bytes.length);
+	new DataView(result.buffer).setUint16(0, bytes.length, false);
+	result.set(bytes, 2);
+	return result;
 }
 
-function u64BigEndian(value: number | bigint): Buffer {
+function u64BigEndian(value: number | bigint): Uint8Array {
 	const big = typeof value === "bigint" ? value : BigInt(value);
-	const buf = Buffer.allocUnsafe(8);
-	buf.writeBigUInt64BE(big, 0);
-	return buf;
+	if (big < 0n || big > 0xffff_ffff_ffff_ffffn) {
+		throw new RangeError("value out of range for u64");
+	}
+	const result = new Uint8Array(8);
+	new DataView(result.buffer).setBigUint64(0, big, false);
+	return result;
 }
 
 function amountUnitByte(unit: AmountUnit): number {

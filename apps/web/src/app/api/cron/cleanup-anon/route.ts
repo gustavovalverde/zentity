@@ -1,6 +1,7 @@
 import { constantTimeEqual } from "better-auth/crypto";
 
 import { env } from "@/env";
+import { deleteExpiredPairwiseProofOnlyConsents } from "@/lib/auth/oidc/disclosure/consent-cleanup";
 import { deleteExpiredAnonymousUsers } from "@/lib/db/queries/auth";
 import { logError } from "@/lib/logging/error-logger";
 import { logger } from "@/lib/logging/logger";
@@ -32,11 +33,13 @@ export async function POST(req: Request): Promise<Response> {
 
   try {
     const deleted = await deleteExpiredAnonymousUsers(ANON_TTL_MS);
+    const deletedPairwiseConsents =
+      await deleteExpiredPairwiseProofOnlyConsents();
     logger.info(
       { deleted, ttlHours: ANON_TTL_MS / 3_600_000 },
       "anon-user cleanup"
     );
-    return Response.json({ deleted });
+    return Response.json({ deleted, deletedPairwiseConsents });
   } catch (error) {
     logError(error, { path: "cron.cleanup-anon" });
     return new Response("Internal Error", { status: 500 });

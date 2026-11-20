@@ -17,6 +17,8 @@ import {
   createTestUser,
   hashCibaAuthReqId,
   resetDatabase,
+  TEST_CIBA_CLIENT_SECRET,
+  testCibaClientCredentials,
 } from "@/test-utils/db-test-utils";
 import { postTokenWithDpop } from "@/test-utils/dpop-test-utils";
 
@@ -36,7 +38,7 @@ async function createTestClient() {
       name: "Assurance Test Agent",
       redirectUris: JSON.stringify(["http://localhost/callback"]),
       grantTypes: JSON.stringify([CIBA_GRANT_TYPE]),
-      tokenEndpointAuthMethod: "none",
+      ...testCibaClientCredentials,
     })
     .run();
 }
@@ -120,6 +122,7 @@ describe("assurance claims in ID tokens", () => {
     });
     const { status, json } = await postTokenWithDpop({
       grant_type: CIBA_GRANT_TYPE,
+      client_secret: TEST_CIBA_CLIENT_SECRET,
       auth_req_id: authReqId,
       client_id: TEST_CLIENT_ID,
     });
@@ -153,6 +156,7 @@ describe("assurance claims in ID tokens", () => {
     });
     const { json } = await postTokenWithDpop({
       grant_type: CIBA_GRANT_TYPE,
+      client_secret: TEST_CIBA_CLIENT_SECRET,
       auth_req_id: authReqId,
       client_id: TEST_CLIENT_ID,
     });
@@ -176,6 +180,7 @@ describe("assurance claims in ID tokens", () => {
     });
     const { json } = await postTokenWithDpop({
       grant_type: CIBA_GRANT_TYPE,
+      client_secret: TEST_CIBA_CLIENT_SECRET,
       auth_req_id: authReqId,
       client_id: TEST_CLIENT_ID,
     });
@@ -202,6 +207,7 @@ describe("assurance claims in ID tokens", () => {
     });
     const { status, json } = await postTokenWithDpop({
       grant_type: CIBA_GRANT_TYPE,
+      client_secret: TEST_CIBA_CLIENT_SECRET,
       auth_req_id: authReqId,
       client_id: TEST_CLIENT_ID,
     });
@@ -233,6 +239,7 @@ describe("assurance claims in ID tokens", () => {
 
     const { status, json } = await postTokenWithDpop({
       grant_type: CIBA_GRANT_TYPE,
+      client_secret: TEST_CIBA_CLIENT_SECRET,
       auth_req_id: authReqId,
       client_id: TEST_CLIENT_ID,
     });

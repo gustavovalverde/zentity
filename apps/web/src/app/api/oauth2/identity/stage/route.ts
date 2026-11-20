@@ -3,35 +3,12 @@ import { z } from "zod";
 
 import { stagePendingOauthDisclosure } from "@/lib/auth/oidc/disclosure/context";
 import { IdentityFieldsSchema } from "@/lib/auth/oidc/disclosure/delivery";
-import { isIdentityScope } from "@/lib/auth/oidc/disclosure/registry";
 import { handleIdentityStage } from "@/lib/auth/oidc/disclosure/route-handlers";
 import {
-  computeOAuthRequestKey,
+  computeOAuthDisclosureRequestKey,
   parseRequestedScopes,
   verifySignedOAuthQuery,
 } from "@/lib/auth/oidc/oauth-request";
-
-/**
- * The consent handler strips identity scopes AND deduplicates the scope
- * string before storing the verification record. The oauthRequestKey must
- * be computed from the same normalized query so the token exchange hook
- * can find the pending disclosure by key.
- */
-function stripIdentityScopesFromQuery(
-  params: URLSearchParams
-): URLSearchParams {
-  const stripped = new URLSearchParams(params);
-  const scope = stripped.get("scope");
-  if (scope) {
-    stripped.set(
-      "scope",
-      [...new Set(scope.split(" ").filter((s) => !isIdentityScope(s)))].join(
-        " "
-      )
-    );
-  }
-  return stripped;
-}
 
 const StageSchema = z.object({
   oauth_query: z.string().min(1),
@@ -78,9 +55,7 @@ export function POST(request: Request): Promise<Response> {
         scopes,
         identity,
         intentToken: intent_token,
-        oauthRequestKey: computeOAuthRequestKey(
-          stripIdentityScopesFromQuery(queryParams)
-        ),
+        oauthRequestKey: computeOAuthDisclosureRequestKey(queryParams),
       };
     },
     async ({

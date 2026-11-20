@@ -1,26 +1,42 @@
 import crypto from "node:crypto";
 
+import { makeSignature } from "better-auth/crypto";
+import { and, eq } from "drizzle-orm";
 import { decodeJwt } from "jose";
 import { beforeEach, describe, expect, it } from "vitest";
 
+import { POST as createOAuthIdentityIntent } from "@/app/api/oauth2/identity/intent/route";
+import { POST as stageOAuthIdentity } from "@/app/api/oauth2/identity/stage/route";
 import { env } from "@/env";
 import { auth } from "@/lib/auth/auth-config";
 import { createAuthenticationContext } from "@/lib/auth/auth-context";
+import { PAIRWISE_PROOF_CONSENT_REFERENCE_PREFIX } from "@/lib/auth/oidc/disclosure/claims";
+import { deleteExpiredPairwiseProofOnlyConsents } from "@/lib/auth/oidc/disclosure/consent-cleanup";
 import {
+  authorizationCodeGrantIdFor,
   stageFinalCibaDisclosure,
   stagePendingOauthDisclosure,
 } from "@/lib/auth/oidc/disclosure/context";
 import { createScopeHash } from "@/lib/auth/oidc/disclosure/delivery";
-import { computeOAuthRequestKey } from "@/lib/auth/oidc/oauth-request";
+import {
+  computeOAuthDisclosureRequestKey,
+  computeOAuthRequestKey,
+} from "@/lib/auth/oidc/oauth-request";
 import { db } from "@/lib/db/connection";
 import { sessions, verifications } from "@/lib/db/schema/auth";
 import { cibaRequests } from "@/lib/db/schema/ciba";
-import { oauthClients } from "@/lib/db/schema/oauth-provider";
+import {
+  oauthAccessTokens,
+  oauthClients,
+  oauthConsents,
+} from "@/lib/db/schema/oauth-provider";
 import {
   createTestCibaRequest,
   createTestUser,
   hashCibaAuthReqId,
   resetDatabase,
+  TEST_CIBA_CLIENT_SECRET,
+  testCibaClientCredentials,
 } from "@/test-utils/db-test-utils";
 import {
   buildDpopProof,
@@ -36,6 +52,7 @@ const SECOND_AUTH_CODE_CLIENT_ID = "userinfo-disclosure-second-client";
 const TEST_AUTH_CODE_REFERENCE_ID = "userinfo-disclosure-auth-code-reference";
 const TEST_SESSION_ID = "session-userinfo-disclosure";
 const USERINFO_URL = "http://localhost:3000/api/auth/oauth2/userinfo";
+const WHITESPACE_RE = /\s+/;
 
 function clearIdentityPayloadStore(): void {
   const store = (
@@ -52,7 +69,7 @@ async function createTestClient(clientId = TEST_CLIENT_ID) {
       name: "UserInfo Disclosure Test Client",
       redirectUris: JSON.stringify(["http://localhost/callback"]),
       grantTypes: JSON.stringify([CIBA_GRANT_TYPE]),
-      tokenEndpointAuthMethod: "none",
+      ...testCibaClientCredentials,
     })
     .run();
 }
@@ -68,6 +85,9 @@ async function createAuthCodeTestClient(clientId = TEST_AUTH_CODE_CLIENT_ID) {
       responseTypes: JSON.stringify(["code"]),
       tokenEndpointAuthMethod: "none",
       scopes: JSON.stringify(["openid", "identity.name"]),
+      // These tests seed authorization-code rows directly; only the real
+      // approval journey below exercises persisted consent enforcement.
+      skipConsent: true,
       disabled: false,
       createdAt: new Date(),
     })
@@ -165,6 +185,131 @@ async function insertSession(userId: string, authContextId: string) {
       expiresAt: new Date(now + 60 * 60 * 1000),
     })
     .run();
+  return `session-token-userinfo-disclosure.${await makeSignature(
+    "session-token-userinfo-disclosure",
+    env.BETTER_AUTH_SECRET
+  )}`;
+}
+
+async function approveAuthorizationCode(input: {
+  clientId: string;
+  sessionToken: string;
+  scope: string;
+  userId: string;
+  identity?: { family_name: string; given_name: string };
+}): Promise<{
+  authorizationCode: string;
+  codeVerifier: string;
+  disclosureRequestKey: string;
+}> {
+  const codeVerifier = `real-consent-verifier-${crypto.randomUUID()}`;
+  const { challenge } = await createPkceChallenge(codeVerifier);
+  const query = new URLSearchParams({
+    client_id: input.clientId,
+    response_type: "code",
+    redirect_uri: REDIRECT_URI,
+    scope: input.scope,
+    code_challenge: challenge,
+    code_challenge_method: "S256",
+    state: crypto.randomUUID(),
+  });
+  const authorizeResponse = await auth.handler(
+    new Request(
+      `http://localhost:3000/api/auth/oauth2/authorize?${query.toString()}`,
+      {
+        headers: {
+          cookie: `better-auth.session_token=${input.sessionToken}`,
+        },
+        redirect: "manual",
+      }
+    )
+  );
+  const consentPage = authorizeResponse.headers.get("location");
+  if (authorizeResponse.status !== 302 || !consentPage) {
+    throw new Error(
+      `Authorize did not redirect to consent (${authorizeResponse.status})`
+    );
+  }
+  const signedQuery = new URL(
+    consentPage,
+    "http://localhost:3000"
+  ).search.slice(1);
+  if (input.identity) {
+    const identityScopes = input.scope
+      .split(WHITESPACE_RE)
+      .filter((scope) => scope.startsWith("identity."));
+    const headers = {
+      "content-type": "application/json",
+      cookie: `better-auth.session_token=${input.sessionToken}`,
+    };
+    const intentResponse = await createOAuthIdentityIntent(
+      new Request("http://localhost:3000/api/oauth2/identity/intent", {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          oauth_query: signedQuery,
+          scopes: identityScopes,
+        }),
+      })
+    );
+    const intentBody = (await intentResponse.json()) as {
+      intent_token?: string;
+    };
+    if (!(intentResponse.ok && intentBody.intent_token)) {
+      throw new Error(`Identity intent failed (${intentResponse.status})`);
+    }
+    const stageResponse = await stageOAuthIdentity(
+      new Request("http://localhost:3000/api/oauth2/identity/stage", {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          oauth_query: signedQuery,
+          scopes: identityScopes,
+          identity: input.identity,
+          intent_token: intentBody.intent_token,
+        }),
+      })
+    );
+    if (!stageResponse.ok) {
+      throw new Error(`Identity stage failed (${stageResponse.status})`);
+    }
+  }
+  const consentResponse = await auth.handler(
+    new Request("http://localhost:3000/api/auth/oauth2/consent", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        cookie: `better-auth.session_token=${input.sessionToken}`,
+      },
+      body: JSON.stringify({
+        accept: true,
+        scope: input.scope,
+        oauth_query: signedQuery,
+      }),
+    })
+  );
+  const consentBody = await parseHandlerJson(consentResponse);
+  let redirectURI: string | undefined;
+  if (typeof consentBody.redirectURI === "string") {
+    redirectURI = consentBody.redirectURI;
+  } else if (typeof consentBody.url === "string") {
+    redirectURI = consentBody.url;
+  }
+  if (!(consentResponse.ok && redirectURI)) {
+    throw new Error(`Consent submit failed (${consentResponse.status})`);
+  }
+  const callback = new URL(redirectURI, "http://localhost:3000");
+  const authorizationCode = callback.searchParams.get("code");
+  if (!authorizationCode) {
+    throw new Error("Consent response did not return an authorization code");
+  }
+  return {
+    authorizationCode,
+    codeVerifier,
+    disclosureRequestKey: computeOAuthDisclosureRequestKey(
+      new URLSearchParams(signedQuery)
+    ),
+  };
 }
 
 /**
@@ -273,6 +418,313 @@ describe("userinfo disclosure binding", () => {
     ).id;
   });
 
+  it("completes approval, code exchange, and pairwise UserInfo while retaining fresh identity approval", async () => {
+    const clientId = "userinfo-real-consent-pairwise-client";
+    await db
+      .insert(oauthClients)
+      .values({
+        clientId,
+        name: "Real Consent Pairwise Client",
+        redirectUris: JSON.stringify([REDIRECT_URI]),
+        grantTypes: JSON.stringify(["authorization_code"]),
+        responseTypes: JSON.stringify(["code"]),
+        tokenEndpointAuthMethod: "none",
+        scopes: JSON.stringify(["openid", "identity.name", "offline_access"]),
+        skipConsent: false,
+        subjectType: "pairwise",
+        sectorIdentifier: `client/${clientId}`,
+        disabled: false,
+        createdAt: new Date(),
+      })
+      .run();
+
+    const sessionToken = await insertSession(userId, authContextId);
+    const scope = "openid identity.name offline_access";
+    const { authorizationCode, codeVerifier, disclosureRequestKey } =
+      await approveAuthorizationCode({
+        clientId,
+        sessionToken,
+        scope,
+        userId,
+        identity: { given_name: "Ada", family_name: "Lovelace" },
+      });
+    const authorizationCodeId =
+      await hashStoredAuthorizationCode(authorizationCode);
+    const storedCode = await db
+      .select({ value: verifications.value })
+      .from(verifications)
+      .where(eq(verifications.identifier, authorizationCodeId))
+      .limit(1)
+      .get();
+    expect(JSON.parse(storedCode?.value ?? "{}")).toMatchObject({
+      disclosureRequestKey,
+      consentScopes: ["openid", "identity.name", "offline_access"],
+    });
+    const tokenResponse = await postTokenWithDpop({
+      grant_type: "authorization_code",
+      client_id: clientId,
+      code: authorizationCode,
+      code_verifier: codeVerifier,
+      redirect_uri: REDIRECT_URI,
+    });
+    expect(tokenResponse.status).toBe(200);
+    expect(typeof tokenResponse.json.access_token).toBe("string");
+
+    const userInfo = await fetchUserInfo({
+      accessToken: tokenResponse.json.access_token as string,
+      dpopKeyPair: tokenResponse.dpopKeyPair,
+    });
+    expect(userInfo.status).toBe(200);
+    expect(userInfo.body.sub).toBeTruthy();
+    expect(userInfo.body.sub).not.toBe(userId);
+    expect(userInfo.body).toMatchObject({
+      given_name: "Ada",
+      family_name: "Lovelace",
+    });
+
+    const issuedToken = await db
+      .select({ grantId: oauthAccessTokens.grantId })
+      .from(oauthAccessTokens)
+      .where(
+        and(
+          eq(oauthAccessTokens.clientId, clientId),
+          eq(oauthAccessTokens.userId, userId),
+          eq(oauthAccessTokens.authorizationCodeId, authorizationCodeId)
+        )
+      )
+      .limit(1)
+      .get();
+    expect(issuedToken?.grantId).toBe(
+      authorizationCodeGrantIdFor(authorizationCodeId)
+    );
+
+    const storedConsent = await db
+      .select({
+        referenceId: oauthConsents.referenceId,
+        scopes: oauthConsents.scopes,
+      })
+      .from(oauthConsents)
+      .where(
+        and(
+          eq(oauthConsents.clientId, clientId),
+          eq(oauthConsents.userId, userId)
+        )
+      )
+      .limit(1)
+      .get();
+    expect(storedConsent?.referenceId).toBeTruthy();
+    expect(JSON.parse(storedConsent?.scopes ?? "[]")).not.toContain(
+      "identity.name"
+    );
+
+    const repeatChallenge = await createPkceChallenge(
+      `repeat-${crypto.randomUUID()}`
+    );
+    const repeatQuery = new URLSearchParams({
+      client_id: clientId,
+      response_type: "code",
+      redirect_uri: REDIRECT_URI,
+      scope,
+      code_challenge: repeatChallenge.challenge,
+      code_challenge_method: "S256",
+      state: crypto.randomUUID(),
+    });
+    const repeatAuthorize = await auth.handler(
+      new Request(
+        `http://localhost:3000/api/auth/oauth2/authorize?${repeatQuery}`,
+        {
+          headers: {
+            cookie: `better-auth.session_token=${sessionToken}`,
+          },
+          redirect: "manual",
+        }
+      )
+    );
+    const repeatLocation = repeatAuthorize.headers.get("location");
+    expect(repeatLocation).toContain("/oauth/consent");
+  });
+
+  it("keeps pairwise consent available through redemption, then removes it after a non-identity grant", async () => {
+    const clientId = "userinfo-real-consent-cleanup-client";
+    await db
+      .insert(oauthClients)
+      .values({
+        clientId,
+        name: "Real Consent Cleanup Client",
+        redirectUris: JSON.stringify([REDIRECT_URI]),
+        grantTypes: JSON.stringify(["authorization_code"]),
+        responseTypes: JSON.stringify(["code"]),
+        tokenEndpointAuthMethod: "none",
+        scopes: JSON.stringify(["openid", "offline_access"]),
+        skipConsent: false,
+        subjectType: "pairwise",
+        sectorIdentifier: `client/${clientId}`,
+        disabled: false,
+        createdAt: new Date(),
+      })
+      .run();
+
+    const sessionToken = await insertSession(userId, authContextId);
+    const { authorizationCode, codeVerifier } = await approveAuthorizationCode({
+      clientId,
+      sessionToken,
+      scope: "openid offline_access",
+      userId,
+    });
+    expect(
+      await db
+        .select({ id: oauthConsents.id })
+        .from(oauthConsents)
+        .where(
+          and(
+            eq(oauthConsents.clientId, clientId),
+            eq(oauthConsents.userId, userId)
+          )
+        )
+        .all()
+    ).toHaveLength(1);
+
+    const tokenResponse = await postTokenWithDpop({
+      grant_type: "authorization_code",
+      client_id: clientId,
+      code: authorizationCode,
+      code_verifier: codeVerifier,
+      redirect_uri: REDIRECT_URI,
+    });
+    expect(tokenResponse.status).toBe(200);
+    expect(
+      await db
+        .select({ id: oauthConsents.id })
+        .from(oauthConsents)
+        .where(
+          and(
+            eq(oauthConsents.clientId, clientId),
+            eq(oauthConsents.userId, userId)
+          )
+        )
+        .all()
+    ).toHaveLength(0);
+  });
+
+  it("redeems concurrent pairwise proof-only codes independently", async () => {
+    const clientId = "userinfo-concurrent-consent-client";
+    await db
+      .insert(oauthClients)
+      .values({
+        clientId,
+        name: "Concurrent Consent Client",
+        redirectUris: JSON.stringify([REDIRECT_URI]),
+        grantTypes: JSON.stringify(["authorization_code"]),
+        responseTypes: JSON.stringify(["code"]),
+        tokenEndpointAuthMethod: "none",
+        scopes: JSON.stringify(["openid", "offline_access"]),
+        skipConsent: false,
+        subjectType: "pairwise",
+        sectorIdentifier: `client/${clientId}`,
+        disabled: false,
+        createdAt: new Date(),
+      })
+      .run();
+
+    const sessionToken = await insertSession(userId, authContextId);
+    const firstCode = await approveAuthorizationCode({
+      clientId,
+      sessionToken,
+      scope: "openid offline_access",
+      userId,
+    });
+    const secondCode = await approveAuthorizationCode({
+      clientId,
+      sessionToken,
+      scope: "openid offline_access",
+      userId,
+    });
+    const consents = await db
+      .select({ referenceId: oauthConsents.referenceId })
+      .from(oauthConsents)
+      .where(
+        and(
+          eq(oauthConsents.clientId, clientId),
+          eq(oauthConsents.userId, userId)
+        )
+      )
+      .all();
+    expect(consents).toHaveLength(2);
+    expect(consents[0]?.referenceId).not.toBe(consents[1]?.referenceId);
+
+    for (const code of [firstCode, secondCode]) {
+      const response = await postTokenWithDpop({
+        grant_type: "authorization_code",
+        client_id: clientId,
+        code: code.authorizationCode,
+        code_verifier: code.codeVerifier,
+        redirect_uri: REDIRECT_URI,
+      });
+      expect(response.status).toBe(200);
+      const remaining = await db
+        .select({ id: oauthConsents.id })
+        .from(oauthConsents)
+        .where(
+          and(
+            eq(oauthConsents.clientId, clientId),
+            eq(oauthConsents.userId, userId)
+          )
+        )
+        .all();
+      expect(remaining).toHaveLength(code === firstCode ? 1 : 0);
+    }
+  });
+
+  it("cleans expired proof-only pairwise consents and preserves identity consents", async () => {
+    const proofClientId = "userinfo-expired-proof-consent-client";
+    const identityClientId = "userinfo-expired-identity-consent-client";
+    for (const [clientId, scopes] of [
+      [proofClientId, ["openid", "proof:age"]],
+      [identityClientId, ["openid", "identity.name"]],
+    ] as const) {
+      await db
+        .insert(oauthClients)
+        .values({
+          clientId,
+          name: clientId,
+          redirectUris: JSON.stringify([REDIRECT_URI]),
+          grantTypes: JSON.stringify(["authorization_code"]),
+          responseTypes: JSON.stringify(["code"]),
+          tokenEndpointAuthMethod: "none",
+          scopes: JSON.stringify(scopes),
+          skipConsent: false,
+          subjectType: "pairwise",
+          sectorIdentifier: `client/${clientId}`,
+          disabled: false,
+          createdAt: new Date(),
+        })
+        .run();
+      await db
+        .insert(oauthConsents)
+        .values({
+          id: `expired-${clientId}`,
+          clientId,
+          userId,
+          referenceId:
+            clientId === proofClientId
+              ? `${PAIRWISE_PROOF_CONSENT_REFERENCE_PREFIX}old-code`
+              : `identity-approved-${clientId}`,
+          // Identity scopes are deliberately stripped from persisted consent.
+          scopes: JSON.stringify(["openid"]),
+          createdAt: new Date(Date.now() - 11 * 60 * 1000),
+        })
+        .run();
+    }
+
+    expect(await deleteExpiredPairwiseProofOnlyConsents()).toBe(1);
+    const remaining = await db
+      .select({ clientId: oauthConsents.clientId })
+      .from(oauthConsents)
+      .where(eq(oauthConsents.userId, userId))
+      .all();
+    expect(remaining.map((row) => row.clientId)).toEqual([identityClientId]);
+  });
+
   it("delivers an exact bound identity payload once for opaque CIBA access tokens", async () => {
     const authReqId = await insertApprovedCibaRequest(userId, authContextId);
     const identityScopes = ["identity.name"];
@@ -294,6 +746,7 @@ describe("userinfo disclosure binding", () => {
 
     const tokenResponse = await postTokenWithDpop({
       grant_type: CIBA_GRANT_TYPE,
+      client_secret: TEST_CIBA_CLIENT_SECRET,
       auth_req_id: authReqId,
       client_id: TEST_CLIENT_ID,
     });
@@ -478,7 +931,7 @@ describe("userinfo disclosure binding", () => {
         name: "Pairwise JWT Client",
         redirectUris: JSON.stringify([REDIRECT_URI]),
         grantTypes: JSON.stringify([CIBA_GRANT_TYPE]),
-        tokenEndpointAuthMethod: "none",
+        ...testCibaClientCredentials,
         subjectType: "pairwise",
         sectorIdentifier: `client/${clientId}`,
         metadata: JSON.stringify({ backchannel_token_delivery_mode: "poll" }),
@@ -493,6 +946,7 @@ describe("userinfo disclosure binding", () => {
 
     const tokenResponse = await postTokenWithDpop({
       grant_type: CIBA_GRANT_TYPE,
+      client_secret: TEST_CIBA_CLIENT_SECRET,
       auth_req_id: authReqId,
       client_id: clientId,
     });

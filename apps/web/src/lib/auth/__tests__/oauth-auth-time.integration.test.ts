@@ -9,6 +9,7 @@ import {
   oauthClients,
   oauthRefreshTokens,
 } from "@/lib/db/schema/oauth-provider";
+import { seedTestCodeConsent } from "@/test-utils/authorization-code-test-utils";
 import {
   createTestAuthContext,
   createTestUser,
@@ -85,6 +86,14 @@ describe("oauth token auth_time normalization", () => {
       })
       .run();
 
+    const referenceId = crypto.randomUUID();
+    await seedTestCodeConsent({
+      clientId,
+      referenceId,
+      resource: "http://localhost:3000",
+      scope: "openid email offline_access",
+      userId,
+    });
     await db
       .insert(verifications)
       .values({
@@ -92,6 +101,7 @@ describe("oauth token auth_time normalization", () => {
         identifier: await hashStoredAuthorizationCode(authorizationCode),
         value: JSON.stringify({
           type: "authorization_code",
+          referenceId,
           query: {
             client_id: clientId,
             response_type: "code",

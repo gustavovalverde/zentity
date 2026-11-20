@@ -1,10 +1,18 @@
 import crypto from "node:crypto";
 
+import { eq } from "drizzle-orm";
+
+import { computeConsentHmac } from "@/lib/auth/oidc/disclosure/claims";
+import { isIdentityScope } from "@/lib/auth/oidc/disclosure/registry";
 import { db } from "@/lib/db/connection";
 import { verifications } from "@/lib/db/schema/auth";
+import { oauthClients, oauthConsents } from "@/lib/db/schema/oauth-provider";
+import { getConsentHmacKey } from "@/lib/privacy/primitives/derived-keys";
 
 import { createTestSession } from "./db-test-utils";
 import { type DpopKeyPair, postTokenWithDpop } from "./dpop-test-utils";
+
+const WHITESPACE_RE = /\s+/;
 
 function sha256Base64Url(value: string): string {
   return crypto.createHash("sha256").update(value).digest("base64url");
@@ -20,6 +28,45 @@ interface AuthorizationCodeInput {
   userId: string;
 }
 
+export async function seedTestCodeConsent(input: {
+  clientId: string;
+  referenceId: string;
+  resource?: string;
+  scope?: string;
+  userId: string;
+}) {
+  const scopes = (input.scope ?? "openid")
+    .split(WHITESPACE_RE)
+    .filter((scope) => scope && !isIdentityScope(scope));
+  const client = await db
+    .select({ skipConsent: oauthClients.skipConsent })
+    .from(oauthClients)
+    .where(eq(oauthClients.clientId, input.clientId))
+    .limit(1)
+    .get();
+  if (!client?.skipConsent) {
+    await db
+      .insert(oauthConsents)
+      .values({
+        clientId: input.clientId,
+        userId: input.userId,
+        referenceId: input.referenceId,
+        ...(input.resource
+          ? { resources: JSON.stringify([input.resource]) }
+          : {}),
+        scopes: JSON.stringify(scopes),
+        scopeHmac: computeConsentHmac(
+          getConsentHmacKey(),
+          input.userId,
+          input.clientId,
+          input.referenceId,
+          scopes
+        ),
+      })
+      .run();
+  }
+}
+
 /**
  * Stores an authorization code as the provider does after consent, and
  * returns the token request parameters that redeem it.
@@ -28,7 +75,9 @@ export async function seedTestAuthorizationCode(input: AuthorizationCodeInput) {
   const session = input.session ?? (await createTestSession(input.userId));
   const codeVerifier = `pkce-verifier-${crypto.randomUUID()}`;
   const code = `auth-code-${crypto.randomUUID()}`;
+  const referenceId = `reference-${crypto.randomUUID()}`;
   const now = Date.now();
+  await seedTestCodeConsent({ ...input, referenceId });
   const query = {
     client_id: input.clientId,
     response_type: "code",
@@ -46,7 +95,7 @@ export async function seedTestAuthorizationCode(input: AuthorizationCodeInput) {
       identifier: sha256Base64Url(code),
       value: JSON.stringify({
         type: "authorization_code",
-        referenceId: `reference-${crypto.randomUUID()}`,
+        referenceId,
         query,
         userId: input.userId,
         sessionId: session.sessionId,

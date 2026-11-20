@@ -12,7 +12,7 @@ import { decodeProtectedHeader } from "jose";
 
 import { getDb } from "@/lib/db/connection";
 import { account, session, user, verification } from "@/lib/db/schema";
-import { readDcrClientId } from "@/lib/dcr";
+import { readDcrClient } from "@/lib/dcr";
 import { env } from "@/lib/env";
 import {
   getOAuthDpopClient,
@@ -191,6 +191,7 @@ function makeProviderConfig(
   oauthProviderId: string,
   scenarioId: RouteScenarioId,
   clientId: string,
+  clientSecret: string,
   scopes: string[],
   dpopKeyPair: DpopKeyPair,
   authorizationUrlParams?: Record<string, string>
@@ -201,6 +202,8 @@ function makeProviderConfig(
     // a document whose issuer the discovery URL does not name.
     discoveryUrl: `${env.ZENTITY_URL}/api/auth/.well-known/openid-configuration`,
     clientId,
+    clientSecret,
+    tokenEndpointAuth: { method: "client_secret_basic" as const },
     postLogoutRedirectURI: `${env.NEXT_PUBLIC_APP_URL}/${scenarioId}`,
     scopes,
     pkce: true,
@@ -281,11 +284,13 @@ function buildAuthorizationUrlParams(
 }
 
 function createAuth(
-  clientIds: Partial<Record<RouteScenarioId, string>>,
+  clients: Partial<
+    Record<RouteScenarioId, { clientId: string; clientSecret: string }>
+  >,
   dpopKeyPair: DpopKeyPair
 ) {
   const registeredScenarios = ROUTE_SCENARIOS.filter(
-    (scenario) => clientIds[scenario.id]
+    (scenario) => clients[scenario.id]
   );
 
   return betterAuth({
@@ -314,15 +319,16 @@ function createAuth(
       nextCookies(),
       genericOAuth({
         config: registeredScenarios.flatMap((scenario) => {
-          const clientId = clientIds[scenario.id];
-          if (!clientId) {
+          const client = clients[scenario.id];
+          if (!client) {
             return [];
           }
           return [
             makeProviderConfig(
               scenario.oauthProviderId,
               scenario.id,
-              clientId,
+              client.clientId,
+              client.clientSecret,
               scenario.signInScopes,
               dpopKeyPair,
               buildAuthorizationUrlParams(scenario)
@@ -335,17 +341,22 @@ function createAuth(
 }
 
 export async function getAuth() {
-  const clientIds: Partial<Record<RouteScenarioId, string>> = {};
+  const clients: Partial<
+    Record<RouteScenarioId, { clientId: string; clientSecret: string }>
+  > = {};
   const [dpopKeyPair] = await Promise.all([
     getOAuthDpopKeyPair(),
     ...ROUTE_SCENARIO_IDS.map(async (id) => {
-      const clientId = await readDcrClientId(id);
-      if (clientId) {
-        clientIds[id] = clientId;
+      const client = await readDcrClient(id);
+      if (client?.clientSecret) {
+        clients[id] = {
+          clientId: client.clientId,
+          clientSecret: client.clientSecret,
+        };
       }
     }),
   ]);
-  return createAuth(clientIds, dpopKeyPair);
+  return createAuth(clients, dpopKeyPair);
 }
 
 export type Auth = ReturnType<typeof createAuth>;

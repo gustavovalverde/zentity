@@ -19,6 +19,8 @@ import {
   createTestCibaRequest,
   createTestUser,
   resetDatabase,
+  TEST_CIBA_CLIENT_SECRET,
+  testCibaClientCredentials,
 } from "@/test-utils/db-test-utils";
 import { postTokenWithDpop } from "@/test-utils/dpop-test-utils";
 
@@ -258,7 +260,7 @@ describe("pairwise subject resolution (integration)", () => {
           body: JSON.stringify({
             client_name: "Sector Agent",
             redirect_uris: redirectUris,
-            token_endpoint_auth_method: "none",
+            token_endpoint_auth_method: "client_secret_post",
             grant_types: ["authorization_code", CIBA_GRANT_TYPE],
             response_types: ["code"],
             backchannel_token_delivery_mode: "poll",
@@ -281,7 +283,10 @@ describe("pairwise subject resolution (integration)", () => {
       return row?.sectorIdentifier;
     }
 
-    async function idTokenSub(clientId: string): Promise<string> {
+    async function idTokenSub(
+      clientId: string,
+      clientSecret: string
+    ): Promise<string> {
       const { authReqId } = await createTestCibaRequest({
         clientId,
         userId,
@@ -289,6 +294,7 @@ describe("pairwise subject resolution (integration)", () => {
       });
       const { status, json } = await postTokenWithDpop({
         grant_type: CIBA_GRANT_TYPE,
+        client_secret: clientSecret,
         auth_req_id: authReqId,
         client_id: clientId,
       });
@@ -308,8 +314,14 @@ describe("pairwise subject resolution (integration)", () => {
       expect(await storedSector(firstId)).toBe(`client/${firstId}`);
       expect(await storedSector(secondId)).toBe(`client/${secondId}`);
 
-      const firstSub = await idTokenSub(firstId);
-      const secondSub = await idTokenSub(secondId);
+      const firstSub = await idTokenSub(
+        firstId,
+        first.body.client_secret as string
+      );
+      const secondSub = await idTokenSub(
+        secondId,
+        second.body.client_secret as string
+      );
       expect(firstSub).not.toBe(secondSub);
       expect(firstSub).not.toBe(userId);
       // The provider's resolveSubjectIdentifier minted these ID tokens, so
@@ -323,7 +335,7 @@ describe("pairwise subject resolution (integration)", () => {
       const clientId = body.client_id as string;
 
       expect(await storedSector(clientId)).toBe("sector-rp.example");
-      const sub = await idTokenSub(clientId);
+      const sub = await idTokenSub(clientId, body.client_secret as string);
       expect(sub).toBe(
         await makeSignature(`sector-rp.example.${userId}`, env.PAIRWISE_SECRET)
       );
@@ -542,6 +554,7 @@ describe("pairwise subject resolution (integration)", () => {
       await db
         .update(oauthClients)
         .set({
+          ...testCibaClientCredentials,
           grantTypes: JSON.stringify(["authorization_code", CIBA_GRANT_TYPE]),
           metadata: JSON.stringify({ backchannel_token_delivery_mode: "poll" }),
         })
@@ -549,6 +562,7 @@ describe("pairwise subject resolution (integration)", () => {
         .run();
       const { status, json } = await postTokenWithDpop({
         grant_type: CIBA_GRANT_TYPE,
+        client_secret: TEST_CIBA_CLIENT_SECRET,
         auth_req_id: authReqId,
         client_id: clientId,
       });

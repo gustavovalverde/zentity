@@ -61,6 +61,8 @@ import {
   createTestUser,
   hashCibaAuthReqId,
   resetDatabase,
+  TEST_CIBA_CLIENT_SECRET,
+  testCibaClientCredentials,
 } from "@/test-utils/db-test-utils";
 import { TestAuthenticator } from "@/test-utils/webauthn-test-utils";
 
@@ -109,7 +111,7 @@ async function insertCibaClient(
       name: "Shopping Agent",
       redirectUris: JSON.stringify(["http://localhost/callback"]),
       grantTypes: JSON.stringify([CIBA_GRANT_TYPE]),
-      tokenEndpointAuthMethod: "none",
+      ...testCibaClientCredentials,
       subjectType: "pairwise",
       sectorIdentifier: `client/${clientId}`,
       metadata: JSON.stringify({
@@ -131,7 +133,10 @@ async function postBcAuthorize(
         "Content-Type": "application/x-www-form-urlencoded",
         ...headers,
       },
-      body: new URLSearchParams(body),
+      body: new URLSearchParams({
+        client_secret: TEST_CIBA_CLIENT_SECRET,
+        ...body,
+      }),
     })
   );
   const text = await response.text();

@@ -4,18 +4,18 @@ This directory holds packages that are not published to a public registry. Each 
 
 ## Better Auth plugins
 
-`@better-auth/first-party-apps`, `@better-auth/haip`, `@better-auth/oidc4vci`, and `@better-auth/oidc4vp` have no upstream release. They are built from the Better Auth fork, which adds the four plugins on top of Better Auth `v1.8.0-beta.10` without changing any upstream package. The plugins first landed on the [`feat/zentity-plugins-v1.8`](https://github.com/gustavovalverde/better-auth/tree/feat/zentity-plugins-v1.8) branch. The [`feat/first-party-apps-plugin`](https://github.com/gustavovalverde/better-auth/tree/feat/first-party-apps-plugin) branch extends that branch's `6d5975a3c` commit with `first-party-apps` and with the `oidc4vci` changes that resolve pairwise wallets, draw random status list indices and move to a new list once one is crowded, require a confidential client to authenticate to redeem its pre-authorized code, and limit the valid credentials a user may hold. The first of those changes also touches the `oidc4vp` documentation. Its build of `haip` is byte-identical to the `6d5975a3c` build, its build of `first-party-apps` to the `4947fca1d` build, and its build of `oidc4vp` to the `3766e740d` build, so those rows keep their earlier commits. Every tarball ships `dist` only and declares `better-auth`, `@better-auth/core`, and `@better-auth/oauth-provider` `^1.8.0-beta.10` as peers, so the published Better Auth packages in `apps/web/package.json` provide the runtime.
+`@better-auth/first-party-apps`, `@better-auth/haip`, `@better-auth/oidc4vci`, and `@better-auth/oidc4vp` have no upstream release. The FPA package is built from Better Auth `v1.8.0-beta.11` with the local source patch below. The other three packages remain on the fork artifacts based on `v1.8.0-beta.10`. The workspace override aligns their `better-call` dependency with the provider. The older fork history is documented below for those artifacts.
 
 | Tarball | Source commit | SHA-256 |
 | --- | --- | --- |
-| `better-auth-first-party-apps-1.8.0-beta.10.tgz` | `4947fca1d30a0b35d4b74820a2973e3827fc5cbb` | `dc2117fc79e48a95bd3b31496e8f7ad777f2c4580256950feb3bfc34a8dc666e` |
+| `better-auth-first-party-apps-1.8.0-beta.11.tgz` | Better Auth `v1.8.0-beta.11` (`60df7b02a309edaa611147d5fc05afe952cbd86f`) plus `better-auth-first-party-apps-beta11.patch` (SHA-256 `e08966ba9e9623864d0d426d4ee54fe5c2493f4618179c07d0e9befb900f0a03`) | `a707ed3a02a3a19bd96b6bb2a43fd76a72bae50b8ea96806bbc1b97ad5c62e8d` |
 | `better-auth-haip-1.8.0-beta.10.tgz` | `6d5975a3c01d325d80cf8bac6f3f03a1d195f1c5` | `9da2507f3bc28b7650b6e9dade72508180ee31521b2c2789aaeef90dca9552f9` |
 | `better-auth-oidc4vci-1.8.0-beta.10.tgz` | `c0d9235dc0c3ae9a7ab22c7a12398bb84e9540db` | `324913806e6d8a1d4a321b97dfda235907a68762a2a00a17da121c5a34678dc8` |
 | `better-auth-oidc4vp-1.8.0-beta.10.tgz` | `3766e740d126d7e202dff89763eca32734e6f672` | `b861831350161d84ad50928aa8746996f4a27d318aace5f1f342979b642e7408` |
 
 CIBA comes from the published `@better-auth/ciba` package. OpenID Connect for Identity Assurance (`verified_claims`) is implemented in Zentity itself as an OAuth provider claims extension, so it has no tarball.
 
-To rebuild the tarballs from a checkout of the fork, run `apps/web/scripts/rebuild-vendor.sh [path-to-better-auth]`. The script checks out `feat/first-party-apps-plugin`, the only branch that holds all four plugins, unless `BETTER_AUTH_BRANCH` names another branch, and stops before replacing any tarball when the branch lacks one of them. By hand:
+To rebuild the FPA tarball, use a clean Better Auth checkout at the recorded beta.11 commit and run `apps/web/scripts/rebuild-first-party-apps-vendor.sh [path-to-better-auth-beta11]`. This applies the tracked patch, installs the package's workspace dependencies, builds it, and writes only the FPA archive to `apps/web/vendor/`. The legacy `rebuild-vendor.sh` builds all four archives from the older fork branch. Use the following procedure for the three beta.10 archives.
 
 1. Check out the fork branch and run `pnpm install`.
 2. For each plugin, run `pnpm --filter @better-auth/<plugin> build`, then `pnpm pack` from `packages/<plugin>`. Use `pnpm pack`, not `npm pack`, so `workspace:` peer ranges resolve to concrete versions.

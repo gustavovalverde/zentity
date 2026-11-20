@@ -60,6 +60,8 @@ import {
   createTestUser,
   hashCibaAuthReqId,
   resetDatabase,
+  TEST_CIBA_CLIENT_SECRET,
+  testCibaClientCredentials,
 } from "@/test-utils/db-test-utils";
 import {
   createAuthHandlerDpopClient,
@@ -111,7 +113,7 @@ async function insertCibaClient(
       name: "Shopping Agent",
       redirectUris: JSON.stringify(["http://localhost/callback"]),
       grantTypes: JSON.stringify([CIBA_GRANT_TYPE, TOKEN_EXCHANGE_GRANT_TYPE]),
-      tokenEndpointAuthMethod: "none",
+      ...testCibaClientCredentials,
       subjectType: "pairwise",
       sectorIdentifier: `client/${clientId}`,
       metadata: JSON.stringify({ backchannel_token_delivery_mode: "poll" }),
@@ -225,6 +227,7 @@ describe("Proof-of-Human mint", () => {
     const loginHint = (await resolveSubForClientId(userId, clientId)) as string;
     const body = {
       client_id: clientId,
+      client_secret: TEST_CIBA_CLIENT_SECRET,
       scope: "openid poh",
       login_hint: loginHint,
       binding_message: "Proof-of-Human for merchant.example",
@@ -271,6 +274,7 @@ describe("Proof-of-Human mint", () => {
     const token = await postTokenWithDpop(
       {
         grant_type: CIBA_GRANT_TYPE,
+        client_secret: TEST_CIBA_CLIENT_SECRET,
         auth_req_id: authReqId,
         client_id: clientId,
       },
@@ -543,6 +547,7 @@ describe("Proof-of-Human mint", () => {
     const exchange = await postTokenWithDpop(
       {
         grant_type: TOKEN_EXCHANGE_GRANT_TYPE,
+        client_secret: TEST_CIBA_CLIENT_SECRET,
         subject_token: approval.accessToken,
         subject_token_type: "urn:ietf:params:oauth:token-type:access_token",
         audience: "http://localhost:3000",

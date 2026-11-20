@@ -96,4 +96,14 @@ describe("intent-hash", () => {
 		};
 		expect(toHex(intentHash(input))).toBe(toHex(intentHash(inputBig)));
 	});
+
+	it("rejects values outside the unsigned 64-bit wire range", () => {
+		const input = ZCASH_TESTNET_MINIMAL_VECTOR.input;
+		expect(() => intentHash({ ...input, amountValue: -1n })).toThrow(
+			RangeError,
+		);
+		expect(() =>
+			intentHash({ ...input, expiryHeight: 0x1_0000_0000_0000_0000n }),
+		).toThrow(RangeError);
+	});
 });

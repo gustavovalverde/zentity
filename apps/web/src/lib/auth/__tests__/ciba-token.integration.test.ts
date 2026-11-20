@@ -21,6 +21,8 @@ import {
   findStoredOpaqueAccessToken,
   hashCibaAuthReqId,
   resetDatabase,
+  TEST_CIBA_CLIENT_SECRET,
+  testCibaClientCredentials,
 } from "@/test-utils/db-test-utils";
 import { postTokenWithDpop } from "@/test-utils/dpop-test-utils";
 
@@ -37,7 +39,7 @@ async function createTestClient(clientId = TEST_CLIENT_ID) {
       name: "CIBA Test Agent",
       redirectUris: JSON.stringify(["http://localhost/callback"]),
       grantTypes: JSON.stringify([CIBA_GRANT_TYPE, "refresh_token"]),
-      tokenEndpointAuthMethod: "none",
+      ...testCibaClientCredentials,
     })
     .run();
 }
@@ -190,11 +192,43 @@ describe("CIBA token endpoint", () => {
     ).id;
   });
 
+  it("preserves an approved grant until its ID token has an authentication context", async () => {
+    const authReqId = await insertCibaRequest({ userId, status: "approved" });
+    const referenceId = hashCibaAuthReqId(authReqId);
+    await db
+      .update(cibaApprovals)
+      .set({ authContextId: null })
+      .where(eq(cibaApprovals.referenceId, referenceId));
+    await db
+      .update(cibaRequests)
+      .set({ authContextId: null })
+      .where(eq(cibaRequests.authReqId, referenceId));
+    const poll = () =>
+      postTokenWithDpop({
+        grant_type: CIBA_GRANT_TYPE,
+        client_id: TEST_CLIENT_ID,
+        client_secret: TEST_CIBA_CLIENT_SECRET,
+        auth_req_id: authReqId,
+      });
+    const refused = await poll();
+    expect(refused.status).toBe(400);
+    expect(refused.json.error).toBe("invalid_grant");
+
+    await db
+      .update(cibaApprovals)
+      .set({ authContextId: defaultAuthContextId })
+      .where(eq(cibaApprovals.referenceId, referenceId));
+    const approved = await poll();
+    expect(approved.status).toBe(200);
+    expect(approved.json.id_token).toEqual(expect.any(String));
+  });
+
   it("returns authorization_pending for a pending request", async () => {
     const authReqId = await insertCibaRequest({ userId, status: "pending" });
 
     const { status, json } = await postTokenWithDpop({
       grant_type: CIBA_GRANT_TYPE,
+      client_secret: TEST_CIBA_CLIENT_SECRET,
       auth_req_id: authReqId,
       client_id: TEST_CLIENT_ID,
     });
@@ -208,6 +242,7 @@ describe("CIBA token endpoint", () => {
 
     const { status, json } = await postTokenWithDpop({
       grant_type: CIBA_GRANT_TYPE,
+      client_secret: TEST_CIBA_CLIENT_SECRET,
       auth_req_id: authReqId,
       client_id: TEST_CLIENT_ID,
     });
@@ -225,6 +260,7 @@ describe("CIBA token endpoint", () => {
 
     const { status, json } = await postTokenWithDpop({
       grant_type: CIBA_GRANT_TYPE,
+      client_secret: TEST_CIBA_CLIENT_SECRET,
       auth_req_id: authReqId,
       client_id: TEST_CLIENT_ID,
     });
@@ -238,6 +274,7 @@ describe("CIBA token endpoint", () => {
 
     const { status, json } = await postTokenWithDpop({
       grant_type: CIBA_GRANT_TYPE,
+      client_secret: TEST_CIBA_CLIENT_SECRET,
       auth_req_id: authReqId,
       client_id: TEST_CLIENT_ID,
     });
@@ -265,6 +302,7 @@ describe("CIBA token endpoint", () => {
 
     const { status, json } = await postTokenWithDpop({
       grant_type: CIBA_GRANT_TYPE,
+      client_secret: TEST_CIBA_CLIENT_SECRET,
       auth_req_id: authReqId,
       client_id: TEST_CLIENT_ID,
     });
@@ -278,6 +316,7 @@ describe("CIBA token endpoint", () => {
 
     const { status } = await postTokenWithDpop({
       grant_type: CIBA_GRANT_TYPE,
+      client_secret: TEST_CIBA_CLIENT_SECRET,
       auth_req_id: authReqId,
       client_id: TEST_CLIENT_ID,
     });
@@ -285,6 +324,7 @@ describe("CIBA token endpoint", () => {
 
     const { status: replayStatus, json: replayJson } = await postTokenWithDpop({
       grant_type: CIBA_GRANT_TYPE,
+      client_secret: TEST_CIBA_CLIENT_SECRET,
       auth_req_id: authReqId,
       client_id: TEST_CLIENT_ID,
     });
@@ -300,7 +340,7 @@ describe("CIBA token endpoint", () => {
         name: "Other Agent",
         redirectUris: JSON.stringify(["http://localhost/callback"]),
         grantTypes: JSON.stringify([CIBA_GRANT_TYPE]),
-        tokenEndpointAuthMethod: "none",
+        ...testCibaClientCredentials,
       })
       .run();
 
@@ -308,6 +348,7 @@ describe("CIBA token endpoint", () => {
 
     const { status, json } = await postTokenWithDpop({
       grant_type: CIBA_GRANT_TYPE,
+      client_secret: TEST_CIBA_CLIENT_SECRET,
       auth_req_id: authReqId,
       client_id: "other-agent",
     });
@@ -347,6 +388,7 @@ describe("CIBA token endpoint", () => {
 
     const { json } = await postTokenWithDpop({
       grant_type: CIBA_GRANT_TYPE,
+      client_secret: TEST_CIBA_CLIENT_SECRET,
       auth_req_id: authReqId,
       client_id: TEST_CLIENT_ID,
     });
@@ -407,6 +449,7 @@ describe("CIBA token endpoint", () => {
 
     const { json } = await postTokenWithDpop({
       grant_type: CIBA_GRANT_TYPE,
+      client_secret: TEST_CIBA_CLIENT_SECRET,
       auth_req_id: authReqId,
       client_id: TEST_CLIENT_ID,
     });
@@ -445,6 +488,7 @@ describe("CIBA token endpoint", () => {
 
     const { json } = await postTokenWithDpop({
       grant_type: CIBA_GRANT_TYPE,
+      client_secret: TEST_CIBA_CLIENT_SECRET,
       auth_req_id: authReqId,
       client_id: TEST_CLIENT_ID,
     });
@@ -526,6 +570,7 @@ describe("CIBA decision record", () => {
     expect((await decide(requestId, "approved")).status).toBe(200);
     const poll = await postTokenWithDpop({
       grant_type: CIBA_GRANT_TYPE,
+      client_secret: TEST_CIBA_CLIENT_SECRET,
       auth_req_id: authReqId,
       client_id: TEST_CLIENT_ID,
     });
@@ -678,6 +723,7 @@ describe("CIBA decision record", () => {
       expect((await decide(requestId, "approved")).status).toBe(200);
       const { status, json } = await postTokenWithDpop({
         grant_type: CIBA_GRANT_TYPE,
+        client_secret: TEST_CIBA_CLIENT_SECRET,
         auth_req_id: authReqId,
         client_id: TEST_CLIENT_ID,
       });

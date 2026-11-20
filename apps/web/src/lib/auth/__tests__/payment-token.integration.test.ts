@@ -43,6 +43,7 @@ import { GET as listRevocations } from "@/app/api/auth/oauth2/revoked/route";
 import { env } from "@/env";
 import { auth } from "@/lib/auth/auth-config";
 import { createAuthenticationContext } from "@/lib/auth/auth-context";
+import { createCibaApproval } from "@/lib/auth/oidc/ciba";
 import {
   RELEASE_BINDING_CLAIM,
   stageFinalCibaDisclosure,
@@ -63,11 +64,12 @@ import {
   signInApprover,
 } from "@/test-utils/ciba-decision-test-utils";
 import {
-  createTestCibaApproval,
   createTestCibaRequest,
   createTestUser,
   hashCibaAuthReqId,
   resetDatabase,
+  TEST_CIBA_CLIENT_SECRET,
+  testCibaClientCredentials,
 } from "@/test-utils/db-test-utils";
 import {
   buildDpopProof,
@@ -113,7 +115,10 @@ async function postForm(url: string, body: Record<string, string>) {
 }
 
 function postBcAuthorize(body: Record<string, string>) {
-  return postForm(BC_AUTHORIZE_URL, body);
+  return postForm(BC_AUTHORIZE_URL, {
+    client_secret: TEST_CIBA_CLIENT_SECRET,
+    ...body,
+  });
 }
 
 async function insertCibaClient(
@@ -127,7 +132,7 @@ async function insertCibaClient(
       name: "Payment Agent",
       redirectUris: JSON.stringify(["http://localhost/callback"]),
       grantTypes: JSON.stringify([CIBA_GRANT_TYPE]),
-      tokenEndpointAuthMethod: "none",
+      ...testCibaClientCredentials,
       subjectType: "pairwise",
       sectorIdentifier: `client/${clientId}`,
       metadata: JSON.stringify({
@@ -319,45 +324,32 @@ describe("payment_authorization token", () => {
       sourceKind: "ciba_approval",
       referenceType: "ciba_request",
     });
-    await db
-      .update(cibaRequests)
-      .set({
-        status: "approved",
-        authContextId: approval.id,
-        // A Zentity approval makes the request reference its own hash.
-        referenceId: authReqIdHash,
-        ...(input.agent
-          ? {
-              agentSessionId: input.agent.sessionId,
-              hostId: input.agent.hostId,
-              assertionVerified: true,
-            }
-          : {}),
-      })
-      .where(eq(cibaRequests.authReqId, authReqIdHash))
-      .run();
     if (input.agent) {
-      await createTestCibaApproval({
-        authReqIdHash,
-        clientId: CLIENT_ID,
-        requestId: await requestIdForAuthReqId(authReqIdHash),
-        scope,
-        userId,
-        overrides: {
-          authContextId: approval.id,
+      await db
+        .update(cibaRequests)
+        .set({
           agentSessionId: input.agent.sessionId,
           hostId: input.agent.hostId,
-          approvalMethod: "user_verification",
-          authorizationDetails: JSON.stringify([PAYMENT_RAR]),
-        },
-      });
+          assertionVerified: true,
+        })
+        .where(eq(cibaRequests.authReqId, authReqIdHash));
     }
+    await createCibaApproval((body) =>
+      auth.api.completeCibaRequest({ body })
+    ).approve({
+      requestId: await requestIdForAuthReqId(authReqIdHash),
+      userId,
+      authentication: approval,
+      channel: "page",
+      grant: { method: "user_verification" },
+    });
     return { authReqId, authReqIdHash };
   }
 
   async function pollToken(authReqId: string) {
     const token = await postTokenWithDpop({
       grant_type: CIBA_GRANT_TYPE,
+      client_secret: TEST_CIBA_CLIENT_SECRET,
       auth_req_id: authReqId,
       client_id: CLIENT_ID,
     });
@@ -474,6 +466,7 @@ describe("payment_authorization token", () => {
     });
     const token = await postTokenWithDpop({
       grant_type: CIBA_GRANT_TYPE,
+      client_secret: TEST_CIBA_CLIENT_SECRET,
       auth_req_id: authReqId,
       client_id: clientId,
     });
@@ -706,7 +699,11 @@ describe("payment_authorization token", () => {
       new Request(REVOKE_URL, {
         method: "POST",
         headers: { "Content-Type": "application/x-www-form-urlencoded" },
-        body: new URLSearchParams({ token, client_id: CLIENT_ID }),
+        body: new URLSearchParams({
+          token,
+          client_id: CLIENT_ID,
+          client_secret: TEST_CIBA_CLIENT_SECRET,
+        }),
       })
     );
     expect(revocation.status).toBe(200);

@@ -1,6 +1,3 @@
-// @peculiar/x509 2.x no longer loads reflect-metadata, and Turbopack's module
-// merging can evaluate tsyringe before @simplewebauthn/server's own import of it.
-import "reflect-metadata";
 import type { CibaNotification } from "@better-auth/ciba";
 import type { AuthContext, GenericEndpointContext } from "@better-auth/core";
 import type { LoginMethod } from "@zentity/sdk/protocol";
@@ -24,6 +21,7 @@ import {
 } from "@better-auth/haip";
 import {
   extendOAuthProvider,
+  type OAuthBeforeTokenIssuanceInput,
   type OAuthClaimExtensionInput,
   oauthProvider,
 } from "@better-auth/oauth-provider";
@@ -85,10 +83,12 @@ import {
 } from "@/lib/auth/auth-context";
 import { getHardenedJWKSet } from "@/lib/auth/jwt";
 import {
+  approvalTokenResponse,
   cibaApprovalPlugin,
   cibaApprovalUrl,
   createCibaApproval,
   getPendingCibaToken,
+  resolveCibaActor,
   setPendingCibaToken,
 } from "@/lib/auth/oidc/ciba";
 import { clientMetadataExtension } from "@/lib/auth/oidc/client-metadata";
@@ -97,10 +97,16 @@ import {
   buildProofClaims,
   computeConsentHmac,
   computeConsentReferenceId,
+  consentScopesMatchApproved,
   filterClaimsByRequest,
   PROOF_DISCLOSURE_KEYS,
 } from "@/lib/auth/oidc/disclosure/claims";
 import {
+  AUTHORIZATION_CODE_TTL_MS,
+  deleteExpiredPairwiseProofOnlyConsents,
+} from "@/lib/auth/oidc/disclosure/consent-cleanup";
+import {
+  authorizationCodeGrantIdFor,
   claimsRequestForEndpoint,
   consumeReleaseIdentityPayload,
   DisclosureBindingError,
@@ -136,6 +142,7 @@ import {
 import { getJarmDecryptionKey } from "@/lib/auth/oidc/haip/jarm-key";
 import {
   getProtectedResourceAudiences,
+  normalizeResource,
   normalizeUserTokenResources,
   refuseWalletAudience,
 } from "@/lib/auth/oidc/haip/resource-metadata";
@@ -148,7 +155,9 @@ import {
 import { oauthProviderApi } from "@/lib/auth/oidc/oauth-provider";
 import {
   authorizeRequestParameters,
+  computeOAuthDisclosureRequestKey,
   validateResourceUri,
+  verifySignedOAuthQuery,
 } from "@/lib/auth/oidc/oauth-request";
 import {
   findPairwiseClient,
@@ -175,7 +184,6 @@ import {
 import {
   enforceAuthorizeAcr,
   enforceCibaTokenAcr,
-  rememberPushedAcrRequest,
 } from "@/lib/auth/oidc/step-up";
 import { resolveSybilNullifier } from "@/lib/auth/oidc/sybil";
 import { tokenExchangePlugin } from "@/lib/auth/oidc/token-exchange";
@@ -280,6 +288,12 @@ const betterAuthSchema = {
 
 function toScopeList(scopes: unknown): string[] {
   return Array.isArray(scopes) ? [...scopes] : [];
+}
+
+function parseRequestedScopes(scopes: unknown): string[] {
+  return typeof scopes === "string"
+    ? scopes.split(WHITESPACE_RE).filter(Boolean)
+    : toScopeList(scopes);
 }
 
 function invalidGrantDisclosureError(reason: string): APIError {
@@ -430,6 +444,7 @@ const cimdOptions = {
 
 const authIssuer = getAuthIssuer();
 const appUrl = env.NEXT_PUBLIC_APP_URL.replace(/\/+$/, "");
+const WHITESPACE_RE = /\s+/;
 const oidc4vciCredentialAudience = `${authIssuer}/oidc4vci/credential`;
 const rpApiAudience = `${authIssuer}/resource/rp-api`;
 const identityClaimKeys = Array.from(
@@ -677,6 +692,12 @@ async function validateDcrRegistration(
 
 type HookCtx = Parameters<Parameters<typeof createAuthMiddleware>[0]>[0];
 
+const pairwiseConsentCleanup = defineRequestState<{
+  clientId: string;
+  referenceId: string;
+  userId: string;
+} | null>(() => null);
+
 const FORM_CONTENT_TYPE = "application/x-www-form-urlencoded";
 
 /**
@@ -895,36 +916,60 @@ async function afterIntrospectKeepJwtSubject(ctx: HookCtx) {
   return ctx.json({ ...introspection, sub });
 }
 
-/**
- * Loads what a CIBA token poll needs before the plugin consumes (deletes) the
- * request row: the step-up re-check, the staged identity release, and the
- * approval-time authentication context from the request, and from the
- * approval record its oversight and any verified agent with what it may do.
- * The result is stashed for the claim contributors and the after-hook of the
- * same request. A refusal here leaves the approved request in place for
- * another poll.
- */
-async function beforeCibaTokenLoadRequest(ctx: HookCtx) {
+// Already approved beta.10 requests have no stored actor. Recover it from
+// the original decision before the provider reads and consumes the request.
+async function restoreLegacyCibaActor(ctx: HookCtx) {
   const rawAuthReqId = ctx.body?.auth_req_id;
   if (typeof rawAuthReqId !== "string" || !rawAuthReqId) {
     return;
   }
-  const authReqIdHash = await oauthProviderApi(ctx).hashToken(
-    rawAuthReqId,
-    "auth_req_id"
-  );
+  const provider = oauthProviderApi(ctx);
+  const hash = await provider.hashToken(rawAuthReqId, "auth_req_id");
   const row = await db
-    .select()
+    .select({
+      clientId: cibaRequests.clientId,
+      resources: cibaRequests.resources,
+    })
     .from(cibaRequests)
-    .where(eq(cibaRequests.authReqId, authReqIdHash))
-    .limit(1)
+    .where(
+      and(
+        eq(cibaRequests.authReqId, hash),
+        eq(cibaRequests.status, "approved"),
+        isNull(cibaRequests.actor)
+      )
+    )
     .get();
-  if (row?.status !== "approved") {
+  if (!row) {
     return;
   }
-  await enforceCibaTokenAcr(ctx, row);
+  const approval = await findCibaApproval(hash);
+  const actor = await resolveCibaActor(
+    row.clientId,
+    parseStoredStringArray(row.resources),
+    approval && agentApprovalFor(approval)?.sessionId
+  );
+  await db
+    .update(cibaRequests)
+    .set({ actor: JSON.stringify(actor) })
+    .where(and(eq(cibaRequests.authReqId, hash), isNull(cibaRequests.actor)));
+}
 
-  const releaseId = releaseIdFor(authReqIdHash, row.clientId);
+async function prepareCibaToken(input: OAuthBeforeTokenIssuanceInput) {
+  if (input.grantType !== CIBA_GRANT_TYPE) {
+    return;
+  }
+  if (!input.grantRequest) {
+    throw new Error("CIBA token issuance requires the approved request");
+  }
+  const row = input.grantRequest as {
+    acrValues?: string[];
+    authReqId: string;
+    id: string;
+  };
+  const authReqIdHash = row.authReqId;
+  await enforceCibaTokenAcr(input, row.acrValues ?? []);
+
+  const releaseId = releaseIdFor(authReqIdHash, input.client.clientId);
   const releaseContext = await loadReleaseContext(releaseId);
   if (
     releaseContext?.expectsIdentityPayload &&
@@ -938,10 +983,28 @@ async function beforeCibaTokenLoadRequest(ctx: HookCtx) {
 
   const approval = await findCibaApproval(authReqIdHash);
   const agent = approval ? agentApprovalFor(approval) : null;
+  let authContextId =
+    approval?.authContextId ??
+    (
+      await db
+        .select({ authContextId: cibaRequests.authContextId })
+        .from(cibaRequests)
+        .where(eq(cibaRequests.id, row.id))
+        .get()
+    )?.authContextId;
+  if (!authContextId && input.scopes.includes("openid")) {
+    authContextId = (
+      await resolveAuthenticationContext({ userId: input.user?.id })
+    )?.id;
+    if (!authContextId) {
+      throw invalidGrantDisclosureError(
+        "Authentication context required for ID token issuance"
+      );
+    }
+  }
   await setPendingCibaToken({
-    agentSessionId: agent?.sessionId ?? null,
     authorization: agent?.authorization ?? null,
-    authContextId: row.authContextId ?? "",
+    authContextId: authContextId ?? "",
     authReqIdHash,
     oversight: approval?.approvalMethod
       ? {
@@ -985,12 +1048,7 @@ async function afterCibaTokenPersist(ctx: HookCtx) {
   }
 }
 
-/**
- * Rebinds an authorization code to its own reference before the grant redeems
- * it, so every token the code issues references this one authorization rather
- * than the consent it shares with later sign-ins, then finalizes any identity
- * release the authorization staged against that reference.
- */
+// Check disclosure before consuming the code so a missing staged payload can be retried.
 async function beforeTokenFinalizeDisclosureBindings(ctx: HookCtx) {
   const code = typeof ctx.body?.code === "string" ? ctx.body.code : undefined;
   if (!code) {
@@ -1003,6 +1061,8 @@ async function beforeTokenFinalizeDisclosureBindings(ctx: HookCtx) {
   }
 
   let stored: {
+    consentScopes?: string[];
+    disclosureRequestKey?: string;
     referenceId?: string;
     type?: string;
     query?: Record<string, unknown>;
@@ -1018,21 +1078,40 @@ async function beforeTokenFinalizeDisclosureBindings(ctx: HookCtx) {
     return;
   }
 
-  const authorizationId = record.identifier;
-  if (stored.referenceId !== authorizationId) {
-    await db
-      .update(verifications)
-      .set({
-        value: JSON.stringify({ ...stored, referenceId: authorizationId }),
-      })
-      .where(eq(verifications.identifier, authorizationId))
-      .run();
-  }
+  const clientId =
+    typeof stored.query?.client_id === "string"
+      ? stored.query.client_id
+      : undefined;
+  const grantId = authorizationCodeGrantIdFor(record.identifier);
+  const disclosureQuery = stored.query ?? {};
+  const consentScopes = Array.isArray(stored.consentScopes)
+    ? stored.consentScopes.filter(
+        (scope): scope is string => typeof scope === "string"
+      )
+    : undefined;
+  const cleanupQuery = consentScopes
+    ? { ...disclosureQuery, scope: consentScopes }
+    : disclosureQuery;
+
+  await verifyAuthorizationCodeConsentHmac({
+    clientId,
+    referenceId: stored.referenceId,
+    userId: stored.userId,
+  });
+  await schedulePairwiseConsentCleanup({
+    clientId,
+    query: cleanupQuery,
+    referenceId: stored.referenceId,
+    userId: stored.userId,
+  });
 
   try {
     await finalizeOauthDisclosureFromVerification({
-      authorizationId,
-      query: stored.query ?? {},
+      authorizationId: grantId,
+      query: disclosureQuery,
+      ...(typeof stored.disclosureRequestKey === "string"
+        ? { oauthRequestKey: stored.disclosureRequestKey }
+        : {}),
       userId: stored.userId,
     });
   } catch (error) {
@@ -1061,6 +1140,116 @@ async function beforeTokenFinalizeDisclosureBindings(ctx: HookCtx) {
     );
     throw error;
   }
+}
+
+async function verifyAuthorizationCodeConsentHmac(input: {
+  clientId?: string;
+  referenceId?: string;
+  userId: string;
+}): Promise<void> {
+  if (!(input.clientId && input.referenceId)) {
+    return;
+  }
+
+  const client = await db
+    .select({ skipConsent: oauthClients.skipConsent })
+    .from(oauthClients)
+    .where(eq(oauthClients.clientId, input.clientId))
+    .limit(1)
+    .get();
+  if (client?.skipConsent) {
+    return;
+  }
+
+  const consent = await db
+    .select({
+      id: oauthConsents.id,
+      scopes: oauthConsents.scopes,
+      scopeHmac: oauthConsents.scopeHmac,
+      referenceId: oauthConsents.referenceId,
+    })
+    .from(oauthConsents)
+    .where(
+      and(
+        eq(oauthConsents.clientId, input.clientId),
+        eq(oauthConsents.userId, input.userId),
+        eq(oauthConsents.referenceId, input.referenceId)
+      )
+    )
+    .limit(1)
+    .get();
+  if (!consent) {
+    return;
+  }
+
+  const expected = computeConsentHmac(
+    getConsentHmacKey(),
+    input.userId,
+    input.clientId,
+    consent.referenceId,
+    parseStoredStringArray(consent.scopes)
+  );
+  if (consent.scopeHmac === expected) {
+    return;
+  }
+
+  await db.delete(oauthConsents).where(eq(oauthConsents.id, consent.id)).run();
+  throw invalidGrantDisclosureError("consent_integrity_failed");
+}
+
+async function schedulePairwiseConsentCleanup(input: {
+  clientId?: string;
+  query: Record<string, unknown>;
+  referenceId?: string;
+  userId: string;
+}): Promise<void> {
+  if (!(input.clientId && input.referenceId)) {
+    return;
+  }
+  const client = await db
+    .select({ subjectType: oauthClients.subjectType })
+    .from(oauthClients)
+    .where(eq(oauthClients.clientId, input.clientId))
+    .limit(1)
+    .get();
+  const scopes =
+    typeof input.query.scope === "string"
+      ? input.query.scope.split(WHITESPACE_RE).filter(Boolean)
+      : toScopeList(input.query.scope);
+  if (
+    client?.subjectType !== "pairwise" ||
+    scopes.some((scope) => isIdentityScope(scope))
+  ) {
+    return;
+  }
+  await pairwiseConsentCleanup.set({
+    clientId: input.clientId,
+    referenceId: input.referenceId,
+    userId: input.userId,
+  });
+}
+
+async function afterTokenPairwiseConsentCleanup(ctx: HookCtx): Promise<void> {
+  const pending = await pairwiseConsentCleanup.get();
+  if (!pending) {
+    return;
+  }
+  const responseBody = await readReturnedResponseBody(
+    (ctx.context as { returned?: unknown }).returned
+  );
+  if (typeof responseBody?.access_token !== "string") {
+    return;
+  }
+  await db
+    .delete(oauthConsents)
+    .where(
+      and(
+        eq(oauthConsents.clientId, pending.clientId),
+        eq(oauthConsents.userId, pending.userId),
+        eq(oauthConsents.referenceId, pending.referenceId)
+      )
+    )
+    .run();
 }
 
 async function findAuthorizationCodeRecord(
@@ -1095,6 +1284,7 @@ async function pendingCibaAuthContextId(
 async function buildIdTokenDisclosureClaims(input: {
   authContextId?: string | null;
   clientId?: string;
+  grantId?: string;
   referenceId?: string;
   scopes: unknown;
   sessionId?: string | null;
@@ -1131,12 +1321,11 @@ async function buildIdTokenDisclosureClaims(input: {
     };
   }
 
-  const releaseContext =
-    input.referenceId && input.clientId
-      ? await loadReleaseContext(
-          releaseIdFor(input.referenceId, input.clientId)
-        )
-      : null;
+  const releaseContext = await loadDisclosureReleaseContext({
+    clientId: input.clientId,
+    grantId: input.grantId,
+    referenceId: input.referenceId,
+  });
   const idTokenFilter = claimsRequestForEndpoint(
     releaseContext?.claimsRequest ?? null,
     "id_token"
@@ -1149,6 +1338,29 @@ async function buildIdTokenDisclosureClaims(input: {
     ...filterClaimsByRequest(proofClaims, idTokenFilter),
     ...assuranceClaims,
   };
+}
+
+async function loadDisclosureReleaseContext(input: {
+  clientId?: string;
+  grantId?: string;
+  referenceId?: string;
+}): Promise<ReleaseContext | null> {
+  if (!input.clientId) {
+    return null;
+  }
+  const identifiers = [input.grantId, input.referenceId].filter(
+    (value, index, all): value is string =>
+      Boolean(value) && all.indexOf(value) === index
+  );
+  for (const identifier of identifiers) {
+    const context = await loadReleaseContext(
+      releaseIdFor(identifier, input.clientId)
+    );
+    if (context) {
+      return context;
+    }
+  }
+  return null;
 }
 
 async function buildAccessTokenDisclosureClaims(
@@ -1169,12 +1381,13 @@ async function buildAccessTokenDisclosureClaims(
   });
   const clientId = info.client?.clientId;
   const referenceId = info.referenceId;
+  const grantId = info.grantId;
   const scopeList = toScopeList(info.scopes);
   const claims: Record<string, unknown> = {};
-  // Per-RP anti-abuse handles stay in tokens only Zentity reads (ADR
-  // privacy/0015 rule 5). Zentity-hosted resources are dropped before
-  // issuance, so a token with resources is a JWT for an outside audience.
-  const isOpaqueToken = (info.resources?.length ?? 0) === 0;
+  // Per-RP anti-abuse handles belong only in opaque tokens Zentity reads.
+  const isOpaqueToken =
+    !info.resources?.length ||
+    info.resources.every((resource) => normalizeResource(resource) === appUrl);
 
   if (isOpaqueToken && scopeList.includes("proof:sybil") && clientId) {
     const nullifier = await resolveSybilNullifier(userId, clientId);
@@ -1202,10 +1415,12 @@ async function buildAccessTokenDisclosureClaims(
 
   // Extend the identity-payload TTL whenever a token is minted for a
   // release-bound request so the payload survives until userinfo consumes it.
-  if (referenceId && clientId) {
-    const releaseContext = await loadReleaseContext(
-      releaseIdFor(referenceId, clientId)
-    );
+  if (clientId && (grantId || referenceId)) {
+    const releaseContext = await loadDisclosureReleaseContext({
+      clientId,
+      grantId,
+      referenceId,
+    });
     if (releaseContext) {
       await touchReleaseContext(
         releaseContext.releaseId,
@@ -1241,6 +1456,7 @@ function exactDisclosureClaimsPlugin(): BetterAuthPlugin {
                 ? { clientId: info.client.clientId }
                 : {}),
               ...(info.referenceId ? { referenceId: info.referenceId } : {}),
+              ...(info.grantId ? { grantId: info.grantId } : {}),
               scopes: info.scopes,
               ...(info.sessionId === undefined
                 ? {}
@@ -1264,6 +1480,122 @@ function beforeConsentStripIdentityScopes(ctx: HookCtx) {
     .split(" ")
     .filter((s: string) => !isIdentityScope(s))
     .join(" ");
+}
+
+async function afterConsentPreserveRequestForDisclosure(ctx: HookCtx) {
+  if (ctx.body?.accept !== true || typeof ctx.body.oauth_query !== "string") {
+    return;
+  }
+  const responseBody = await readReturnedResponseBody(
+    (ctx.context as { returned?: unknown }).returned
+  );
+  let redirectURI: string | undefined;
+  if (typeof responseBody?.redirectURI === "string") {
+    redirectURI = responseBody.redirectURI;
+  } else if (typeof responseBody?.url === "string") {
+    redirectURI = responseBody.url;
+  }
+  if (!redirectURI) {
+    return;
+  }
+
+  let disclosureRequestKey: string;
+  let consentScopes: string[];
+  try {
+    const consentQuery = await verifySignedOAuthQuery(ctx.body.oauth_query);
+    disclosureRequestKey = computeOAuthDisclosureRequestKey(consentQuery);
+    consentScopes = consentQuery
+      .getAll("scope")
+      .flatMap((value) => value.split(WHITESPACE_RE))
+      .filter(Boolean);
+  } catch {
+    return;
+  }
+
+  const code = new URL(redirectURI, "http://localhost").searchParams.get(
+    "code"
+  );
+  if (!code) {
+    return;
+  }
+  const record = await findAuthorizationCodeRecord(ctx, code);
+  if (!record) {
+    return;
+  }
+  let stored: Record<string, unknown>;
+  try {
+    stored = JSON.parse(record.value) as Record<string, unknown>;
+  } catch {
+    return;
+  }
+  if (stored.type !== "authorization_code") {
+    return;
+  }
+  const codeQuery =
+    stored.query && typeof stored.query === "object"
+      ? (stored.query as Record<string, unknown>)
+      : undefined;
+  if (
+    typeof stored.userId === "string" &&
+    typeof stored.referenceId === "string" &&
+    typeof codeQuery?.client_id === "string"
+  ) {
+    const authorizedStorageScopes = parseRequestedScopes(codeQuery.scope);
+    const consent = await db
+      .select({
+        id: oauthConsents.id,
+        scopes: oauthConsents.scopes,
+        scopeHmac: oauthConsents.scopeHmac,
+      })
+      .from(oauthConsents)
+      .where(
+        and(
+          eq(oauthConsents.clientId, codeQuery.client_id),
+          eq(oauthConsents.userId, stored.userId),
+          eq(oauthConsents.referenceId, stored.referenceId)
+        )
+      )
+      .limit(1)
+      .get();
+    const persistedScopes = consent
+      ? parseStoredStringArray(consent.scopes)
+      : [];
+    const scopesMatch = consentScopesMatchApproved(
+      persistedScopes,
+      authorizedStorageScopes
+    );
+    if (consent && consent.scopeHmac == null && scopesMatch) {
+      const scopeHmac = computeConsentHmac(
+        getConsentHmacKey(),
+        stored.userId,
+        codeQuery.client_id,
+        stored.referenceId,
+        persistedScopes
+      );
+      await db
+        .update(oauthConsents)
+        .set({ scopeHmac })
+        .where(
+          and(
+            eq(oauthConsents.id, consent.id),
+            eq(oauthConsents.scopes, consent.scopes),
+            isNull(oauthConsents.scopeHmac)
+          )
+        )
+        .run();
+    }
+  }
+  await db
+    .update(verifications)
+    .set({
+      value: JSON.stringify({
+        ...stored,
+        disclosureRequestKey,
+        consentScopes,
+      }),
+    })
+    .where(eq(verifications.identifier, record.identifier))
+    .run();
 }
 
 function beforeValidateResourceUri(ctx: HookCtx) {
@@ -1300,6 +1632,28 @@ async function beforeAuthorizeVerifyConsentHmac(
     return;
   }
 
+  const sessionId = session?.session?.id;
+  if (typeof sessionId !== "string") {
+    return;
+  }
+  const client = await db
+    .select({ subjectType: oauthClients.subjectType })
+    .from(oauthClients)
+    .where(eq(oauthClients.clientId, clientId))
+    .limit(1)
+    .get();
+  const requestedScopes = parseRequestedScopes(request.scope);
+  const referenceId = computeConsentReferenceId(getConsentReferenceKey(), {
+    clientId,
+    ...(client?.subjectType === "pairwise" &&
+    !requestedScopes.some((scope) => isIdentityScope(scope)) &&
+    typeof request.code_challenge === "string"
+      ? { codeChallenge: request.code_challenge }
+      : {}),
+    scopes: requestedScopes,
+    sessionId,
+  });
+
   const consent = await db
     .select({
       id: oauthConsents.id,
@@ -1311,7 +1665,8 @@ async function beforeAuthorizeVerifyConsentHmac(
     .where(
       and(
         eq(oauthConsents.clientId, clientId),
-        eq(oauthConsents.userId, userId)
+        eq(oauthConsents.userId, userId),
+        eq(oauthConsents.referenceId, referenceId)
       )
     )
     .limit(1)
@@ -1371,54 +1726,6 @@ function isConsentSubmitRequest(ctx: HookCtx): boolean {
 }
 
 // ── After-hook handlers ───────────────────────────────────
-
-async function afterConsentPairwiseCleanup(ctx: HookCtx) {
-  const sessionCtx = ctx.context as {
-    session?: { user?: { id?: string } };
-  };
-  const userId = sessionCtx.session?.user?.id;
-  const oauthQuery =
-    typeof ctx.body?.oauth_query === "string"
-      ? ctx.body.oauth_query
-      : undefined;
-  if (!(userId && oauthQuery)) {
-    return;
-  }
-  const params = new URLSearchParams(oauthQuery);
-  const clientId = params.get("client_id");
-  const originalScopes = (params.get("scope") ?? "").split(" ");
-  const hasIdentityScopes = originalScopes.some((s) => isIdentityScope(s));
-
-  if (clientId && !hasIdentityScopes) {
-    const client = await db
-      .select({ subjectType: oauthClients.subjectType })
-      .from(oauthClients)
-      .where(eq(oauthClients.clientId, clientId))
-      .limit(1)
-      .get();
-
-    if (client?.subjectType === "pairwise") {
-      await db
-        .delete(oauthConsents)
-        .where(
-          and(
-            eq(oauthConsents.userId, userId),
-            eq(oauthConsents.clientId, clientId)
-          )
-        )
-        .run();
-    }
-  }
-}
-
-async function afterParRememberAcr(ctx: HookCtx) {
-  const pushed = await readReturnedResponseBody(
-    (ctx.context as { returned?: unknown }).returned
-  );
-  if (typeof pushed?.request_uri === "string") {
-    await rememberPushedAcrRequest(ctx, pushed.request_uri);
-  }
-}
 
 function expireSessionDataCookie(ctx: HookCtx) {
   const authCookies = (
@@ -1686,50 +1993,6 @@ async function notifyCibaRequest(
       approvalUrl,
     }),
   ]);
-}
-
-// The CIBA plugin also lets a user approve on the provider's consent page via
-// `/oauth2/authorize?ciba_request_id=…`. Zentity approves only on its own page,
-// which runs the step-up and identity-release checks, so that entry point
-// redirects there and the consent and continue endpoints refuse it.
-const CIBA_INTERACTION_PARAMETER = "ciba_request_id";
-
-function cibaInteractionRequestId(
-  ctx: HookCtx,
-  request: Record<string, unknown> | undefined = ctx.query
-): string | undefined {
-  const direct = request?.[CIBA_INTERACTION_PARAMETER];
-  if (typeof direct === "string" && direct) {
-    return direct;
-  }
-  const oauthQuery = ctx.body?.oauth_query ?? ctx.query?.oauth_query;
-  if (typeof oauthQuery === "string") {
-    return (
-      new URLSearchParams(oauthQuery).get(CIBA_INTERACTION_PARAMETER) ??
-      undefined
-    );
-  }
-  return undefined;
-}
-
-function redirectCibaInteraction(
-  ctx: HookCtx,
-  request: Record<string, unknown>
-) {
-  const requestId = cibaInteractionRequestId(ctx, request);
-  if (requestId) {
-    throw ctx.redirect(cibaApprovalUrl(appUrl, requestId));
-  }
-}
-
-function rejectCibaInteraction(ctx: HookCtx) {
-  if (cibaInteractionRequestId(ctx)) {
-    throw new APIError("BAD_REQUEST", {
-      error: "invalid_request",
-      error_description:
-        "Backchannel requests are approved on Zentity's approval page",
-    });
-  }
 }
 
 const socialProviders = {
@@ -2057,7 +2320,7 @@ export const auth = betterAuth({
           refuseWalletAudience(ctx.body?.resource, ctx.body?.audience);
         }
         if (isCibaGrant) {
-          await beforeCibaTokenLoadRequest(ctx);
+          await restoreLegacyCibaActor(ctx);
         }
         beforeTokenValidateResource(ctx);
         if (USER_TOKEN_GRANT_TYPES.has(ctx.body?.grant_type)) {
@@ -2069,11 +2332,7 @@ export const auth = betterAuth({
         return;
       }
       if (ctx.path === "/oauth2/consent") {
-        rejectCibaInteraction(ctx);
         return beforeConsentStripIdentityScopes(ctx);
-      }
-      if (ctx.path === "/oauth2/continue") {
-        return rejectCibaInteraction(ctx);
       }
       if (ctx.path === "/oauth2/par") {
         if (!ctx.body?.resource) {
@@ -2094,8 +2353,18 @@ export const auth = betterAuth({
         if (request === ctx.body) {
           await readRepeatedFormResources(ctx);
         }
-        redirectCibaInteraction(ctx, request);
-        await enforceAuthorizeAcr(ctx, db);
+        const session = await getSessionFromCtx(ctx);
+        if (
+          typeof request.client_id === "string" &&
+          typeof session?.user?.id === "string"
+        ) {
+          await deleteExpiredPairwiseProofOnlyConsents({
+            clientId: request.client_id,
+            userId: session.user.id,
+          }).catch((error: unknown) =>
+            logError(error, { operation: "pairwise-consent-cleanup" })
+          );
+        }
         await beforeAuthorizeVerifyConsentHmac(ctx, request);
         normalizeUserTokenResources(request, { allowWalletAudience: false });
         return;
@@ -2104,15 +2373,12 @@ export const auth = betterAuth({
     after: createAuthMiddleware(async (ctx) => {
       await afterPersistAuthenticationContext(ctx);
       if (ctx.path === "/oauth2/consent") {
-        await afterConsentPairwiseCleanup(ctx);
-        return;
-      }
-      if (ctx.path === "/oauth2/par") {
-        await afterParRememberAcr(ctx);
+        await afterConsentPreserveRequestForDisclosure(ctx);
         return;
       }
       if (ctx.path === "/oauth2/token") {
         await afterCibaTokenPersist(ctx);
+        await afterTokenPairwiseConsentCleanup(ctx);
         return;
       }
       if (ctx.path === "/oauth2/introspect") {
@@ -2199,6 +2465,7 @@ export const auth = betterAuth({
       },
     }),
     oauthProvider({
+      codeExpiresIn: AUTHORIZATION_CODE_TTL_MS / 1000,
       accessTokenExpiresIn: 3600,
       // `/oauth2/revoke` revokes JWT access tokens, and revoking a refresh
       // token revokes the JWT access tokens of its grant. Introspection,
@@ -2254,7 +2521,15 @@ export const auth = betterAuth({
       enforcePerClientResources: false,
       // Registered ahead of every plugin's extension, so Zentity's discovery
       // fields win the provider's first-wins merge.
-      extensions: [discoveryMetadataExtension, clientMetadataExtension],
+      beforeAuthorization: enforceAuthorizeAcr,
+      beforeTokenIssuance: prepareCibaToken,
+      extensions: [
+        discoveryMetadataExtension,
+        clientMetadataExtension,
+        {
+          tokenResponseFields: approvalTokenResponse,
+        },
+      ],
       // Enable RFC 7591 Dynamic Client Registration for OIDC4VCI wallets
       // Wallets can self-register via POST /api/auth/oauth/register
       allowDynamicClientRegistration: true,
@@ -2287,12 +2562,25 @@ export const auth = betterAuth({
       consentPage: "/oauth/consent",
       postLogin: {
         page: "/oauth/consent",
-        consentReferenceId: ({ query, session, scopes }) =>
-          computeConsentReferenceId(getConsentReferenceKey(), {
-            clientId: query.get("client_id") ?? "",
+        consentReferenceId: async ({ query, session, scopes }) => {
+          const clientId = query.get("client_id") ?? "";
+          const client = await db
+            .select({ subjectType: oauthClients.subjectType })
+            .from(oauthClients)
+            .where(eq(oauthClients.clientId, clientId))
+            .limit(1)
+            .get();
+          const codeChallenge = query.get("code_challenge");
+          const isPairwiseProofOnly =
+            client?.subjectType === "pairwise" &&
+            !scopes.some((scope) => isIdentityScope(scope));
+          return computeConsentReferenceId(getConsentReferenceKey(), {
+            clientId,
+            ...(isPairwiseProofOnly && codeChallenge ? { codeChallenge } : {}),
             scopes,
             sessionId: session.id,
-          }),
+          });
+        },
         shouldRedirect: () => false,
       },
       advertisedMetadata: {
@@ -2509,16 +2797,12 @@ export const auth = betterAuth({
         : {}),
     }),
     ciba({
-      // Zentity sends users to its own approval page, never the provider's
-      // consent page (see redirectCibaInteraction), so this is a fallback.
-      resultPage: "/dashboard/agents",
+      approvalPage: false,
       deliveryModes: ["poll", "ping"],
       expiresIn: 300,
       interval: 5,
-      // Agents register via DCR as public clients (token_endpoint_auth_method:
-      // "none"); backchannel trust comes from user approval and the signed
-      // Agent-Assertion, and their tokens are DPoP-bound.
-      allowPublicClients: true,
+      resolveActor: ({ client }) =>
+        resolveCibaActor(client.clientId, undefined),
       // A client names the user only by the subject identifier it received
       // from Zentity, so an unknown hint reveals nothing the client did not
       // already hold and no client can prompt arbitrary accounts.

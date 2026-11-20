@@ -8,7 +8,6 @@ import crypto from "node:crypto";
 import { getConfirmationJkt } from "@better-auth/core/oauth2";
 import {
   extendOAuthProvider,
-  type OAuthExtensionGrantHandler,
   type OAuthExtensionGrantHandlerInput,
 } from "@better-auth/oauth-provider";
 import {
@@ -25,33 +24,17 @@ import {
   AGENT_BOOTSTRAP_TOKEN_USE,
 } from "@/lib/agents/session";
 import { resolveAuthenticationContext } from "@/lib/auth/auth-context";
-import {
-  loadOpaqueAccessTokenAuthContextId,
-  mintOpaqueAccessToken,
-} from "@/lib/auth/oidc/haip/opaque-access-token";
+import { loadOpaqueAccessTokenAuthContextId } from "@/lib/auth/oidc/oauth-provider";
 import { isZentityAccessToken } from "@/lib/auth/oidc/resource-access-token";
 import { db } from "@/lib/db/connection";
 import { cibaApprovals } from "@/lib/db/schema/ciba";
+import { oauthAccessTokens } from "@/lib/db/schema/oauth-provider";
 
 export const TOKEN_EXCHANGE_GRANT_TYPE =
   "urn:ietf:params:oauth:grant-type:token-exchange";
 
 const ACCESS_TOKEN_TYPE = "urn:ietf:params:oauth:token-type:access_token";
 
-/**
- * Zentity's RFC 8693 grant, cut down to the semantics of the provider's
- * `oauthTokenExchange` so a later port maps one to one:
- * - `publicClients: "dpop-bound"`: a public client exchanges only its own
- *   DPoP-bound token and proves its key.
- * - subject `maxDepth: 0`: no `actor_token`, and a subject with `act`, or one
- *   a CIBA approval issued, is refused.
- * - The only target is the app, and the output is an opaque access token, so
- *   no subject claim reaches another audience.
- *
- * It stays custom because the provider grant mints JWTs for any resource,
- * strips `openid`, has no hook for the bootstrap marker, and requires stored
- * consent for resources Zentity hosts itself.
- */
 const TRAILING_SLASHES = /\/+$/;
 const EXCHANGE_TARGET = env.NEXT_PUBLIC_APP_URL.replace(TRAILING_SLASHES, "");
 const EXCHANGED_TOKEN_TTL_SECONDS = 3600;
@@ -108,6 +91,7 @@ async function hasCibaApproval(referenceId: unknown): Promise<boolean> {
  * the one stored with the token.
  */
 async function resolveSubjectAuthContextId(
+  context: AuthContext,
   subjectToken: string,
   subject: JWTPayload
 ): Promise<string | null> {
@@ -115,12 +99,12 @@ async function resolveSubjectAuthContextId(
   const authContextId =
     sessionId || subjectToken.split(".").length === 3
       ? null
-      : await loadOpaqueAccessTokenAuthContextId(subjectToken);
-  const context = await resolveAuthenticationContext({
+      : await loadOpaqueAccessTokenAuthContextId(context, subjectToken);
+  const authentication = await resolveAuthenticationContext({
     authContextId,
     sessionId,
   });
-  return context?.id ?? null;
+  return authentication?.id ?? null;
 }
 
 function requestedTarget(body: Record<string, unknown>): void {
@@ -303,6 +287,7 @@ async function exchangeToken({
   }
 
   const authContextId = await resolveSubjectAuthContextId(
+    ctx.context,
     subjectToken,
     subject
   );
@@ -317,46 +302,49 @@ async function exchangeToken({
   }
 
   const sessionId = typeof subject.sid === "string" ? subject.sid : undefined;
-  const accessToken = await mintOpaqueAccessToken({
-    accessTokenClaims: bootstrap
-      ? { zentity_token_use: AGENT_BOOTSTRAP_TOKEN_USE }
-      : {},
-    authContextId: sessionId ? undefined : authContextId,
-    clientId: client.clientId,
-    dpopJkt,
-    expiresAt: new Date(exp * 1000),
-    referenceId: crypto.randomUUID(),
+  const user = await ctx.context.internalAdapter.findUserById(subject.sub);
+  if (!user) {
+    deny("subject_token has no user");
+  }
+  const referenceId = crypto.randomUUID();
+  const tokens = await provider.issueTokens({
+    client,
+    user,
     scopes,
     sessionId,
-    userId: subject.sub,
+    resources: [EXCHANGE_TARGET],
+    referenceId,
+    confirmation: { jkt: dpopJkt },
+    maxExpiresAt: new Date(exp * 1000),
+    idToken: false,
+    accessTokenClaims: bootstrap
+      ? { zentity_token_use: AGENT_BOOTSTRAP_TOKEN_USE }
+      : undefined,
+    tokenResponse: { issued_token_type: ACCESS_TOKEN_TYPE },
   });
-  return ctx.json(
-    {
-      access_token: accessToken,
-      issued_token_type: ACCESS_TOKEN_TYPE,
-      token_type: "DPoP",
-      expires_in: exp - now,
-      scope: scopes.join(" "),
-    },
-    { headers: { "Cache-Control": "no-store", Pragma: "no-cache" } }
-  );
+  if (!sessionId) {
+    // A sessionless token cannot be returned until its private authentication
+    // context is durable. It never travels in a token or introspection claim.
+    const bound = await db
+      .update(oauthAccessTokens)
+      .set({ authContextId })
+      .where(eq(oauthAccessTokens.referenceId, referenceId))
+      .returning({ id: oauthAccessTokens.id });
+    if (bound.length !== 1) {
+      throw new Error(
+        "Could not bind the exchanged token to its authentication context"
+      );
+    }
+  }
+  return tokens;
 }
 
-/**
- * Better-auth plugin that registers the RFC 8693 token-exchange grant through
- * `extendOAuthProvider`. The handler mints its opaque token into the
- * provider's store; it uses only the provider's client authentication,
- * token validation, and DPoP confirmation.
- */
 export function tokenExchangePlugin() {
-  // The token endpoint returns the handler result directly, so the grant
-  // returns the framework `Response` just like the built-in grants do.
-  const handler = exchangeToken as unknown as OAuthExtensionGrantHandler;
   return {
     id: "token-exchange" as const,
     init(ctx: AuthContext) {
       extendOAuthProvider(ctx, {
-        grants: { [TOKEN_EXCHANGE_GRANT_TYPE]: handler },
+        grants: { [TOKEN_EXCHANGE_GRANT_TYPE]: exchangeToken },
       });
     },
   };

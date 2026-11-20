@@ -9,12 +9,22 @@ import "server-only";
  * `oauth-post-login.ts`.
  */
 
+/**
+ * OAuth Request: signed query verification, request key derivation, and
+ * resource URI validation (RFC 8707).
+ *
+ * Everything server-side that parses or validates an inbound OAuth/OIDC
+ * request payload. Client-side post-auth redirect continuation lives in
+ * `oauth-post-login.ts`.
+ */
+
 import { createHmac } from "node:crypto";
 
 import { verifyOAuthQueryParams } from "@better-auth/oauth-provider";
 import { calculateJwkThumbprint } from "jose";
 
 import { env } from "@/env";
+import { isIdentityScope } from "@/lib/auth/oidc/disclosure/registry";
 
 // ---------------------------------------------------------------------------
 // Signed OAuth query verification
@@ -166,6 +176,28 @@ export function computeOAuthRequestKey(
   return createHmac("sha256", env.BETTER_AUTH_SECRET)
     .update(canonicalizeOAuthQuery(query))
     .digest("hex");
+}
+
+/**
+ * Correlate staged identity claims with the provider's consent query, which
+ * omits identity scopes. Preserve this normalization for in-flight stages.
+ */
+export function computeOAuthDisclosureRequestKey(
+  query: URLSearchParams
+): string {
+  const normalized = new URLSearchParams(query);
+  const scopes = normalized.get("scope");
+  if (scopes) {
+    normalized.set(
+      "scope",
+      [
+        ...new Set(
+          scopes.split(" ").filter((scope) => !isIdentityScope(scope))
+        ),
+      ].join(" ")
+    );
+  }
+  return computeOAuthRequestKey(normalized);
 }
 
 // ---------------------------------------------------------------------------

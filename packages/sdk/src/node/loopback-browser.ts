@@ -4,6 +4,10 @@ import { platform } from "node:os";
 import type { TokenResult } from "../fpa/oauth";
 import type { PkceChallenge } from "../fpa/pkce";
 import type { DpopClient } from "../rp/dpop-client";
+import {
+  authenticateClientRequest,
+  type ClientAuthentication,
+} from "../rp/token-request";
 
 const DEFAULT_CALLBACK_TIMEOUT_MS = 120_000;
 
@@ -11,6 +15,7 @@ type MaybePromise<T> = Promise<T> | T;
 
 export interface AuthenticateWithLoopbackBrowserOptions {
   authorizeEndpoint: string;
+  clientAuthentication?: ClientAuthentication;
   clientId: string;
   dpopClient: DpopClient;
   exchangeAuthorizationCode(input: {
@@ -50,12 +55,36 @@ async function pushAuthorizationRequest(
     body.set("resource", options.resource);
   }
 
+  const headers: Record<string, string> = {
+    "Content-Type": "application/x-www-form-urlencoded",
+  };
+  const clientAuthentication = options.clientAuthentication;
+  if (clientAuthentication) {
+    await authenticateClientRequest(
+      clientAuthentication,
+      body,
+      headers,
+      options.parEndpoint as string
+    );
+  }
+
   const response = await options.dpopClient.fetch(
     options.parEndpoint as string,
     {
       method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      headers,
       body,
+      ...(clientAuthentication
+        ? {
+            onNonceRetry: () =>
+              authenticateClientRequest(
+                clientAuthentication,
+                body,
+                headers,
+                options.parEndpoint as string
+              ),
+          }
+        : {}),
     }
   );
 

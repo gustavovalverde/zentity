@@ -12,6 +12,8 @@ import {
   createTestUser,
   hashCibaAuthReqId,
   resetDatabase,
+  TEST_CIBA_CLIENT_SECRET,
+  testCibaClientCredentials,
 } from "@/test-utils/db-test-utils";
 import { postTokenWithDpop } from "@/test-utils/dpop-test-utils";
 
@@ -21,7 +23,7 @@ const CIBA_GRANT_TYPE = "urn:openid:params:grant-type:ciba";
 const AUTH_URL = "http://localhost:3000/api/auth";
 const TEST_CLIENT_ID = "ping-test-agent";
 // Ping endpoints must be public https URLs; the client registers one.
-const TEST_NOTIFICATION_ENDPOINT = "https://rp.example.com/ciba/callback";
+const TEST_NOTIFICATION_ENDPOINT = "https://93.184.216.34/ciba/callback";
 const TEST_NOTIFICATION_TOKEN = "ciba-ping-bearer-token-abc123";
 
 async function createTestClient(metadata: Record<string, unknown>) {
@@ -32,7 +34,7 @@ async function createTestClient(metadata: Record<string, unknown>) {
       name: "Ping Test Agent",
       redirectUris: JSON.stringify(["http://localhost/callback"]),
       grantTypes: JSON.stringify([CIBA_GRANT_TYPE]),
-      tokenEndpointAuthMethod: "none",
+      ...testCibaClientCredentials,
       metadata: JSON.stringify(metadata),
     })
     .run();
@@ -50,7 +52,10 @@ async function postBcAuthorize(
     new Request(`${AUTH_URL}/oauth2/bc-authorize`, {
       method: "POST",
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body: new URLSearchParams(body),
+      body: new URLSearchParams({
+        client_secret: TEST_CIBA_CLIENT_SECRET,
+        ...body,
+      }),
     })
   );
   const text = await response.text();
@@ -140,7 +145,7 @@ describe("CIBA ping mode", () => {
           clientId: TEST_CLIENT_ID,
           redirectUris: JSON.stringify(["http://localhost/callback"]),
           grantTypes: JSON.stringify([CIBA_GRANT_TYPE]),
-          tokenEndpointAuthMethod: "none",
+          ...testCibaClientCredentials,
           metadata: "{not valid json",
         })
         .run();
@@ -170,6 +175,7 @@ describe("CIBA ping mode", () => {
 
       const { status, json } = await postTokenWithDpop({
         grant_type: CIBA_GRANT_TYPE,
+        client_secret: TEST_CIBA_CLIENT_SECRET,
         auth_req_id: authReqId,
         client_id: TEST_CLIENT_ID,
       });
@@ -189,6 +195,7 @@ describe("CIBA ping mode", () => {
 
       const { status, json } = await postTokenWithDpop({
         grant_type: CIBA_GRANT_TYPE,
+        client_secret: TEST_CIBA_CLIENT_SECRET,
         auth_req_id: authReqId,
         client_id: TEST_CLIENT_ID,
       });

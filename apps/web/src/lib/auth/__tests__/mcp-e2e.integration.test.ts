@@ -1,7 +1,9 @@
-import { decodeJwt } from "jose";
+import { decodeJwt, exportJWK, generateKeyPair, SignJWT } from "jose";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { env } from "@/env";
 import { auth } from "@/lib/auth/auth-config";
+import { getAuthIssuer } from "@/lib/auth/oidc/well-known";
 import { db } from "@/lib/db/connection";
 import { oauthClients } from "@/lib/db/schema/oauth-provider";
 import {
@@ -104,15 +106,19 @@ describe("MCP End-to-End: Discovery → CIMD → Resource-Bound Tokens", () => {
 
   describe("Resource-bound token via CIBA with CIMD client", () => {
     let userId: string;
+    let clientKey: CryptoKey;
 
     beforeEach(async () => {
       userId = await createTestUser();
+      const keys = await generateKeyPair("ES256");
+      clientKey = keys.privateKey;
       await db.insert(oauthClients).values({
         clientId: CIMD_CLIENT_ID,
         name: "MCP E2E Client",
         redirectUris: JSON.stringify([REDIRECT_URI]),
         grantTypes: JSON.stringify(["authorization_code", CIBA_GRANT_TYPE]),
-        tokenEndpointAuthMethod: "none",
+        tokenEndpointAuthMethod: "private_key_jwt",
+        jwks: JSON.stringify({ keys: [await exportJWK(keys.publicKey)] }),
         subjectType: "pairwise",
         trustLevel: 0,
         metadataUrl: CIMD_CLIENT_ID,
@@ -125,10 +131,21 @@ describe("MCP End-to-End: Discovery → CIMD → Resource-Bound Tokens", () => {
         clientId: CIMD_CLIENT_ID,
         userId,
         status: "approved",
-        resources: JSON.stringify([BASE]),
+        resources: JSON.stringify([env.MCP_PUBLIC_URL]),
       });
 
       const { status, json } = await postTokenWithDpop({
+        client_assertion_type:
+          "urn:ietf:params:oauth:client-assertion-type:jwt-bearer",
+        client_assertion: await new SignJWT({})
+          .setProtectedHeader({ alg: "ES256" })
+          .setIssuer(CIMD_CLIENT_ID)
+          .setSubject(CIMD_CLIENT_ID)
+          .setAudience(getAuthIssuer())
+          .setIssuedAt()
+          .setExpirationTime("1m")
+          .setJti(crypto.randomUUID())
+          .sign(clientKey),
         grant_type: CIBA_GRANT_TYPE,
         auth_req_id: authReqId,
         client_id: CIMD_CLIENT_ID,
@@ -139,7 +156,7 @@ describe("MCP End-to-End: Discovery → CIMD → Resource-Bound Tokens", () => {
 
       const payload = decodeJwt(json.access_token as string);
       // aud bound to resource
-      expect(payload.aud).toContain(BASE);
+      expect([payload.aud].flat()).toContain(env.MCP_PUBLIC_URL);
       // DPoP cnf.jkt present
       expect(payload.cnf).toBeDefined();
       expect((payload.cnf as Record<string, string>).jkt).toBeDefined();
