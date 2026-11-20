@@ -48,12 +48,16 @@ test.describe("PII delivery via userinfo (CIBA flow)", () => {
     const session = await createIssuerSession(request);
 
     // 2. DCR-register a CIBA client
-    const clientId = await registerCibaClient(request, "pii-e2e");
+    const { clientId, clientSecret } = await registerCibaClient(
+      request,
+      "pii-e2e"
+    );
 
     // 3. Initiate CIBA backchannel auth with identity scopes
     const bcRes = await request.post(`${AUTH_BASE_URL}/oauth2/bc-authorize`, {
       form: {
         client_id: clientId,
+        client_secret: clientSecret,
         login_hint: await cibaLoginHint(clientId, session.userId),
         scope: "openid identity.name identity.dob",
         binding_message: "PII delivery E2E test",
@@ -119,6 +123,7 @@ test.describe("PII delivery via userinfo (CIBA flow)", () => {
             grant_type: CIBA_GRANT_TYPE,
             auth_req_id,
             client_id: clientId,
+            client_secret: clientSecret,
             resource: BASE_URL,
           },
           headers: { Origin: BASE_URL, DPoP: proof },
@@ -191,12 +196,16 @@ test.describe("PII delivery via userinfo (CIBA flow)", () => {
     request,
   }) => {
     const session = await createIssuerSession(request);
-    const clientId = await registerCibaClient(request, "pii-e2e");
+    const { clientId, clientSecret } = await registerCibaClient(
+      request,
+      "pii-e2e"
+    );
 
     // CIBA with openid-only scope (no identity scopes)
     const bcRes = await request.post(`${AUTH_BASE_URL}/oauth2/bc-authorize`, {
       form: {
         client_id: clientId,
+        client_secret: clientSecret,
         login_hint: await cibaLoginHint(clientId, session.userId),
         scope: "openid",
         binding_message: "Non-identity E2E test",
@@ -225,6 +234,7 @@ test.describe("PII delivery via userinfo (CIBA flow)", () => {
             grant_type: CIBA_GRANT_TYPE,
             auth_req_id,
             client_id: clientId,
+            client_secret: clientSecret,
             resource: BASE_URL,
           },
           headers: { Origin: BASE_URL, DPoP: proof },

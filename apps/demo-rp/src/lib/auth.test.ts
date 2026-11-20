@@ -11,7 +11,7 @@ const authMocks = vi.hoisted(() => ({
   genericOAuth: vi.fn((config) => ({ type: "genericOAuth", ...config })),
   getDb: vi.fn(() => ({})),
   nextCookies: vi.fn(() => ({ type: "nextCookies" })),
-  readDcrClientId: vi.fn(),
+  readDcrClient: vi.fn(),
   verifyToken: vi.fn(),
 }));
 
@@ -45,7 +45,7 @@ vi.mock("@/lib/db/connection", () => ({
 }));
 
 vi.mock("@/lib/dcr", () => ({
-  readDcrClientId: authMocks.readDcrClientId,
+  readDcrClient: authMocks.readDcrClient,
 }));
 
 vi.mock("@/scenarios/route-scenario-registry", async (importOriginal) => {
@@ -103,7 +103,10 @@ async function loadProviderConfig() {
 describe("getAuth provider discovery", () => {
   beforeEach(() => {
     vi.resetModules();
-    authMocks.readDcrClientId.mockResolvedValue("test-client");
+    authMocks.readDcrClient.mockResolvedValue({
+      clientId: "test-client",
+      clientSecret: "test-secret",
+    });
   });
 
   it("discovers Zentity through the OIDC discovery URL of its issuer", async () => {
@@ -126,7 +129,10 @@ describe("getAuth provider userinfo", () => {
     authMocks.createOpenIdTokenVerifier.mockReturnValue({
       verify: authMocks.verifyToken,
     });
-    authMocks.readDcrClientId.mockResolvedValue("test-client");
+    authMocks.readDcrClient.mockResolvedValue({
+      clientId: "test-client",
+      clientSecret: "test-secret",
+    });
     authMocks.fetchUserInfo.mockResolvedValue({
       email: "alice@example.com",
       sub: "pairwise-sub",
@@ -278,9 +284,15 @@ describe("getAuth provider userinfo", () => {
   });
 
   it("rebuilds provider configuration from the latest DCR client id", async () => {
-    authMocks.readDcrClientId
-      .mockResolvedValueOnce("client-before")
-      .mockResolvedValueOnce("client-after");
+    authMocks.readDcrClient
+      .mockResolvedValueOnce({
+        clientId: "client-before",
+        clientSecret: "secret-before",
+      })
+      .mockResolvedValueOnce({
+        clientId: "client-after",
+        clientSecret: "secret-after",
+      });
 
     const { getAuth } = await import("./auth");
     const firstAuth = await getAuth();
@@ -299,5 +311,9 @@ describe("getAuth provider userinfo", () => {
 
     expect(firstProvider?.config[0]?.clientId).toBe("client-before");
     expect(secondProvider?.config[0]?.clientId).toBe("client-after");
+    expect(firstProvider?.config[0]?.clientSecret).toBe("secret-before");
+    expect(firstProvider?.config[0]?.tokenEndpointAuth).toEqual({
+      method: "client_secret_basic",
+    });
   });
 });

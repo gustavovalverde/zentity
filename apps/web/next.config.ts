@@ -53,6 +53,9 @@ const nextConfig: NextConfig = {
   // Mark packages as external for server-side usage
   // These are loaded at runtime from node_modules, not bundled
   serverExternalPackages: [
+    // Node preserves SimpleWebAuthn's initialization order for X.509 metadata.
+    "@simplewebauthn/server",
+
     // Face detection & ML (native .node bindings)
     "@vladmandic/human",
     "@tensorflow/tfjs-node",

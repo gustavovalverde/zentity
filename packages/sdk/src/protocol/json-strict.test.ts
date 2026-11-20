@@ -85,6 +85,10 @@ describe("decodeBase64UrlJsonStrict", () => {
 			"Duplicate JSON key",
 		);
 	});
+
+	it("rejects malformed base64url input", () => {
+		expect(() => decodeBase64UrlJsonStrict("%%%")).toThrow();
+	});
 });
 
 describe("decodeJwtHeaderStrict", () => {

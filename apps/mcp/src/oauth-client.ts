@@ -59,6 +59,7 @@ function getMcpInstalledClientAuth(): InstalledClientAuth {
       issuerUrl: config.zentityUrl,
       loginResource: config.zentityUrl,
       loginScope: INSTALLED_AGENT_LOGIN_SCOPES.join(" "),
+      privateKeyJwt: true,
       ...(config.openBrowser
         ? {}
         : {

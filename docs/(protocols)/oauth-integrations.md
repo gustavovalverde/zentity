@@ -76,6 +76,29 @@ The endpoints below cluster by lifecycle stage: discovery, authorization, token 
 
 The endpoints above define the protocol surface. The next section traces the three authorization paths that traverse these endpoints, each optimized for a different client context.
 
+## Upgrade from Better Auth beta.10
+
+Apply the web schema to the deployment database before starting the beta.11 web release.
+
+```sh
+cd apps/web
+pnpm db:push
+```
+
+The schema adds `actor` and `approved_via_consent` to `ciba_request` and `access_token_format` to `oauth_resource`. It also permits null in `oauth_client.dpop_bound_access_tokens` so a refreshed client metadata document can clear that optional value.
+
+Review existing resource rows before rollout. Beta.11 treats an empty stored `allowed_scopes` list as unrestricted. Disable any resource where an empty list was intended to deny access.
+
+On startup, Zentity seeds its configured resources in merge mode. The configured app origin becomes an opaque-token resource, while fields the config does not specify, such as admin metadata and resource policy, are preserved. Resource rows outside the configured list keep their saved policy and use JWT access tokens when no explicit token format is set. Existing client and consent rows can be migrated in place.
+
+During a rolling upgrade, an outstanding pairwise authorization code for proof-only scopes issued by beta.10 may return `consent revoked` when redeemed on beta.11. Beta.10 removed that consent as soon as the user approved. Starting a fresh authorization on beta.11 preserves the temporary consent through redemption.
+
+Confidential beta.10 CIBA clients can keep their registrations and credentials. A public CIBA client, including one registered with `token_endpoint_auth_method: "none"`, must be replaced by a confidential registration before it can poll beta.11. Update that client to authenticate at both the backchannel and token endpoints.
+
+An approved beta.10 CIBA request can still be polled with its original `auth_req_id`, client authentication, and DPoP proof. The beta.11 token path fills a missing actor from the stored request and approval before the provider consumes the request. Successful issuance consumes the request as before.
+
+For CIBA assurance step-up, update clients to handle HTTP 403 `insufficient_authorization` with `auth_session`. A confidential client marked by an administrator as both `first_party` and `skip_consent` can continue at the Authorization Challenge Endpoint with that handle and a new PKCE challenge, using the poll's DPoP key. After each challenge response, the client replaces its prior handle with the returned `auth_session`. Requests containing `authorization_details` cannot use this code-based step-up and receive `interaction_required`.
+
 ## Authorization Flows
 
 Zentity supports three authorization paths. All require DPoP and produce the same token format. They differ in where the user is present: in the RP's browser (interactive), at a CLI (first-party challenge), or on a separate device (CIBA).
@@ -190,7 +213,7 @@ Every response carries `Cache-Control: no-store`. Only an HMAC of each `auth_ses
 
 **Sessions**: each sign-in creates a session that lasts 24 hours and records an `authentication_contexts` row with `sourceKind` `authorize_challenge_opaque` or `authorize_challenge_eip712`, which supplies the ID token's `amr`. The provider treats tokens whose session has ended as inactive, so the session lifetime also bounds the tokens.
 
-**Step-up at the token endpoint**: when a CIBA token poll fails the request's `acr_values`, Zentity calls the plugin's `challengeFirstPartyStepUp` for the CIBA request's client. A confidential first-party client gets HTTP 403 `{ error: "insufficient_authorization", auth_session }`, bound to the poll's DPoP key. The client presents that `auth_session` with a new PKCE challenge at the challenge endpoint, signs the user in again, and redeems the code for tokens once the tier requirement is met. The CIBA grant has no session or DPoP binding of its own, so a public client gets 400 `interaction_required`. A CIBA request with `authorization_details`, such as a payment approval, also gets `interaction_required`, because an authorization code cannot carry them.
+**Step-up at the token endpoint**: when a CIBA token poll fails the request's `acr_values`, Zentity calls `challengeFirstPartyStepUpFromIssuance` with the client and DPoP binding the provider verified for that poll. A confidential first-party client gets HTTP 403 `{ error: "insufficient_authorization", auth_session }`, bound to the poll's DPoP key. The client presents that `auth_session` with a new PKCE challenge at the challenge endpoint, signs the user in again, and redeems the code for tokens once the tier requirement is met. The provider requires client authentication for CIBA. A client that cannot use first-party step-up gets `interaction_required`. A CIBA request with `authorization_details`, such as a payment approval, also gets `interaction_required`, because an authorization code cannot carry them.
 
 **Abuse limits**: 10 requests per minute per IP, three failed responses per `auth_session` before `redirect_to_web`, and ten failed responses per account and method in 15 minutes. A locked account answers `authentication_failed` even for a correct credential, so a guesser cannot tell the lock from a wrong guess. The per-IP limit uses Better Auth's rate limiter, which keeps its counters in memory on each instance; the other limits live in the database. Each challenge request deletes `auth_session` rows past their expiry and failure counters whose 15-minute window has passed, so abandoned flows do not build up.
 
@@ -214,24 +237,24 @@ sequenceDiagram
   AS-->>Agent: { token_endpoint, backchannel_authentication_endpoint, dpop_signing_alg_values_supported }
 
   Note over Agent,AS: Client Registration
-  Agent->>AS: POST /oauth2/register { grant_types: ["ciba"], backchannel_token_delivery_mode: "poll", token_endpoint_auth_method: "none" }
+  Agent->>AS: POST /oauth2/register { grant_types: ["ciba"], backchannel_token_delivery_mode: "poll", token_endpoint_auth_method: "private_key_jwt", jwks }
   AS-->>Agent: { client_id }
 
   Note over Agent: Registered agent runtimes pre-establish a durable host and fresh agent session
   Note over Agent,AS: Backchannel Authorize
-  Agent->>AS: POST /oauth2/bc-authorize { client_id, login_hint, scope, binding_message, authorization_details } + Agent-Assertion
+  Agent->>AS: POST /oauth2/bc-authorize { client_id, login_hint, scope, binding_message, authorization_details, client_assertion_type, client_assertion } + Agent-Assertion
   AS->>Notify: Push notification + email with approval link
   AS-->>Agent: { auth_req_id, expires_in: 300, interval: 5 }
 
   Note over Agent,AS: Token Polling
   Agent->>Agent: Generate ephemeral ES256 keypair
   loop Every interval seconds
-    Agent->>AS: POST /oauth2/token { grant_type=ciba, auth_req_id } + DPoP proof
+    Agent->>AS: POST /oauth2/token { grant_type=ciba, auth_req_id, client_assertion_type, client_assertion } + DPoP proof
     AS-->>Agent: 400 { error: "authorization_pending" }
   end
 
   User->>AS: Approve via dashboard / push notification
-  Agent->>AS: POST /oauth2/token + DPoP proof
+  Agent->>AS: POST /oauth2/token + fresh client assertion and DPoP proof
   AS-->>Agent: 200 { access_token, id_token, token_type: "DPoP", oversight }
 
   Note over Agent,RS: Use tokens
@@ -468,14 +491,15 @@ Signing keys are managed by the Better Auth `jwt` plugin. Each algorithm's key i
 
 ### Client registration
 
-Relying parties and agents register via RFC 7591 Dynamic Client Registration. CIBA clients register as public clients (`token_endpoint_auth_method: "none"`). Every registered client gets pairwise subjects: dynamic registration sets `subject_type: "pairwise"` when it is absent and refuses `"public"` with `invalid_client_metadata`, and a client created through `/oauth2/create-client`, which takes no `subject_type`, is made pairwise after creation, with its redirect URIs held to the same pairwise rules. The one confidential client Zentity operates itself, the MCP HTTP server's, is provisioned through the provider's administration APIs instead: `pnpm --filter @zentity/web mcp:provision` creates or updates it (token exchange and CIBA grants, `client_secret_basic`, `skip_consent`, a pairwise subject, and a link to `MCP_PUBLIC_URL`) and prints the resource and database it targets, then `MCP_CLIENT_ID` and, when new or rotated with `--rotate-secret`, `MCP_CLIENT_SECRET`. In production it refuses an `MCP_PUBLIC_URL` that is not HTTPS to a public host, such as a loopback, private, or internal address. The provider's administration APIs act only for a signed-in user and change only clients that user owns, so the script creates a credential-less owner account with each client, under the reserved `zentity.invalid` domain that sign-up refuses, and signs it in only for each run. It never reuses an existing account as an owner, and it refuses an `MCP_CLIENT_ID` whose client it did not create.
+Relying parties and agents register via RFC 7591 Dynamic Client Registration. CIBA clients authenticate at both the backchannel and token endpoints. The installed MCP client registers a per-installation public key and authenticates with `private_key_jwt`. Server-held clients can use `client_secret_basic`. Existing public CIBA clients must register again and use the new client for sign-in and approvals. Every registered client gets pairwise subjects: dynamic registration sets `subject_type: "pairwise"` when it is absent and refuses `"public"` with `invalid_client_metadata`, and a client created through `/oauth2/create-client`, which takes no `subject_type`, is made pairwise after creation, with its redirect URIs held to the same pairwise rules. The MCP HTTP server’s confidential client is provisioned through the provider's administration APIs instead: `pnpm --filter @zentity/web mcp:provision` creates or updates it (token exchange and CIBA grants, `client_secret_basic`, `skip_consent`, a pairwise subject, and a link to `MCP_PUBLIC_URL`) and prints the resource and database it targets, then `MCP_CLIENT_ID` and, when new or rotated with `--rotate-secret`, `MCP_CLIENT_SECRET`. In production it refuses an `MCP_PUBLIC_URL` that is not HTTPS to a public host, such as a loopback, private, or internal address. The provider's administration APIs act only for a signed-in user and change only clients that user owns, so the script creates a credential-less owner account with each client, under the reserved `zentity.invalid` domain that sign-up refuses, and signs it in only for each run. It never reuses an existing account as an owner, and it refuses an `MCP_CLIENT_ID` whose client it did not create.
 
 ```json
 {
   "client_name": "My Agent",
-  "redirect_uris": ["http://localhost/callback"],
+  "redirect_uris": ["https://agent.example/callback"],
   "scope": "openid",
-  "token_endpoint_auth_method": "none",
+  "token_endpoint_auth_method": "client_secret_basic",
+  "backchannel_token_delivery_mode": "poll",
   "grant_types": ["urn:openid:params:grant-type:ciba"]
 }
 ```

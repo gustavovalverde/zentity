@@ -30,6 +30,8 @@ import {
   createTestUser,
   hashCibaAuthReqId,
   resetDatabase,
+  TEST_CIBA_CLIENT_SECRET,
+  testCibaClientCredentials,
 } from "@/test-utils/db-test-utils";
 import { postTokenWithDpop } from "@/test-utils/dpop-test-utils";
 import { TestAuthenticator } from "@/test-utils/webauthn-test-utils";
@@ -57,7 +59,7 @@ async function createTestClient() {
       name: "Step-Up CIBA Test",
       redirectUris: JSON.stringify(["http://localhost/callback"]),
       grantTypes: JSON.stringify([CIBA_GRANT_TYPE]),
-      tokenEndpointAuthMethod: "none",
+      ...testCibaClientCredentials,
     })
     .run();
 }
@@ -97,7 +99,7 @@ async function createPollClient() {
       name: "Step-Up CIBA Poll Test",
       redirectUris: JSON.stringify(["http://localhost/callback"]),
       grantTypes: JSON.stringify([CIBA_GRANT_TYPE]),
-      tokenEndpointAuthMethod: "none",
+      ...testCibaClientCredentials,
       metadata: JSON.stringify({ backchannel_token_delivery_mode: "poll" }),
     })
     .run();
@@ -108,7 +110,10 @@ async function postBcAuthorize(body: Record<string, string>) {
     new Request(BC_AUTHORIZE_URL, {
       method: "POST",
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body: new URLSearchParams(body),
+      body: new URLSearchParams({
+        client_secret: TEST_CIBA_CLIENT_SECRET,
+        ...body,
+      }),
     })
   );
   return {
@@ -357,6 +362,7 @@ describe("CIBA step-up: acr_values sent to bc-authorize", () => {
       .run();
     const { status, json } = await postTokenWithDpop({
       grant_type: CIBA_GRANT_TYPE,
+      client_secret: TEST_CIBA_CLIENT_SECRET,
       auth_req_id: authReqId,
       client_id: POLL_CLIENT_ID,
     });
@@ -394,6 +400,7 @@ describe("CIBA step-up: acr_values at token exchange (safety net)", () => {
 
     const { status, json } = await postTokenWithDpop({
       grant_type: CIBA_GRANT_TYPE,
+      client_secret: TEST_CIBA_CLIENT_SECRET,
       auth_req_id: authReqId,
       client_id: TEST_CLIENT_ID,
     });
@@ -413,6 +420,7 @@ describe("CIBA step-up: acr_values at token exchange (safety net)", () => {
 
     const { status, json } = await postTokenWithDpop({
       grant_type: CIBA_GRANT_TYPE,
+      client_secret: TEST_CIBA_CLIENT_SECRET,
       auth_req_id: authReqId,
       client_id: TEST_CLIENT_ID,
     });
@@ -429,6 +437,7 @@ describe("CIBA step-up: acr_values at token exchange (safety net)", () => {
 
     const { status, json } = await postTokenWithDpop({
       grant_type: CIBA_GRANT_TYPE,
+      client_secret: TEST_CIBA_CLIENT_SECRET,
       auth_req_id: authReqId,
       client_id: TEST_CLIENT_ID,
     });
@@ -446,6 +455,7 @@ describe("CIBA step-up: acr_values at token exchange (safety net)", () => {
 
     const { status, json } = await postTokenWithDpop({
       grant_type: CIBA_GRANT_TYPE,
+      client_secret: TEST_CIBA_CLIENT_SECRET,
       auth_req_id: authReqId,
       client_id: TEST_CLIENT_ID,
     });
@@ -491,8 +501,11 @@ describe("CIBA step-up: first-party client (FPA) path", () => {
       client_secret: FPA_CLIENT_SECRET,
     });
 
-    expect(status).toBe(403);
-    expect(json.error).toBe("insufficient_authorization");
+    expect({
+      status,
+      error: json.error,
+      description: json.error_description,
+    }).toMatchObject({ status: 403, error: "insufficient_authorization" });
     expect(json.auth_session).toBeTypeOf("string");
     expect(json.error_description).toContain("tier-0");
 
@@ -530,14 +543,14 @@ describe("CIBA step-up: first-party client (FPA) path", () => {
     });
 
     expect(status).toBe(400);
-    expect(json.error).toBe("invalid_client");
+    expect(json.error).toBe("invalid_grant");
     expect(json.auth_session).toBeUndefined();
     expect(await db.select().from(firstPartyAuthSessions).all()).toHaveLength(
       0
     );
   });
 
-  it("a public first-party client gets interaction_required, since the CIBA grant has no session or DPoP binding", async () => {
+  it("a public first-party client cannot poll for a CIBA request", async () => {
     await createFirstPartyClient(PUBLIC_FPA_CLIENT_ID, {
       clientSecret: null,
       tokenEndpointAuthMethod: "none",
@@ -556,7 +569,7 @@ describe("CIBA step-up: first-party client (FPA) path", () => {
     });
 
     expect(status).toBe(400);
-    expect(json.error).toBe("interaction_required");
+    expect(json.error).toBe("invalid_client");
     expect(json.auth_session).toBeUndefined();
   });
 
@@ -596,6 +609,7 @@ describe("CIBA step-up: first-party client (FPA) path", () => {
 
     const { status, json } = await postTokenWithDpop({
       grant_type: CIBA_GRANT_TYPE,
+      client_secret: TEST_CIBA_CLIENT_SECRET,
       auth_req_id: authReqId,
       client_id: TEST_CLIENT_ID,
     });
@@ -750,6 +764,7 @@ describe("CIBA approval ceremony", () => {
     );
     const { status, json } = await postTokenWithDpop({
       grant_type: CIBA_GRANT_TYPE,
+      client_secret: TEST_CIBA_CLIENT_SECRET,
       auth_req_id: authReqId,
       client_id: POLL_CLIENT_ID,
     });

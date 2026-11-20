@@ -1,10 +1,11 @@
+import type { JWK } from "jose";
 import { z } from "zod";
 import { AGENT_SESSION_INACTIVE_DESCRIPTION } from "./agent-contract";
 import {
-	AAP_CLAIMS_VERSION,
-	type AccessTokenDelegationClaim,
-	type AccessTokenOversightClaim,
-	type CapabilityClaim,
+  AAP_CLAIMS_VERSION,
+  type AccessTokenDelegationClaim,
+  type AccessTokenOversightClaim,
+  type CapabilityClaim,
 } from "./protocol/claims";
 import type { DpopClient } from "./rp/dpop-client";
 import { authenticateClientRequest } from "./rp/token-request";
@@ -35,10 +36,7 @@ const delegationSchema = z.object({
 
 // A member this SDK does not understand must not fail the token response.
 const cibaTokenResponseSchema = z.object({
-  aap_claims_version: z
-    .literal(AAP_CLAIMS_VERSION)
-    .optional()
-    .catch(undefined),
+  aap_claims_version: z.literal(AAP_CLAIMS_VERSION).optional().catch(undefined),
   access_token: z.string().min(1),
   authorization_details: z.array(z.unknown()).optional(),
   capabilities: z.array(capabilitySchema).optional().catch(undefined),
@@ -85,6 +83,7 @@ export interface CibaRequest {
   authorizationDetails?: unknown[];
   bindingMessage: string;
   cibaEndpoint: string;
+  clientAssertionAudience?: string | undefined;
   clientId: string;
   /** For a confidential client: sent as `client_secret_basic`. */
   clientSecret?: string | undefined;
@@ -94,8 +93,11 @@ export interface CibaRequest {
   onPendingApproval?:
     | ((pending: CibaPendingApproval) => Promise<void> | void)
     | undefined;
+  /** Per-install key registered through the client's public JWKS. */
+  privateJwk?: JWK | undefined;
   resource?: string | undefined;
   scope: string;
+  signingAlgorithm?: "ES256" | undefined;
   tokenEndpoint: string;
 }
 
@@ -196,7 +198,7 @@ export async function beginCibaApproval(
   const headers: Record<string, string> = {
     "Content-Type": "application/x-www-form-urlencoded",
   };
-  authenticateClientRequest(params, body, headers);
+  await authenticateClientRequest(params, body, headers, params.cibaEndpoint);
   if (params.agentAssertion) {
     headers["Agent-Assertion"] = params.agentAssertion;
   }
@@ -205,6 +207,17 @@ export async function beginCibaApproval(
     method: "POST",
     headers,
     body,
+    ...(params.privateJwk
+      ? {
+          onNonceRetry: () =>
+            authenticateClientRequest(
+              params,
+              body,
+              headers,
+              params.cibaEndpoint
+            ),
+        }
+      : {}),
     ...(params.fetch ? { fetch: params.fetch } : {}),
   });
 
@@ -228,7 +241,14 @@ export async function beginCibaApproval(
 
 type CibaPollParams = Pick<
   CibaRequest,
-  "clientId" | "clientSecret" | "dpopClient" | "fetch" | "tokenEndpoint"
+  | "clientId"
+  | "clientSecret"
+  | "privateJwk"
+  | "signingAlgorithm"
+  | "clientAssertionAudience"
+  | "dpopClient"
+  | "fetch"
+  | "tokenEndpoint"
 >;
 
 export async function pollCibaToken(
@@ -258,7 +278,7 @@ export async function pollCibaToken(
   throw new CibaTimeoutError();
 }
 
-function requestCibaToken(
+async function requestCibaToken(
   params: CibaPollParams,
   pendingAuthorization: CibaPendingAuthorization
 ): Promise<Response> {
@@ -269,11 +289,22 @@ function requestCibaToken(
   const headers: Record<string, string> = {
     "Content-Type": "application/x-www-form-urlencoded",
   };
-  authenticateClientRequest(params, body, headers);
+  await authenticateClientRequest(params, body, headers, params.tokenEndpoint);
   return params.dpopClient.fetch(params.tokenEndpoint, {
     method: "POST",
     headers,
     body,
+    ...(params.privateJwk
+      ? {
+          onNonceRetry: () =>
+            authenticateClientRequest(
+              params,
+              body,
+              headers,
+              params.tokenEndpoint
+            ),
+        }
+      : {}),
     ...(params.fetch ? { fetch: params.fetch } : {}),
   });
 }
@@ -312,9 +343,7 @@ export async function pollCibaTokenOnce(
   }
 }
 
-export function logPendingApprovalHandoff(
-  pending: CibaPendingApproval
-): void {
+export function logPendingApprovalHandoff(pending: CibaPendingApproval): void {
   console.error(`[ciba] Approval required: ${pending.approvalUrl}`);
   console.error(
     `[ciba] Expires in ${pending.expiresIn}s; polling every ${pending.intervalSeconds}s`

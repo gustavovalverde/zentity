@@ -1,4 +1,5 @@
 import http from "node:http";
+import { decodeJwt, exportJWK, generateKeyPair } from "jose";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { authenticateWithLoopbackBrowser } from "./loopback-browser";
 
@@ -161,10 +162,12 @@ describe("authenticateWithLoopbackBrowser", () => {
     const parCall = fetchSpy.mock.calls.find(([url]) =>
       String(url).includes("/oauth2/par")
     );
-    expect(parCall).toBeDefined();
+    if (!parCall) {
+      throw new Error("PAR request was not sent");
+    }
 
     const body = new URLSearchParams(
-      (parCall?.[1] as RequestInit).body as string
+      (parCall[1] as RequestInit).body as string
     );
     expect(body.get("resource")).toBe("http://localhost:3000");
     expect(extractOpenedUrl().searchParams.get("request_uri")).toBe(
@@ -174,6 +177,65 @@ describe("authenticateWithLoopbackBrowser", () => {
     const redirectUri = body.get("redirect_uri");
     expect(redirectUri).toBeTruthy();
     const port = Number.parseInt(new URL(redirectUri as string).port, 10);
+    await httpGet(`http://127.0.0.1:${port}/callback?code=browser-code`);
+    await resultPromise;
+  });
+
+  it("refreshes a private-key assertion before retrying a PAR nonce challenge", async () => {
+    const { privateKey } = await generateKeyPair("ES256", {
+      extractable: true,
+    });
+    const privateJwk = await exportJWK(privateKey);
+    const assertions: string[] = [];
+    let redirectUri: string | null = null;
+    mockDpopClient.fetch.mockImplementationOnce(async (_url, init) => {
+      const request = init as RequestInit & {
+        onNonceRetry?: () => Promise<void> | void;
+      };
+      const body = request.body as URLSearchParams;
+      redirectUri = body.get("redirect_uri");
+      assertions.push(body.get("client_assertion") ?? "");
+      await request.onNonceRetry?.();
+      assertions.push(body.get("client_assertion") ?? "");
+      return new Response(JSON.stringify({ request_uri: "urn:par:retry" }), {
+        status: 201,
+      });
+    });
+    mockExchangeAuthorizationCode.mockResolvedValue({
+      accessToken: "browser-access-token",
+      expiresAt: Date.now() + 3_600_000,
+      scopes: ["openid"],
+    });
+
+    const resultPromise = authenticateWithLoopbackBrowser({
+      authorizeEndpoint: "http://localhost:3000/api/auth/oauth2/authorize",
+      clientId: "client-1",
+      clientAuthentication: {
+        clientId: "client-1",
+        privateJwk,
+        signingAlgorithm: "ES256",
+        clientAssertionAudience: "http://localhost:3000/api/auth",
+      },
+      dpopClient: mockDpopClient,
+      exchangeAuthorizationCode: mockExchangeAuthorizationCode,
+      parEndpoint: "http://localhost:3000/api/auth/oauth2/par",
+      pkce: {
+        codeVerifier: "verifier",
+        codeChallenge: "challenge",
+        codeChallengeMethod: "S256",
+      },
+      scope: "openid",
+    });
+
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(assertions).toHaveLength(2);
+    expect(decodeJwt(assertions[0] as string).jti).not.toBe(
+      decodeJwt(assertions[1] as string).jti
+    );
+    if (!redirectUri) {
+      throw new Error("PAR request missing redirect_uri");
+    }
+    const port = Number.parseInt(new URL(redirectUri).port, 10);
     await httpGet(`http://127.0.0.1:${port}/callback?code=browser-code`);
     await resultPromise;
   });

@@ -77,22 +77,27 @@ export async function startMockFacilitator(
 /** The x402 scenario client and the user's subject at it, from demo-rp's database. */
 export async function readX402Client(): Promise<{
   clientId: string;
+  clientSecret: string;
   loginHint: string;
 }> {
   const db = createClient({ url: `file:${demoRpDbPath}` });
   try {
     const client = await db.execute(
-      "SELECT clientId FROM dcr_client WHERE scenarioId = 'x402'"
+      "SELECT clientId, clientSecret FROM dcr_client WHERE scenarioId = 'x402'"
     );
     const account = await db.execute(
       "SELECT accountId FROM account WHERE providerId = 'zentity-x402' ORDER BY createdAt DESC LIMIT 1"
     );
     const clientId = client.rows[0]?.clientId;
+    const clientSecret = client.rows[0]?.clientSecret;
     const loginHint = account.rows[0]?.accountId;
     if (typeof clientId !== "string" || typeof loginHint !== "string") {
       throw new Error("Sign in to the x402 scenario before running the agent");
     }
-    return { clientId, loginHint };
+    if (typeof clientSecret !== "string" || !clientSecret) {
+      throw new Error("The x402 client registration has no client secret");
+    }
+    return { clientId, clientSecret, loginHint };
   } finally {
     db.close();
   }
@@ -106,9 +111,10 @@ export async function runX402Agent(input: {
   onPendingApproval: (authReqId: string) => Promise<void>;
   url: string;
 }): Promise<Response> {
-  const { clientId, loginHint } = await readX402Client();
+  const { clientId, clientSecret, loginHint } = await readX402Client();
   const agent = createAgent({
     clientId,
+    clientAuth: { clientSecret },
     dpopClient: await createDpopClient(),
     issuerUrl: `${issuerBaseURL}/api/auth`,
     loginHint,

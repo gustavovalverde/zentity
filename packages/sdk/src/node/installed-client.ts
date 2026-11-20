@@ -1,3 +1,4 @@
+import type { JWK } from "jose";
 import {
   createFirstPartyAuth,
   type ExchangeTokenResult,
@@ -17,6 +18,11 @@ const AUTH_ISSUER_SUFFIX_RE = /\/api\/auth\/?$/;
 type MaybePromise<T> = Promise<T> | T;
 
 export interface InstalledClientCredentials {
+  clientAuth?: {
+    clientAssertionAudience: string;
+    privateJwk: JWK;
+    signingAlgorithm: "ES256";
+  };
   clientId: string;
   dpopKey: DpopKeyPair;
 }
@@ -24,6 +30,11 @@ export interface InstalledClientCredentials {
 export interface InstalledOAuthSession {
   accessToken: string;
   accountSub: string;
+  clientAuth?: {
+    clientAssertionAudience: string;
+    privateJwk: JWK;
+    signingAlgorithm: "ES256";
+  };
   clientId: string;
   dpopKey: DpopKeyPair;
   scopes: string[];
@@ -37,6 +48,7 @@ export interface CreateInstalledClientAuthOptions {
   /** Every scope the app needs, including scopes only `exchangeLoginToken` requests. */
   loginScope: string;
   openUrl?: (url: string) => MaybePromise<void>;
+  privateKeyJwt?: boolean;
   storage: FirstPartyAuthStorage;
 }
 
@@ -82,10 +94,21 @@ async function readClientCredentials(
   clientId: string
 ): Promise<InstalledClientCredentials> {
   await auth.getOrCreateDpopClient();
+  const discovery = await auth.discover();
   const authState = await auth.loadState();
   return {
     clientId,
     dpopKey: requireDpopKey(authState),
+    ...(authState?.clientAuthMethod === "private_key_jwt" &&
+    authState.clientAuthKeyPair?.privateJwk
+      ? {
+          clientAuth: {
+            privateJwk: authState.clientAuthKeyPair.privateJwk,
+            signingAlgorithm: "ES256" as const,
+            clientAssertionAudience: discovery.issuer,
+          },
+        }
+      : {}),
   };
 }
 
@@ -118,6 +141,7 @@ export function createInstalledClientAuth(
   }): Promise<InstalledClientCredentials> {
     const clientId = await auth.ensureClientRegistration({
       request: options.clientRegistrationRequest,
+      ...(options.privateKeyJwt ? { privateKeyJwt: true } : {}),
       ...(optionsOverride?.forceClientRegistration ? { force: true } : {}),
     });
 
@@ -149,6 +173,9 @@ export function createInstalledClientAuth(
       clientId: clientCredentials.clientId,
       dpopKey: clientCredentials.dpopKey,
       scopes: (await auth.loadState())?.scopes ?? [],
+      ...(clientCredentials.clientAuth
+        ? { clientAuth: clientCredentials.clientAuth }
+        : {}),
     };
   }
 
@@ -161,6 +188,14 @@ export function createInstalledClientAuth(
     return authenticateWithLoopbackBrowser({
       authorizeEndpoint: discovery.authorization_endpoint,
       clientId: clientCredentials.clientId,
+      ...(clientCredentials.clientAuth
+        ? {
+            clientAuthentication: {
+              clientId: clientCredentials.clientId,
+              ...clientCredentials.clientAuth,
+            },
+          }
+        : {}),
       dpopClient: await auth.getOrCreateDpopClient(),
       exchangeAuthorizationCode(exchangeOptions) {
         return auth.exchangeAuthorizationCode(exchangeOptions);

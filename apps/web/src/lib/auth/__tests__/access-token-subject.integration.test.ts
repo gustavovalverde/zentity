@@ -22,6 +22,8 @@ import {
   createTestCibaRequest,
   createTestUser,
   resetDatabase,
+  TEST_CIBA_CLIENT_SECRET,
+  testCibaClientCredentials,
 } from "@/test-utils/db-test-utils";
 import { postTokenWithDpop } from "@/test-utils/dpop-test-utils";
 
@@ -62,6 +64,7 @@ async function mintMcpAccessToken(userId: string): Promise<string> {
     grant_type: CIBA_GRANT_TYPE,
     auth_req_id: authReqId,
     client_id: CLIENT_ID,
+    client_secret: TEST_CIBA_CLIENT_SECRET,
   });
   if (status !== 200) {
     throw new Error(`CIBA token request failed: ${JSON.stringify(json)}`);
@@ -86,7 +89,7 @@ describe("access token subjects", () => {
         name: "Pairwise Agent",
         redirectUris: JSON.stringify([REDIRECT_URI]),
         grantTypes: JSON.stringify(["authorization_code", CIBA_GRANT_TYPE]),
-        tokenEndpointAuthMethod: "none",
+        ...testCibaClientCredentials,
         subjectType: "pairwise",
         metadata: JSON.stringify({ backchannel_token_delivery_mode: "poll" }),
       })
@@ -175,6 +178,7 @@ describe("access token subjects", () => {
     ] as const) {
       const { status, json } = await postForm("/oauth2/bc-authorize", {
         client_id: CLIENT_ID,
+        client_secret: TEST_CIBA_CLIENT_SECRET,
         scope: "openid",
         login_hint: pairwiseSub as string,
         resource,
@@ -198,6 +202,7 @@ describe("access token subjects", () => {
 
     const { status, json } = await postForm("/oauth2/bc-authorize", {
       client_id: CLIENT_ID,
+      client_secret: TEST_CIBA_CLIENT_SECRET,
       scope: "openid",
       login_hint: pairwiseSub,
     });
@@ -214,6 +219,7 @@ describe("access token subjects", () => {
   it("rejects another client's pairwise subject as a CIBA login hint", async () => {
     const { status } = await postForm("/oauth2/bc-authorize", {
       client_id: CLIENT_ID,
+      client_secret: TEST_CIBA_CLIENT_SECRET,
       scope: "openid",
       login_hint: await computePairwiseSub(
         userId,
@@ -236,6 +242,7 @@ describe("access token subjects", () => {
       grant_type: CIBA_GRANT_TYPE,
       auth_req_id: authReqId,
       client_id: CLIENT_ID,
+      client_secret: TEST_CIBA_CLIENT_SECRET,
     });
 
     expect(status).toBe(200);

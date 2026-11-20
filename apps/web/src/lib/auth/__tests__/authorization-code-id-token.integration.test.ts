@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 
 import { createAuthenticationContext } from "@/lib/auth/auth-context";
 import {
+  authorizationCodeGrantIdFor,
   claimsRequestForEndpoint,
   loadReleaseContext,
   releaseIdFor,
@@ -12,6 +13,7 @@ import {
 import { db } from "@/lib/db/connection";
 import { sessions, verifications } from "@/lib/db/schema/auth";
 import { oauthClients } from "@/lib/db/schema/oauth-provider";
+import { seedTestCodeConsent } from "@/test-utils/authorization-code-test-utils";
 import { createTestUser, resetDatabase } from "@/test-utils/db-test-utils";
 import { postTokenWithDpop } from "@/test-utils/dpop-test-utils";
 
@@ -96,6 +98,12 @@ describe("authorization_code id_token claims filtering", () => {
       })
       .run();
 
+    await seedTestCodeConsent({
+      clientId: TEST_CLIENT_ID,
+      referenceId: TEST_REFERENCE_ID,
+      scope: "openid",
+      userId,
+    });
     await db
       .insert(verifications)
       .values({
@@ -141,7 +149,9 @@ describe("authorization_code id_token claims filtering", () => {
 
     const releaseContext = await loadReleaseContext(
       releaseIdFor(
-        await hashStoredAuthorizationCode(authorizationCode),
+        authorizationCodeGrantIdFor(
+          await hashStoredAuthorizationCode(authorizationCode)
+        ),
         TEST_CLIENT_ID
       )
     );

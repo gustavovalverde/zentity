@@ -296,6 +296,7 @@ export function filterClaimsByRequest(
 const CONSENT_HMAC_CONTEXT = "zentity-consent-scope";
 
 const CONSENT_REFERENCE_CONTEXT = "zentity-consent-reference";
+export const PAIRWISE_PROOF_CONSENT_REFERENCE_PREFIX = "pairwise-proof-v1:";
 
 /**
  * The reference a consent is stored under, which the provider also copies into
@@ -308,15 +309,29 @@ const CONSENT_REFERENCE_CONTEXT = "zentity-consent-reference";
  */
 export function computeConsentReferenceId(
   secret: string,
-  input: { clientId: string; scopes: readonly string[]; sessionId: string }
+  input: {
+    clientId: string;
+    codeChallenge?: string;
+    scopes: readonly string[];
+    sessionId: string;
+  }
 ): string {
-  const aad = encodeAad([
+  const aadParts = [
     CONSENT_REFERENCE_CONTEXT,
     input.clientId,
     input.sessionId,
     [...input.scopes].sort().join(" "),
-  ]);
-  return createHmac("sha256", secret).update(aad).digest("base64url");
+  ];
+  if (input.codeChallenge) {
+    aadParts.push("authorization-code", input.codeChallenge);
+  }
+  const aad = encodeAad(aadParts);
+  const reference = createHmac("sha256", secret)
+    .update(aad)
+    .digest("base64url");
+  return input.codeChallenge
+    ? `${PAIRWISE_PROOF_CONSENT_REFERENCE_PREFIX}${reference}`
+    : reference;
 }
 
 /**
@@ -340,4 +355,16 @@ export function computeConsentHmac(
     sortedScopes,
   ]);
   return createHmac("sha256", secret).update(aad).digest("hex");
+}
+
+export function consentScopesMatchApproved(
+  persistedScopes: readonly string[],
+  approvedScopes: readonly string[]
+): boolean {
+  const persisted = [...persistedScopes].sort();
+  const approved = [...approvedScopes].sort();
+  return (
+    persisted.length === approved.length &&
+    persisted.every((scope, index) => scope === approved[index])
+  );
 }

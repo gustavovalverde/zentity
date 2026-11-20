@@ -2,25 +2,27 @@ import {
   client as opaqueClient,
   ready as opaqueReady,
 } from "@serenity-kit/opaque";
+import { exportJWK, generateKeyPair, type JWK } from "jose";
 import { z } from "zod";
 import type { SdkErrorCode } from "../protocol/claims";
 import {
   createDpopClientFromKeyPair,
-  generateDpopKeyPair,
   type DpopClient,
   type DpopKeyPair,
+  generateDpopKeyPair,
 } from "../rp/dpop-client";
-import { createDiscoveryResolver, type FirstPartyAuthDiscoveryDocument } from "./discovery";
+import { requestTokenEndpoint } from "../rp/token-request";
 import {
+  createDiscoveryResolver,
+  type FirstPartyAuthDiscoveryDocument,
+} from "./discovery";
+import {
+  type ExchangeTokenResult,
   exchangeAuthorizationCode,
   exchangeToken,
-  type ExchangeTokenResult,
   type TokenResult,
 } from "./oauth";
-import {
-  generatePkceChallenge,
-  type PkceChallenge,
-} from "./pkce";
+import { generatePkceChallenge, type PkceChallenge } from "./pkce";
 
 type MaybePromise<T> = Promise<T> | T;
 
@@ -31,6 +33,8 @@ export interface StoredFirstPartyAuthState {
   accessToken?: string;
   accountSub?: string;
   authSession?: string;
+  clientAuthKeyPair?: { privateJwk: JWK; publicJwk: JWK };
+  clientAuthMethod?: "private_key_jwt";
   clientId?: string;
   clientSecret?: string;
   dpopKeyPair?: DpopKeyPair;
@@ -56,6 +60,7 @@ export interface CreateFirstPartyAuthOptions {
 
 export interface ClientRegistrationRequest {
   force?: boolean;
+  privateKeyJwt?: boolean;
   request: Record<string, unknown>;
 }
 
@@ -78,8 +83,8 @@ export interface AuthorizationStrategies {
 }
 
 export interface AuthorizeOptions {
-  clientId: string;
   claims?: string;
+  clientId: string;
   /** The user's email address or wallet address, sent as `login_hint`. */
   identifier: string;
   pkce: PkceChallenge;
@@ -112,8 +117,8 @@ export interface StepUpOptions {
 }
 
 export interface AuthorizationCodeResult {
-  authSession: string;
   authorizationCode: string;
+  authSession: string;
   exportKey?: string;
   loginMethod?: "eip712" | "opaque";
 }
@@ -192,7 +197,9 @@ function required<T extends string | object>(
   return value;
 }
 
-function requireChallengeEndpoint(document: FirstPartyAuthDiscoveryDocument): string {
+function requireChallengeEndpoint(
+  document: FirstPartyAuthDiscoveryDocument
+): string {
   if (!document.authorization_challenge_endpoint) {
     throw new Error(
       "Discovery response missing authorization_challenge_endpoint"
@@ -201,7 +208,9 @@ function requireChallengeEndpoint(document: FirstPartyAuthDiscoveryDocument): st
   return document.authorization_challenge_endpoint;
 }
 
-function requireTokenEndpoint(document: FirstPartyAuthDiscoveryDocument): string {
+function requireTokenEndpoint(
+  document: FirstPartyAuthDiscoveryDocument
+): string {
   return document.token_endpoint;
 }
 
@@ -271,7 +280,7 @@ async function readChallengeRound(
       throw new RedirectToWebError({
         ...(body.auth_session ? { authSession: body.auth_session } : {}),
         ...(body.acr_values ? { acrValues: body.acr_values } : {}),
-        ...(body.max_age !== undefined ? { maxAge: body.max_age } : {}),
+        ...(body.max_age === undefined ? {} : { maxAge: body.max_age }),
       });
     }
     if (body.error === "insufficient_authorization" && body.auth_session) {
@@ -314,9 +323,7 @@ function buildAuthenticationResult(
 ): AuthenticationResult {
   return {
     ...token,
-    ...(authorization.exportKey
-      ? { exportKey: authorization.exportKey }
-      : {}),
+    ...(authorization.exportKey ? { exportKey: authorization.exportKey } : {}),
     ...(authorization.loginMethod
       ? { loginMethod: authorization.loginMethod }
       : {}),
@@ -410,7 +417,10 @@ export interface FirstPartyAuth {
     subjectToken: string;
   }): Promise<ExchangeTokenResult>;
   generatePkce(): Promise<PkceChallenge>;
-  getAccessToken(options?: { clientId?: string; resource?: string }): Promise<string>;
+  getAccessToken(options?: {
+    clientId?: string;
+    resource?: string;
+  }): Promise<string>;
   getOrCreateDpopClient(): Promise<DpopClient>;
   loadState(): Promise<StoredFirstPartyAuthState | undefined>;
   resumeAuthorization(
@@ -463,6 +473,25 @@ export function createFirstPartyAuth(
     const next = { ...current, ...updates };
     await saveState(next);
     return next;
+  }
+
+  async function getOrCreateClientAuthKeyPair(
+    enabled: boolean,
+    state: StoredFirstPartyAuthState | undefined
+  ) {
+    if (!enabled) {
+      return;
+    }
+    if (state?.clientAuthKeyPair) {
+      return state.clientAuthKeyPair;
+    }
+
+    const keys = await generateKeyPair("ES256", { extractable: true });
+    const keyPair = {
+      privateJwk: await exportJWK(keys.privateKey),
+      publicJwk: await exportJWK(keys.publicKey),
+    };
+    return keyPair;
   }
 
   async function clearTokens() {
@@ -518,24 +547,54 @@ export function createFirstPartyAuth(
       );
     }
 
-    const registrationFingerprint = stableStringify(request.request);
     const state = await loadState();
+    const authKeyPair = await getOrCreateClientAuthKeyPair(
+      request.privateKeyJwt ?? false,
+      state
+    );
+    const registrationRequest =
+      request.privateKeyJwt && authKeyPair
+        ? {
+            ...request.request,
+            token_endpoint_auth_method: "private_key_jwt",
+            token_endpoint_auth_signing_alg: "ES256",
+            jwks: { keys: [{ ...authKeyPair.publicJwk, alg: "ES256" }] },
+          }
+        : request.request;
+    const registrationFingerprint = stableStringify(registrationRequest);
     if (
       state?.clientId &&
       !request.force &&
       state.registrationMethod === "dcr" &&
       state.registrationFingerprint === registrationFingerprint
     ) {
+      if (request.privateKeyJwt && authKeyPair) {
+        if (state.clientAuthMethod !== "private_key_jwt") {
+          await updateState({
+            clientAuthKeyPair: authKeyPair,
+            clientAuthMethod: "private_key_jwt",
+          });
+        }
+      } else if (state.clientAuthKeyPair || state.clientAuthMethod) {
+        const {
+          clientAuthKeyPair: _clientAuthKeyPair,
+          clientAuthMethod: _clientAuthMethod,
+          ...publicState
+        } = state;
+        await saveState(publicState);
+      }
       return state.clientId;
     }
 
     const response = await fetch(document.registration_endpoint, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(request.request),
+      body: JSON.stringify(registrationRequest),
     });
     if (!response.ok) {
-      throw new Error(`DCR failed: ${response.status} ${await response.text()}`);
+      throw new Error(
+        `DCR failed: ${response.status} ${await response.text()}`
+      );
     }
 
     const body = (await response.json()) as {
@@ -548,6 +607,9 @@ export function createFirstPartyAuth(
 
     const {
       accessToken: _accessToken,
+      clientAuthKeyPair: _clientAuthKeyPair,
+      clientAuthMethod: _clientAuthMethod,
+      clientSecret: _clientSecret,
       expiresAt: _expiresAt,
       refreshToken: _refreshToken,
       ...rest
@@ -556,6 +618,12 @@ export function createFirstPartyAuth(
     await saveState({
       ...rest,
       clientId: body.client_id,
+      ...(request.privateKeyJwt && authKeyPair
+        ? {
+            clientAuthKeyPair: authKeyPair,
+            clientAuthMethod: "private_key_jwt" as const,
+          }
+        : {}),
       ...(typeof body.client_secret === "string"
         ? { clientSecret: body.client_secret }
         : {}),
@@ -707,7 +775,9 @@ export function createFirstPartyAuth(
           ...(authorizeOptions.resource
             ? { resource: authorizeOptions.resource }
             : {}),
-          ...(authorizeOptions.claims ? { claims: authorizeOptions.claims } : {}),
+          ...(authorizeOptions.claims
+            ? { claims: authorizeOptions.claims }
+            : {}),
           ...(authorizeOptions.strategies.wallet?.chainId
             ? { chain_id: String(authorizeOptions.strategies.wallet.chainId) }
             : {}),
@@ -768,16 +838,27 @@ export function createFirstPartyAuth(
     resource?: string;
   }): Promise<TokenResult> {
     const document = await discovery.read();
+    const state = await loadState();
     const dpopClient = await getOrCreateDpopClient();
     const token = await exchangeAuthorizationCode(createOptions.issuerUrl, {
       clientId: exchangeOptions.clientId,
       code: exchangeOptions.code,
       codeVerifier: exchangeOptions.codeVerifier,
       dpopClient,
+      ...(state?.clientAuthMethod === "private_key_jwt" &&
+      state.clientAuthKeyPair?.privateJwk
+        ? {
+            privateJwk: state.clientAuthKeyPair.privateJwk,
+            signingAlgorithm: "ES256" as const,
+            clientAssertionAudience: document.issuer,
+          }
+        : {}),
       ...(exchangeOptions.redirectUri
         ? { redirectUri: exchangeOptions.redirectUri }
         : {}),
-      ...(exchangeOptions.resource ? { resource: exchangeOptions.resource } : {}),
+      ...(exchangeOptions.resource
+        ? { resource: exchangeOptions.resource }
+        : {}),
       tokenEndpoint: requireTokenEndpoint(document),
     });
 
@@ -803,12 +884,21 @@ export function createFirstPartyAuth(
     subjectToken: string;
   }): Promise<ExchangeTokenResult> {
     const document = await discovery.read();
+    const state = await loadState();
     return exchangeToken({
       audience: exchangeOptions.audience,
       clientId: exchangeOptions.clientId,
       ...(exchangeOptions.clientSecret === undefined
         ? {}
         : { clientSecret: exchangeOptions.clientSecret }),
+      ...(state?.clientAuthMethod === "private_key_jwt" &&
+      state.clientAuthKeyPair?.privateJwk
+        ? {
+            privateJwk: state.clientAuthKeyPair.privateJwk,
+            signingAlgorithm: "ES256" as const,
+            clientAssertionAudience: document.issuer,
+          }
+        : {}),
       dpopClient: await getOrCreateDpopClient(),
       ...(exchangeOptions.scope ? { scope: exchangeOptions.scope } : {}),
       subjectToken: exchangeOptions.subjectToken,
@@ -824,10 +914,12 @@ export function createFirstPartyAuth(
     resource?: string;
   }): Promise<string> {
     const state = await loadState();
-    if (state?.accessToken && state.expiresAt) {
-      if (Date.now() + PROACTIVE_REFRESH_MS < state.expiresAt) {
-        return state.accessToken;
-      }
+    if (
+      state?.accessToken &&
+      state.expiresAt &&
+      Date.now() + PROACTIVE_REFRESH_MS < state.expiresAt
+    ) {
+      return state.accessToken;
     }
 
     if (!state?.refreshToken) {
@@ -844,18 +936,29 @@ export function createFirstPartyAuth(
     const requestBody = new URLSearchParams({
       grant_type: "refresh_token",
       refresh_token: state.refreshToken,
-      client_id: clientId,
     });
     if (refreshOptions?.resource) {
       requestBody.set("resource", refreshOptions.resource);
     }
 
     const dpopClient = await getOrCreateDpopClient();
-    const response = await dpopClient.fetch(tokenEndpoint, {
-      method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body: requestBody,
-    });
+    const { response, body: tokenResponseBody } = await requestTokenEndpoint(
+      dpopClient,
+      tokenEndpoint,
+      requestBody,
+      {
+        clientId,
+        ...(state.clientAuthMethod === "private_key_jwt" &&
+        state.clientAuthKeyPair?.privateJwk
+          ? {
+              privateJwk: state.clientAuthKeyPair.privateJwk,
+              signingAlgorithm: "ES256" as const,
+              clientAssertionAudience: document.issuer,
+            }
+          : {}),
+        ...(state.clientSecret ? { clientSecret: state.clientSecret } : {}),
+      }
+    );
 
     if (!response.ok) {
       const responseBody = await response.text();
@@ -871,7 +974,7 @@ export function createFirstPartyAuth(
       throw new TokenRefreshError(response.status, responseBody);
     }
 
-    const responseBody = (await response.json()) as RefreshTokenResponseBody;
+    const responseBody = tokenResponseBody as RefreshTokenResponseBody;
     if (
       typeof responseBody.access_token !== "string" ||
       responseBody.access_token.length === 0
@@ -883,7 +986,8 @@ export function createFirstPartyAuth(
       Date.now() +
       (typeof responseBody.expires_in === "number"
         ? responseBody.expires_in
-        : 3600) * 1000;
+        : 3600) *
+        1000;
 
     await updateState({
       accessToken: responseBody.access_token,

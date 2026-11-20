@@ -9,18 +9,17 @@ vi.mock("@/env", () => ({
 const { mockStagePendingOauthDisclosure } = vi.hoisted(() => ({
   mockStagePendingOauthDisclosure: vi.fn(),
 }));
-const { mockComputeOAuthRequestKey, mockVerifySignedOAuthQuery } = vi.hoisted(
-  () => ({
-    mockComputeOAuthRequestKey: vi.fn(),
+const { mockComputeOAuthDisclosureRequestKey, mockVerifySignedOAuthQuery } =
+  vi.hoisted(() => ({
+    mockComputeOAuthDisclosureRequestKey: vi.fn(),
     mockVerifySignedOAuthQuery: vi.fn(),
-  })
-);
+  }));
 
 vi.mock("@/lib/auth/oidc/disclosure/context", () => ({
   stagePendingOauthDisclosure: mockStagePendingOauthDisclosure,
 }));
 vi.mock("@/lib/auth/oidc/oauth-request", () => ({
-  computeOAuthRequestKey: mockComputeOAuthRequestKey,
+  computeOAuthDisclosureRequestKey: mockComputeOAuthDisclosureRequestKey,
   parseRequestedScopes: (queryParams: URLSearchParams) =>
     (queryParams.get("scope") ?? "")
       .split(" ")
@@ -64,7 +63,7 @@ describe("oauth2 identity stage route", () => {
       session: { user: { id: "user-1" } },
     } as never);
     mockStagePendingOauthDisclosure.mockResolvedValue({ ok: true });
-    mockComputeOAuthRequestKey.mockReturnValue("oauth-request-key");
+    mockComputeOAuthDisclosureRequestKey.mockReturnValue("oauth-request-key");
     mockVerifySignedOAuthQuery.mockImplementation(
       async (query: string) => new URLSearchParams(query)
     );

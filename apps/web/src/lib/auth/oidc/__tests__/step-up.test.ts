@@ -2,7 +2,7 @@ import type { AccountTier } from "@zentity/sdk/protocol";
 
 import { describe, expect, it } from "vitest";
 
-import { buildOAuthErrorUrl, findSatisfiedAcr } from "@/lib/auth/oidc/step-up";
+import { findSatisfiedAcr } from "@/lib/auth/oidc/step-up";
 
 const ACR_TIER_PATTERN = /^urn:zentity:assurance:tier-(\d)$/;
 const WHITESPACE = /\s+/;
@@ -102,52 +102,5 @@ describe("findSatisfiedAcr", () => {
       "urn:zentity:assurance:tier-1"
     );
     expect(findSatisfiedAcr(requested, 0 as AccountTier)).toBeNull();
-  });
-});
-
-describe("buildOAuthErrorUrl", () => {
-  it("builds redirect URL with error params", () => {
-    const url = buildOAuthErrorUrl("http://localhost/callback?keep=1", {
-      error: "interaction_required",
-      errorDescription: "Tier mismatch",
-      iss: "http://localhost:3000/api/auth",
-      state: "state-123",
-    });
-    const parsed = new URL(url);
-    expect(parsed.origin).toBe("http://localhost");
-    expect(parsed.pathname).toBe("/callback");
-    expect(parsed.searchParams.get("keep")).toBe("1");
-    expect(parsed.searchParams.get("error")).toBe("interaction_required");
-    expect(parsed.searchParams.get("error_description")).toBe("Tier mismatch");
-    expect(parsed.searchParams.get("state")).toBe("state-123");
-    expect(parsed.searchParams.get("iss")).toBe(
-      "http://localhost:3000/api/auth"
-    );
-  });
-
-  it("omits state and iss when undefined", () => {
-    const url = buildOAuthErrorUrl("http://localhost/callback", {
-      error: "login_required",
-      errorDescription: "Session too old",
-    });
-    const parsed = new URL(url);
-    expect(parsed.searchParams.has("state")).toBe(false);
-    expect(parsed.searchParams.has("iss")).toBe(false);
-  });
-
-  it("carries the error in the fragment for fragment responses", () => {
-    const url = buildOAuthErrorUrl("http://localhost/callback", {
-      error: "interaction_required",
-      errorDescription: "Tier mismatch",
-      iss: "http://localhost:3000/api/auth",
-      mode: "fragment",
-      state: "state-123",
-    });
-    const parsed = new URL(url);
-    expect(parsed.search).toBe("");
-    const fragment = new URLSearchParams(parsed.hash.slice(1));
-    expect(fragment.get("error")).toBe("interaction_required");
-    expect(fragment.get("state")).toBe("state-123");
-    expect(fragment.get("iss")).toBe("http://localhost:3000/api/auth");
   });
 });

@@ -25,7 +25,7 @@ import { getSecurityPosture } from "@/lib/assurance/posture";
 import { canAccessFeature, getBlockedReason } from "@/lib/assurance/tier";
 import { auth, type Session } from "@/lib/auth/auth-config";
 import { resolveAuthenticationContext } from "@/lib/auth/auth-context";
-import { loadOpaqueAccessTokenAuthContextId } from "@/lib/auth/oidc/haip/opaque-access-token";
+import { loadOpaqueAccessTokenAuthContextId } from "@/lib/auth/oidc/oauth-provider";
 import {
   invalidAccessToken,
   missingAccessToken,
@@ -158,7 +158,10 @@ async function resolveOAuthSession(req: Request): Promise<ResolvedAuthSession> {
   const sessionId =
     typeof verified.payload.sid === "string" ? verified.payload.sid : null;
   const authContext = await resolveAuthenticationContext({
-    authContextId: await loadOpaqueAccessTokenAuthContextId(verified.token),
+    authContextId: await loadOpaqueAccessTokenAuthContextId(
+      await auth.$context,
+      verified.token
+    ),
     sessionId,
   });
 

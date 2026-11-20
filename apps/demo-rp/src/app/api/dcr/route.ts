@@ -1,8 +1,7 @@
 import { createHash } from "node:crypto";
-
+import { authenticateClientRequest } from "@zentity/sdk/rp";
 import { NextResponse } from "next/server";
 import { z } from "zod";
-
 import { readDcrRegistration, saveDcrClientId } from "@/lib/dcr";
 import { env } from "@/lib/env";
 import {
@@ -48,29 +47,39 @@ function isPublicHttpsOrigin(): boolean {
  */
 async function isClientLiveAtZentity(
   scenarioId: RouteScenarioId,
-  clientId: string
+  clientId: string,
+  clientSecret: string | null
 ): Promise<boolean> {
   try {
+    const body = new URLSearchParams({
+      response_type: "code",
+      redirect_uri: scenarioRedirectUri(scenarioId),
+      scope: "openid",
+      code_challenge: PROBE_CODE_CHALLENGE,
+      code_challenge_method: "S256",
+      resource: env.ZENTITY_URL,
+    });
+    const headers: Record<string, string> = {
+      "Content-Type": "application/x-www-form-urlencoded",
+    };
+    await authenticateClientRequest(
+      { clientId, ...(clientSecret ? { clientSecret } : {}) },
+      body,
+      headers,
+      `${env.ZENTITY_URL}/api/auth/oauth2/par`
+    );
     const response = await fetch(`${env.ZENTITY_URL}/api/auth/oauth2/par`, {
       method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body: new URLSearchParams({
-        client_id: clientId,
-        response_type: "code",
-        redirect_uri: scenarioRedirectUri(scenarioId),
-        scope: "openid",
-        code_challenge: PROBE_CODE_CHALLENGE,
-        code_challenge_method: "S256",
-        resource: env.ZENTITY_URL,
-      }),
+      headers,
+      body,
     });
     if (response.ok) {
       return true;
     }
-    const body = (await response.json().catch(() => null)) as {
+    const errorBody = (await response.json().catch(() => null)) as {
       error?: string;
     } | null;
-    return body?.error !== "invalid_client";
+    return errorBody?.error !== "invalid_client";
   } catch {
     return true;
   }
@@ -90,7 +99,7 @@ function registrationBody(
     redirect_uris: [scenarioRedirectUri(scenarioId)],
     post_logout_redirect_uris: [`${env.NEXT_PUBLIC_APP_URL}/${scenarioId}`],
     scope: scenario.dcr.requestedScopes,
-    token_endpoint_auth_method: "none",
+    token_endpoint_auth_method: "client_secret_basic",
     grant_types: grantTypes,
     response_types: ["code"],
     ...(publicHttpsOrigin
@@ -120,7 +129,7 @@ function registrationFingerprint(body: Record<string, unknown>): string {
 
 async function registerScenarioClient(
   scenarioId: RouteScenarioId
-): Promise<string> {
+): Promise<{ clientId: string; clientSecret: string }> {
   const body = registrationBody(scenarioId);
   const response = await fetch(`${env.ZENTITY_URL}/api/auth/oauth2/register`, {
     method: "POST",
@@ -132,23 +141,32 @@ async function registerScenarioClient(
     throw new Error(`DCR failed: ${await response.text()}`);
   }
 
-  const result = (await response.json()) as { client_id?: string };
+  const result = (await response.json()) as {
+    client_id?: string;
+    client_secret?: string;
+  };
   if (!result.client_id) {
     throw new Error("DCR failed: missing client_id in registration response");
+  }
+  if (!result.client_secret) {
+    throw new Error(
+      "DCR failed: missing client_secret in registration response"
+    );
   }
 
   try {
     await saveDcrClientId(
       scenarioId,
       result.client_id,
-      registrationFingerprint(body)
+      registrationFingerprint(body),
+      result.client_secret
     );
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     throw new Error(`Failed to persist DCR client: ${message}`);
   }
 
-  return result.client_id;
+  return { clientId: result.client_id, clientSecret: result.client_secret };
 }
 
 export async function GET(request: Request) {
@@ -175,11 +193,18 @@ export async function GET(request: Request) {
     const current =
       cached.registrationFingerprint ===
         registrationFingerprint(registrationBody(scenarioId)) &&
-      (await isClientLiveAtZentity(scenarioId, cached.clientId));
+      (await isClientLiveAtZentity(
+        scenarioId,
+        cached.clientId,
+        cached.clientSecret
+      ));
     const clientId = current
       ? cached.clientId
       : await registerScenarioClient(scenarioId);
-    return NextResponse.json({ registered: true, client_id: clientId });
+    return NextResponse.json({
+      registered: true,
+      client_id: typeof clientId === "string" ? clientId : clientId.clientId,
+    });
   } catch (error) {
     const message = error instanceof Error ? error.message : "DCR check failed";
     return NextResponse.json({ registered: false, error: message });
@@ -200,9 +225,9 @@ export async function POST(request: Request) {
   }
 
   try {
-    const clientId = await registerScenarioClient(parsed.data.scenarioId);
+    const client = await registerScenarioClient(parsed.data.scenarioId);
     return NextResponse.json({
-      client_id: clientId,
+      client_id: client.clientId,
       redirect_uri: scenarioRedirectUri(parsed.data.scenarioId),
     });
   } catch (error) {

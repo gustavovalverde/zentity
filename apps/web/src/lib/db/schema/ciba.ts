@@ -48,6 +48,8 @@ export const cibaRequests = sqliteTable(
     createdAt: integer("created_at", { mode: "timestamp_ms" })
       .notNull()
       .default(sql`(unixepoch() * 1000)`),
+    actor: text("actor"),
+    approvedViaConsent: integer("approved_via_consent", { mode: "boolean" }),
     authorizationDetails: text("authorization_details"),
     acrValues: text("acr_values"),
     agentSessionId: text("agent_session_id").references(

@@ -1,6 +1,11 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { decodeProtectedHeader } from "jose";
+import {
+  decodeProtectedHeader,
+  exportJWK,
+  generateKeyPair,
+  jwtVerify,
+} from "jose";
 
 import {
   createStubSchemeClient,
@@ -103,6 +108,37 @@ const MANUAL_AGENT_AUTHORIZATION = {
 };
 
 describe("createAgent", () => {
+  it("authenticates CIBA initiation and polling against the discovered issuer", async () => {
+    const keys = await generateKeyPair("ES256", { extractable: true });
+    const fetchFn = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(createDiscoveryResponse())
+      .mockResolvedValueOnce(cibaAuthResponse())
+      .mockResolvedValueOnce(cibaTokenResponse("approved"));
+    const agent = createAgent({
+      clientAuth: { privateJwk: await exportJWK(keys.privateKey) },
+      clientId: "registered-install",
+      issuerUrl: "https://issuer.example",
+      dpopClient: await createDpopClient(),
+      fetch: fetchFn,
+      loginHint: "approved-subject",
+    });
+    await agent.requestApproval({
+      scope: "openid",
+      bindingMessage: "Confirm sign-in",
+    });
+    for (const [, init] of fetchFn.mock.calls.slice(1)) {
+      const params = new URLSearchParams(String(init?.body));
+      const { payload } = await jwtVerify(
+        params.get("client_assertion") as string,
+        keys.publicKey,
+        { audience: "https://issuer.example", issuer: "registered-install" }
+      );
+      expect(payload.sub).toBe("registered-install");
+    }
+    expect(fetchFn).toHaveBeenCalledTimes(3);
+  });
+
   // R16: an opaque access token carries no capabilities to read, and a
   // client must not read a JWT one either (RFC 9068 §6).
   it("caches an opaque grant-approved token by the token response's capabilities", async () => {

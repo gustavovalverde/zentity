@@ -17,8 +17,21 @@ audit:
     # zod 3.x has no patched release (the fix is 4.6.6); the 3.x copies come from @reown/appkit-wallet and @coinbase/cdp-sdk (via @base-org/account).
     - GHSA-mrhx-c7xc-m3w5
 
-# Releases younger than the one-day minimumReleaseAge when the lockfile was refreshed on 2026-11-17; drop these entries once pnpm install passes without them.
+# Exact releases admitted before the one-day minimumReleaseAge when refreshing the lockfile.
 minimumReleaseAgeExclude:
+  - '@better-auth/ciba@1.8.0-beta.11'
+  - '@better-auth/cimd@1.8.0-beta.11'
+  - '@better-auth/core@1.8.0-beta.11'
+  - '@better-auth/drizzle-adapter@1.8.0-beta.11'
+  - '@better-auth/kysely-adapter@1.8.0-beta.11'
+  - '@better-auth/mcp@1.8.0-beta.11'
+  - '@better-auth/memory-adapter@1.8.0-beta.11'
+  - '@better-auth/mongo-adapter@1.8.0-beta.11'
+  - '@better-auth/oauth-provider@1.8.0-beta.11'
+  - '@better-auth/passkey@1.8.0-beta.11'
+  - '@better-auth/prisma-adapter@1.8.0-beta.11'
+  - '@better-auth/telemetry@1.8.0-beta.11'
+  - 'better-auth@1.8.0-beta.11'
   - '@hono/node-server@2.1.9'
   - '@owf/cose@0.8.0'
   - '@owf/identity-common@0.8.0'
@@ -38,6 +51,8 @@ minimumReleaseAgeExclude:
   - '@zentity/contracts@0.9.0'
 
 overrides:
+  # Keep the fork plugins on the same core peer instance as Better Auth.
+  'better-call@1.4.5': 1.4.6
   'tar@<7.5.22': 7.5.23
   'ws@>=8.0.0 <8.22.0': 8.23.0
   'glob@>=9.0.0 <14.0.2': 14.0.6

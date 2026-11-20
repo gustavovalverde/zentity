@@ -9,6 +9,10 @@ import {
   type StoreTokenType,
 } from "@better-auth/oauth-provider";
 import { APIError } from "better-auth/api";
+import { eq } from "drizzle-orm";
+
+import { db } from "@/lib/db/connection";
+import { oauthAccessTokens } from "@/lib/db/schema/oauth-provider";
 
 /** Any auth context, including the typed one `auth.$context` resolves to. */
 type ProviderContext = Pick<AuthContext, "getPlugin">;
@@ -46,4 +50,18 @@ export async function hashProviderToken(
     ctx,
     oauthProviderOptions(context)
   ).hashToken(token, type);
+}
+
+/** Reads the private authentication context of an already validated opaque token. */
+export async function loadOpaqueAccessTokenAuthContextId(
+  context: ProviderContext,
+  token: string
+): Promise<string | null> {
+  const storedToken = await hashProviderToken(context, token, "access_token");
+  const row = await db
+    .select({ authContextId: oauthAccessTokens.authContextId })
+    .from(oauthAccessTokens)
+    .where(eq(oauthAccessTokens.token, storedToken))
+    .get();
+  return row?.authContextId ?? null;
 }

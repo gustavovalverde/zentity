@@ -3,7 +3,7 @@ import "server-only";
 import type { AuthContext } from "@better-auth/core";
 import type {
   OAuthActorClaim,
-  OAuthTokenIssueParams,
+  OAuthBeforeTokenIssuanceInput,
 } from "@better-auth/oauth-provider";
 import type {
   AccountAssurance,
@@ -41,7 +41,6 @@ import {
   loadReleaseContext,
   releaseIdFor,
 } from "@/lib/auth/oidc/disclosure/context";
-import { oauthProviderOptions } from "@/lib/auth/oidc/oauth-provider";
 import {
   clientSector,
   externalAudience,
@@ -63,6 +62,7 @@ import {
   cibaRequests,
   type NewCibaApproval,
 } from "@/lib/db/schema/ciba";
+import { oauthClients } from "@/lib/db/schema/oauth-provider";
 
 /**
  * Zentity's side of OpenID CIBA on top of `@better-auth/ciba`: the approval
@@ -77,16 +77,11 @@ import {
  * records it.
  */
 
-// ── Token grant stash ────────────────────────────────────────────────
-
 /**
  * What the `/oauth2/token` CIBA grant needs from the request row, read in the
- * before-hook because the plugin consumes (deletes) the row before claims
- * are built.
+ * pre-issuance hook before the provider consumes it.
  */
 export interface PendingCibaToken {
-  /** The verified agent session the token's `act` names. */
-  agentSessionId: string | null;
   /** Approval-time authentication context, "" when none was captured. */
   authContextId: string;
   /** What the verified agent's approval authorizes, for the token response. */
@@ -117,39 +112,37 @@ export function getPendingCibaToken(): Promise<PendingCibaToken | null> {
 
 // ── Token grant actor ────────────────────────────────────────────────
 
-async function pendingCibaTokenFor(
-  params: OAuthTokenIssueParams
-): Promise<PendingCibaToken | null> {
-  const pending = await getPendingCibaToken();
-  return pending && pending.authReqIdHash === params.referenceId
-    ? pending
-    : null;
-}
-
-/**
- * The RFC 8693 actor a CIBA token names: the verified agent session behind
- * the request, pairwise in the token's own sector (the client and the one
- * audience outside Zentity, or the client alone for an opaque token),
- * otherwise the client, which acts for the user.
- */
-async function resolveCibaActor(
-  params: OAuthTokenIssueParams,
-  pending: PendingCibaToken | null
+export async function resolveCibaActor(
+  clientId: string,
+  resources: string[] | undefined,
+  sessionId?: string | null
 ): Promise<OAuthActorClaim> {
-  const sessionId = pending?.agentSessionId;
   if (!sessionId) {
-    return { sub: params.client.clientId, sub_profile: "service" };
+    return { sub: clientId, sub_profile: "service" };
   }
-  const client = {
-    redirectUris: params.client.redirectUris ?? [],
-    sectorIdentifier: params.client.sectorIdentifier ?? null,
+  const client = await db
+    .select({
+      clientId: oauthClients.clientId,
+      metadata: oauthClients.metadata,
+      redirectUris: oauthClients.redirectUris,
+      sectorIdentifier: oauthClients.sectorIdentifier,
+    })
+    .from(oauthClients)
+    .where(eq(oauthClients.clientId, clientId))
+    .get();
+  if (!client) {
+    throw new Error("The CIBA request client no longer exists");
+  }
+  const sectorClient = {
+    redirectUris: parseStoredStringArray(client.redirectUris),
+    sectorIdentifier: client.sectorIdentifier ?? null,
   };
-  const audience = externalAudience(params.resources);
+  const audience = externalAudience(resources);
   const sector = audience
-    ? tokenSector(client, audience)
-    : clientSector(client);
+    ? tokenSector(sectorClient, audience)
+    : clientSector(sectorClient);
   return {
-    sub: await resolveAgentSub({ client: params.client, sector, sessionId }),
+    sub: await resolveAgentSub({ client, sector, sessionId }),
     sub_profile: "service",
   };
 }
@@ -159,9 +152,13 @@ async function resolveCibaActor(
  * every recorded approval, and for a verified agent what the approval
  * authorizes. The access token carries none of them.
  */
-function approvalTokenResponse(
-  pending: PendingCibaToken | null
-): Record<string, unknown> {
+export async function approvalTokenResponse(
+  input: OAuthBeforeTokenIssuanceInput
+): Promise<Record<string, unknown>> {
+  if (input.grantType !== CIBA_GRANT_TYPE) {
+    return {};
+  }
+  const pending = await getPendingCibaToken();
   const authorization = pending?.authorization;
   return {
     ...(pending?.oversight ? { oversight: pending.oversight } : {}),
@@ -173,42 +170,6 @@ function approvalTokenResponse(
         }
       : {}),
   };
-}
-
-/**
- * Better Auth owns a token's `act` and stamps only the one a grant passes to
- * `issueTokens`, which the `@better-auth/ciba` grant does not do, so the CIBA
- * grant issues through a provider that adds it, along with the approval's
- * token response members. Like any delegated issuance, a CIBA token then
- * comes without a refresh token, because a refreshed token would no longer
- * name the actor.
- */
-function issueCibaTokensWithActor(context: AuthContext): void {
-  const grants = oauthProviderOptions(context).extensions?.find(
-    (extension) => extension.grants?.[CIBA_GRANT_TYPE]
-  )?.grants;
-  const grant = grants?.[CIBA_GRANT_TYPE];
-  if (!(grants && grant)) {
-    throw new Error("zentity-ciba-approval must be registered after ciba()");
-  }
-  grants[CIBA_GRANT_TYPE] = (input) =>
-    grant({
-      ...input,
-      provider: {
-        ...input.provider,
-        issueTokens: async (params) => {
-          const pending = await pendingCibaTokenFor(params);
-          return input.provider.issueTokens({
-            ...params,
-            act: await resolveCibaActor(params, pending),
-            tokenResponse: {
-              ...params.tokenResponse,
-              ...approvalTokenResponse(pending),
-            },
-          });
-        },
-      },
-    });
 }
 
 // ── Approval decision ────────────────────────────────────────────────
@@ -321,6 +282,7 @@ async function loadPendingRequest(requestId: string, userId: string) {
   const row = await db
     .select({
       acrValues: cibaRequests.acrValues,
+      resources: cibaRequests.resources,
       agentSessionId: cibaRequests.agentSessionId,
       assertionVerified: cibaRequests.assertionVerified,
       attestationProvider: cibaRequests.attestationProvider,
@@ -466,6 +428,13 @@ export function createCibaApproval(
         await db
           .update(cibaRequests)
           .set({
+            actor: JSON.stringify(
+              await resolveCibaActor(
+                row.clientId,
+                parseStoredStringArray(row.resources),
+                row.assertionVerified ? row.agentSessionId : null
+              )
+            ),
             referenceId: row.authReqId,
             authContextId: authentication.id,
           })
@@ -630,15 +599,10 @@ async function confirmWithPasskey(
  * The endpoints Zentity's approval page and push notifications call. They
  * run inside Better Auth, so they share its session handling and the
  * origin check that keeps another site from deciding with the user's cookie.
- * Its `init` makes the CIBA grant name its actor, so register it after
- * `ciba()`.
  */
 export function cibaApprovalPlugin(approval: CibaApproval) {
   return {
     id: "zentity-ciba-approval",
-    init(context: AuthContext) {
-      issueCibaTokensWithActor(context);
-    },
     endpoints: {
       getCibaApprovalRequest: createAuthEndpoint(
         "/ciba/request",

@@ -1,4 +1,4 @@
-import { decodeJwt } from "jose";
+import { decodeJwt, type JWK } from "jose";
 import type { DpopClient } from "../rp/dpop-client";
 import {
   type ClientAuthentication,
@@ -7,10 +7,12 @@ import {
 import { fetchUserInfo } from "../rp/userinfo";
 
 export interface ExchangeAuthorizationCodeOptions {
+  clientAssertionAudience?: string;
   clientId: string;
   code: string;
   codeVerifier: string;
   dpopClient: DpopClient;
+  privateJwk?: JWK;
   /**
    * The `redirect_uri` of the browser authorization request that issued the
    * code. Omit it for a code from the Authorization Challenge Endpoint, which
@@ -18,16 +20,20 @@ export interface ExchangeAuthorizationCodeOptions {
    */
   redirectUri?: string;
   resource?: string;
+  signingAlgorithm?: "ES256";
   tokenEndpoint: string;
 }
 
 export interface ExchangeTokenOptions {
   audience: string;
+  clientAssertionAudience?: string;
   clientId: string;
   /** For a confidential client: sent as `client_secret_basic`. */
   clientSecret?: string;
   dpopClient: DpopClient;
+  privateJwk?: JWK;
   scope?: string;
+  signingAlgorithm?: "ES256";
   subjectToken: string;
   tokenEndpoint: string;
   userInfoEndpoint?: string;
@@ -181,7 +187,23 @@ export async function exchangeAuthorizationCode(
     body.set("resource", options.resource);
   }
 
-  const data = await requestToken(options.dpopClient, options.tokenEndpoint, body);
+  const data = await requestToken(
+    options.dpopClient,
+    options.tokenEndpoint,
+    body,
+    {
+      clientId: options.clientId,
+      ...(options.privateJwk
+        ? {
+            privateJwk: options.privateJwk,
+            signingAlgorithm: "ES256" as const,
+            ...(options.clientAssertionAudience
+              ? { clientAssertionAudience: options.clientAssertionAudience }
+              : {}),
+          }
+        : {}),
+    }
+  );
   const expiresAt = Date.now() + (data.expires_in ?? 3600) * 1000;
   const { accountSub, loginHint } = await resolveOAuthIdentity(
     issuerUrl,
@@ -229,6 +251,15 @@ export async function exchangeToken(
       ...(options.clientSecret === undefined
         ? {}
         : { clientSecret: options.clientSecret }),
+      ...(options.privateJwk
+        ? {
+            privateJwk: options.privateJwk,
+            signingAlgorithm: "ES256" as const,
+            ...(options.clientAssertionAudience
+              ? { clientAssertionAudience: options.clientAssertionAudience }
+              : {}),
+          }
+        : {}),
     }
   );
   const accountSub = options.userInfoEndpoint

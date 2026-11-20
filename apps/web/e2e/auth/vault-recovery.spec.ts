@@ -224,10 +224,14 @@ async function approveWithPasskey(page: Page, request: APIRequestContext) {
   const session = (await (
     await page.request.get("/api/auth/get-session")
   ).json()) as { user: { id: string } };
-  const clientId = await registerCibaClient(request, "recovery-e2e");
+  const { clientId, clientSecret } = await registerCibaClient(
+    request,
+    "recovery-e2e"
+  );
   const response = await request.post("/api/auth/oauth2/bc-authorize", {
     form: {
       client_id: clientId,
+      client_secret: clientSecret,
       login_hint: await cibaLoginHint(clientId, session.user.id),
       scope: "openid identity.name",
       binding_message: "Recovered passkey E2E",

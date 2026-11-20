@@ -28,12 +28,14 @@ export async function readDcrRegistration(
   scenarioId: RouteScenarioId
 ): Promise<{
   clientId: string;
+  clientSecret: string | null;
   registrationFingerprint: string | null;
 } | null> {
   try {
     const row = await getDb()
       .select({
         clientId: dcrClient.clientId,
+        clientSecret: dcrClient.clientSecret,
         registrationFingerprint: dcrClient.registrationFingerprint,
       })
       .from(dcrClient)
@@ -73,9 +75,10 @@ export async function readDcrClient(
 export async function saveDcrClientId(
   scenarioId: RouteScenarioId,
   clientId: string,
-  registrationFingerprint: string
+  registrationFingerprint: string,
+  clientSecret: string | null = null
 ): Promise<void> {
-  const client = { clientId, clientSecret: null, registrationFingerprint };
+  const client = { clientId, clientSecret, registrationFingerprint };
   await getDb().transaction(async (tx) => {
     const previous = await tx
       .select({ clientId: dcrClient.clientId })

@@ -12,6 +12,8 @@
 // number grammar). Escape sequences and Unicode escapes are decoded before
 // duplicate detection so that {"iss":"x","iss":"y"} is also rejected.
 
+import { base64url } from "jose";
+
 const JSON_WHITESPACE_RE = /\s/;
 const JSON_PRIMITIVE_RE =
 	/^(?:true|false|null|-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?)/;
@@ -138,7 +140,7 @@ export function parseStrictJsonObject(json: string): Record<string, unknown> {
 }
 
 export function decodeBase64UrlJsonStrict(part: string): unknown {
-	return parseStrictJson(utf8Decoder.decode(Buffer.from(part, "base64url")));
+	return parseStrictJson(utf8Decoder.decode(base64url.decode(part)));
 }
 
 function decodeJwtSegmentStrict(
@@ -149,7 +151,7 @@ function decodeJwtSegmentStrict(
 	if (parts.length !== 3 || !parts[index]) {
 		throw new Error("Expected compact JWT");
 	}
-	const bytes = Buffer.from(parts[index], "base64url");
+	const bytes = base64url.decode(parts[index]);
 	return parseStrictJsonObject(utf8Decoder.decode(bytes));
 }
 

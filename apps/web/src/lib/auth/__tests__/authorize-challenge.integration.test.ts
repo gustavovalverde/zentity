@@ -532,7 +532,7 @@ describe("Authorization Challenge Endpoint", () => {
       expect(status).toBe(400);
       expect(json).toMatchObject({
         error: "invalid_scope",
-        error_description: "client does not allow scope agent:host.register",
+        error_description: expect.stringContaining("agent:host.register"),
       });
       expect(await countRows()).toHaveLength(0);
     });
@@ -741,10 +741,13 @@ describe("Authorization Challenge Endpoint", () => {
         clientId: TEST_CLIENT_ID,
         userId,
       });
-      const { code_challenge, code_challenge_method, ...withoutPkce } =
-        initialRequest();
-      const round1 = await challenge(key, withoutPkce);
+      const round1 = await challenge(key, initialRequest());
       expect(round1.json.challenge_type).toBe("opaque");
+      // The client's registration can change during the sign-in ceremony.
+      await db
+        .update(oauthClients)
+        .set({ scopes: JSON.stringify(["email"]) })
+        .where(eq(oauthClients.clientId, TEST_CLIENT_ID));
 
       const round3 = await answerOpaque(
         key,
@@ -752,6 +755,7 @@ describe("Authorization Challenge Endpoint", () => {
       );
 
       expect(round3.status).toBe(400);
+      expect(round3.json.error).toBe("invalid_scope");
       expect(round3.json.authorization_code).toBeUndefined();
       expect(
         await db

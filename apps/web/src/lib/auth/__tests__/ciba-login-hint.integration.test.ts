@@ -3,7 +3,12 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { resolveSubForClientId } from "@/lib/auth/oidc/pairwise";
 import { db } from "@/lib/db/connection";
 import { oauthClients } from "@/lib/db/schema/oauth-provider";
-import { createTestUser, resetDatabase } from "@/test-utils/db-test-utils";
+import {
+  createTestUser,
+  resetDatabase,
+  TEST_CIBA_CLIENT_SECRET,
+  testCibaClientCredentials,
+} from "@/test-utils/db-test-utils";
 
 import { auth } from "../auth-config";
 
@@ -20,7 +25,7 @@ async function createPairwiseClient(clientId: string, redirectHost: string) {
       name: clientId,
       redirectUris: JSON.stringify([`https://${redirectHost}/callback`]),
       grantTypes: JSON.stringify([CIBA_GRANT_TYPE]),
-      tokenEndpointAuthMethod: "none",
+      ...testCibaClientCredentials,
       subjectType: "pairwise",
       metadata: JSON.stringify({ backchannel_token_delivery_mode: "poll" }),
     })
@@ -34,6 +39,7 @@ async function bcAuthorize(clientId: string, loginHint: string) {
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
       body: new URLSearchParams({
         client_id: clientId,
+        client_secret: TEST_CIBA_CLIENT_SECRET,
         scope: "openid",
         login_hint: loginHint,
       }),

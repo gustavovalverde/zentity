@@ -7,7 +7,7 @@ import { NextResponse } from "next/server";
 
 import { AGENT_BOOTSTRAP_TOKEN_USE } from "@/lib/agents/session";
 import { resolveAuthenticationContext } from "@/lib/auth/auth-context";
-import { loadOpaqueAccessTokenAuthContextId } from "@/lib/auth/oidc/haip/opaque-access-token";
+import { loadOpaqueAccessTokenAuthContextId } from "@/lib/auth/oidc/oauth-provider";
 import {
   insufficientScope,
   invalidAccessToken,
@@ -137,8 +137,12 @@ export async function requireBootstrapAccessToken(
     return resourceAuthError(insufficientScope(missing));
   }
 
+  const { auth } = await import("./auth-config");
   const authentication = await resolveAuthenticationContext({
-    authContextId: await loadOpaqueAccessTokenAuthContextId(token),
+    authContextId: await loadOpaqueAccessTokenAuthContextId(
+      await auth.$context,
+      token
+    ),
     sessionId: typeof payload.sid === "string" ? payload.sid : null,
   });
 

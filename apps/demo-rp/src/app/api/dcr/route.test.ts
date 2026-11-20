@@ -44,10 +44,16 @@ describe("/api/dcr POST", () => {
 
   it("registers a client and persists the client_id", async () => {
     const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
-      new Response(JSON.stringify({ client_id: "client-123" }), {
-        status: 200,
-        headers: { "content-type": "application/json" },
-      })
+      new Response(
+        JSON.stringify({
+          client_id: "client-123",
+          client_secret: "secret-123",
+        }),
+        {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }
+      )
     );
 
     const response = await POST(
@@ -68,7 +74,8 @@ describe("/api/dcr POST", () => {
     expect(dcrMocks.saveDcrClientId).toHaveBeenCalledWith(
       "bank",
       "client-123",
-      expect.stringMatching(SHA256_HEX)
+      expect.stringMatching(SHA256_HEX),
+      "secret-123"
     );
     expect(fetchMock).toHaveBeenCalledWith(
       "http://localhost:3000/api/auth/oauth2/register",
@@ -83,6 +90,7 @@ describe("/api/dcr POST", () => {
     );
     expect(requestBody).toMatchObject({
       application_type: "native",
+      token_endpoint_auth_method: "client_secret_basic",
       post_logout_redirect_uris: ["http://localhost:3102/bank"],
       rp_validity_notice_uri: "http://localhost:3102/api/auth/validity",
     });
@@ -91,10 +99,16 @@ describe("/api/dcr POST", () => {
 
   it("returns JSON when local persistence fails after upstream registration", async () => {
     vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
-      new Response(JSON.stringify({ client_id: "client-123" }), {
-        status: 200,
-        headers: { "content-type": "application/json" },
-      })
+      new Response(
+        JSON.stringify({
+          client_id: "client-123",
+          client_secret: "secret-123",
+        }),
+        {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }
+      )
     );
     dcrMocks.saveDcrClientId.mockRejectedValueOnce(
       new Error("SQLITE_ERROR: no such table: dcr_client")
@@ -158,10 +172,13 @@ describe("/api/dcr GET (self-heal)", () => {
   }
 
   function registered(clientId: string) {
-    return new Response(JSON.stringify({ client_id: clientId }), {
-      status: 200,
-      headers: { "content-type": "application/json" },
-    });
+    return new Response(
+      JSON.stringify({ client_id: clientId, client_secret: "secret" }),
+      {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }
+    );
   }
 
   /** The fingerprint the route stores for the scenario's current body. */
@@ -246,7 +263,8 @@ describe("/api/dcr GET (self-heal)", () => {
     expect(dcrMocks.saveDcrClientId).toHaveBeenCalledWith(
       "bank",
       "fresh-client",
-      expect.stringMatching(SHA256_HEX)
+      expect.stringMatching(SHA256_HEX),
+      "secret"
     );
   });
 

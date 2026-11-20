@@ -157,6 +157,49 @@ describe("fetch", () => {
     );
   });
 
+  it("refreshes endpoint credentials before retrying a nonce challenge", async () => {
+    const client = await createDpopClient();
+    const body = new URLSearchParams({ client_assertion: "first" });
+    const headers: Record<string, string> = {};
+    const attempts: { body: string; authorization: string | null }[] = [];
+    const transport = vi.fn<typeof fetch>((_input, init) => {
+      if (!init) {
+        throw new Error("Transport received no request options");
+      }
+      attempts.push({
+        body: (init.body as URLSearchParams).toString(),
+        authorization: new Headers(init.headers).get("Authorization"),
+      });
+      return Promise.resolve(
+        attempts.length === 1
+          ? jsonError(400, "use_dpop_nonce", { "DPoP-Nonce": "nonce-1" })
+          : new Response("{}", { status: 200 })
+      );
+    });
+    const onNonceRetry = vi.fn(() => {
+      body.set("client_assertion", "fresh");
+      headers.Authorization = "Basic refreshed";
+    });
+
+    await client.fetch(TOKEN_URL, {
+      method: "POST",
+      body,
+      headers,
+      fetch: transport,
+      onNonceRetry,
+    });
+
+    expect(onNonceRetry).toHaveBeenCalledOnce();
+    expect(Object.fromEntries(new URLSearchParams(attempts[0]?.body))).toEqual({
+      client_assertion: "first",
+    });
+    expect(attempts[0]?.authorization).toBeNull();
+    expect(Object.fromEntries(new URLSearchParams(attempts[1]?.body))).toEqual({
+      client_assertion: "fresh",
+    });
+    expect(attempts[1]?.authorization).toBe("Basic refreshed");
+  });
+
   it("does not retry an invalid_grant error that carries a DPoP-Nonce", async () => {
     const client = await createDpopClient();
     const transport = vi

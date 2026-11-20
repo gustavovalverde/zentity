@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 
-import { computeOAuthRequestKey } from "../oauth-request";
+import {
+  computeOAuthDisclosureRequestKey,
+  computeOAuthRequestKey,
+} from "../oauth-request";
 
 describe("computeOAuthRequestKey", () => {
   it("normalizes equivalent OAuth queries to the same request key", () => {
@@ -92,5 +95,43 @@ describe("computeOAuthRequestKey", () => {
     });
 
     expect(base).not.toBe(altered);
+  });
+});
+
+describe("computeOAuthDisclosureRequestKey", () => {
+  it("matches the consent query after identity scopes are stripped", () => {
+    const stagedQuery = new URLSearchParams({
+      client_id: "client-a",
+      response_type: "code",
+      scope: "openid identity.name proof:age identity.address",
+      state: "state-a",
+    });
+    const consentQuery = new URLSearchParams({
+      client_id: "client-a",
+      response_type: "code",
+      scope: "openid proof:age",
+      state: "state-a",
+    });
+
+    expect(computeOAuthDisclosureRequestKey(stagedQuery)).toBe(
+      computeOAuthRequestKey(consentQuery)
+    );
+  });
+
+  it("preserves beta.10 normalization for existing pending stages", () => {
+    const stagedQuery = new URLSearchParams({
+      client_id: "client-a",
+      response_type: "code",
+      scope: "openid identity.name proof:age openid identity.address",
+    });
+    const legacyNormalizedQuery = new URLSearchParams({
+      client_id: "client-a",
+      response_type: "code",
+      scope: "openid proof:age",
+    });
+
+    expect(computeOAuthDisclosureRequestKey(stagedQuery)).toBe(
+      computeOAuthRequestKey(legacyNormalizedQuery)
+    );
   });
 });

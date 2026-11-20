@@ -26,7 +26,6 @@ import {
   SignJWT,
 } from "jose";
 
-import { cibaRequests } from "../../src/lib/db/schema/ciba";
 import { oidc4vciIssuedCredentials } from "../../src/lib/db/schema/oidc-credentials";
 
 type DpopKeyPair = Awaited<ReturnType<typeof generateKeyPair>>;
@@ -324,18 +323,22 @@ export async function registerCibaClient(
   const res = await request.post(`${AUTH_BASE_URL}/oauth2/register`, {
     data: {
       client_name: `${labelPrefix}-${crypto.randomUUID().slice(0, 8)}`,
-      application_type: "native",
-      redirect_uris: ["http://localhost/cb"],
+      application_type: "web",
+      redirect_uris: ["https://client.example.test/cb"],
       grant_types: [CIBA_GRANT_TYPE],
-      token_endpoint_auth_method: "none",
+      token_endpoint_auth_method: "client_secret_post",
       backchannel_token_delivery_mode: "poll",
       ...metadata,
     },
     headers: ORIGIN_HEADERS,
   });
   expect(res.ok()).toBeTruthy();
-  const body = (await res.json()) as { client_id: string };
-  return body.client_id;
+  const body = (await res.json()) as {
+    client_id: string;
+    client_secret: string;
+  };
+  expect(body.client_secret).toBeTruthy();
+  return { clientId: body.client_id, clientSecret: body.client_secret };
 }
 
 export async function createCredentialOffer(
@@ -740,19 +743,17 @@ export async function findCibaRequestId(authReqId: string): Promise<string> {
     .update(authReqId)
     .digest("base64url");
   const client = openE2eDatabase();
-  const db = drizzle(client, { schema: { cibaRequests } });
 
   try {
-    const rows = await db
-      .select({ id: cibaRequests.id })
-      .from(cibaRequests)
-      .where(eq(cibaRequests.authReqId, authReqIdHash))
-      .limit(1);
-    const row = rows[0];
-    if (!row) {
+    const result = await client.execute({
+      sql: "SELECT id FROM ciba_request WHERE auth_req_id = ? LIMIT 1",
+      args: [authReqIdHash],
+    });
+    const id = result.rows[0]?.id;
+    if (typeof id !== "string") {
       throw new Error("CIBA request not found");
     }
-    return row.id;
+    return id;
   } finally {
     client.close();
   }

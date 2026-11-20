@@ -4,7 +4,6 @@ import { calculateJwkThumbprint } from "jose";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { GET as trpcGet } from "@/app/api/trpc/[trpc]/route";
-import { mintOpaqueAccessToken } from "@/lib/auth/oidc/haip/opaque-access-token";
 import { introspectZentityAccessToken } from "@/lib/auth/oidc/resource-principal";
 import { TOKEN_EXCHANGE_GRANT_TYPE } from "@/lib/auth/oidc/token-exchange";
 import { db } from "@/lib/db/connection";
@@ -18,12 +17,15 @@ import {
   createTestSession,
   createTestUser,
   resetDatabase,
+  TEST_CIBA_CLIENT_SECRET,
+  testCibaClientCredentials,
 } from "@/test-utils/db-test-utils";
 import {
   buildDpopProof,
   type DpopKeyPair,
   postTokenWithDpop,
 } from "@/test-utils/dpop-test-utils";
+import { mintOpaqueAccessToken } from "@/test-utils/opaque-access-token";
 
 const INTERNAL_TOKEN = vi.hoisted(() => {
   const token = "internal-service-token-with-32-characters!";
@@ -120,7 +122,7 @@ describe("tRPC context", () => {
             TOKEN_EXCHANGE_GRANT_TYPE,
           ]),
           redirectUris: JSON.stringify(["http://localhost/callback"]),
-          tokenEndpointAuthMethod: "none",
+          ...testCibaClientCredentials,
         })
         .run();
       const request = await createTestCibaRequest({
@@ -134,6 +136,7 @@ describe("tRPC context", () => {
       authContextId = request.authContextId;
       const issued = await postTokenWithDpop({
         grant_type: CIBA_GRANT_TYPE,
+        client_secret: TEST_CIBA_CLIENT_SECRET,
         auth_req_id: request.authReqId,
         client_id: AGENT_CLIENT_ID,
       });
@@ -168,6 +171,7 @@ describe("tRPC context", () => {
       const exchanged = await postTokenWithDpop(
         {
           grant_type: TOKEN_EXCHANGE_GRANT_TYPE,
+          client_secret: TEST_CIBA_CLIENT_SECRET,
           client_id: AGENT_CLIENT_ID,
           subject_token: subjectToken,
           subject_token_type: "urn:ietf:params:oauth:token-type:access_token",

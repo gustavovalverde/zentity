@@ -22,6 +22,8 @@ import {
   createTestCibaRequest,
   createTestUser,
   resetDatabase,
+  TEST_CIBA_CLIENT_SECRET,
+  testCibaClientCredentials,
 } from "@/test-utils/db-test-utils";
 import {
   buildDpopProof,
@@ -49,7 +51,7 @@ async function createTestClient(clientId: string) {
       name: clientId,
       redirectUris: JSON.stringify(["http://localhost/callback"]),
       grantTypes: JSON.stringify(["authorization_code", CIBA_GRANT_TYPE]),
-      tokenEndpointAuthMethod: "none",
+      ...testCibaClientCredentials,
     })
     .run();
 }
@@ -88,6 +90,7 @@ async function issueSybilToken(
 
   const response = await postTokenWithDpop({
     grant_type: CIBA_GRANT_TYPE,
+    client_secret: TEST_CIBA_CLIENT_SECRET,
     auth_req_id: authReqId,
     client_id: clientId,
   });
@@ -119,6 +122,7 @@ async function issueHumanityRpUniqueToken(clientId: string, userId: string) {
 
   const response = await postTokenWithDpop({
     grant_type: CIBA_GRANT_TYPE,
+    client_secret: TEST_CIBA_CLIENT_SECRET,
     auth_req_id: authReqId,
     client_id: clientId,
   });

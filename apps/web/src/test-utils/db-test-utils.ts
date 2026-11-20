@@ -216,6 +216,15 @@ interface TestCibaRequestResult {
   requestId: string;
 }
 
+export const TEST_CIBA_CLIENT_SECRET = "confidential-ciba-test-client";
+export const testCibaClientCredentials = {
+  clientSecret: crypto
+    .createHash("sha256")
+    .update(TEST_CIBA_CLIENT_SECRET)
+    .digest("base64url"),
+  tokenEndpointAuthMethod: "client_secret_post",
+} as const;
+
 /**
  * The stored form of a raw `auth_req_id`: the OAuth provider's default token
  * hash (SHA-256, base64url without padding).

@@ -13,6 +13,10 @@ const mocks = vi.hoisted(() => ({
   fetch: vi.fn(),
   prepareAgentAssertionForScenario: vi.fn(),
   requestTokenEndpoint: vi.fn(),
+  authenticateClientRequest: vi.fn((client, params, headers) => {
+    params.delete("client_id");
+    headers.Authorization = `Basic ${btoa(`${client.clientId}:${client.clientSecret}`)}`;
+  }),
 }));
 
 vi.mock("next/headers", () => ({
@@ -26,7 +30,7 @@ vi.mock("@/lib/auth", () => ({
 vi.mock("@/lib/dcr", () => ({
   readDcrClient: vi.fn(async () => ({
     clientId: "aether-client",
-    clientSecret: null,
+    clientSecret: "client-secret",
   })),
   readZentitySubject: mocks.readZentitySubject,
 }));
@@ -48,6 +52,7 @@ vi.mock("@zentity/sdk/rp", () => ({
   })),
   fetchUserInfo: vi.fn(async () => ({ sub: "pairwise-sub" })),
   requestTokenEndpoint: mocks.requestTokenEndpoint,
+  authenticateClientRequest: mocks.authenticateClientRequest,
 }));
 
 vi.mock("jose", () => ({

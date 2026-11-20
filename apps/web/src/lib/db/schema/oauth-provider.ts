@@ -66,9 +66,7 @@ export const oauthClients = sqliteTable(
     ),
     dpopBoundAccessTokens: integer("dpop_bound_access_tokens", {
       mode: "boolean",
-    })
-      .notNull()
-      .default(false),
+    }).default(false),
     metadataUrl: text("metadata_url"),
     metadataFetchedAt: integer("metadata_fetched_at", { mode: "timestamp_ms" }),
     trustLevel: integer("trust_level").notNull().default(0),
@@ -214,6 +212,7 @@ export const oauthResources = sqliteTable(
     id: text("id").primaryKey().default(defaultId),
     identifier: text("identifier").notNull(),
     name: text("name").notNull(),
+    accessTokenFormat: text("access_token_format"),
     accessTokenTtl: integer("access_token_ttl"),
     refreshTokenTtl: integer("refresh_token_ttl"),
     signingAlgorithm: text("signing_algorithm"),

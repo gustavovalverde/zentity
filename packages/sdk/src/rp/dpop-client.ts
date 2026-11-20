@@ -33,10 +33,11 @@ export interface DpopRequestInit extends RequestInit {
    * `DPoP` header set. Defaults to the global `fetch`.
    */
   fetch?: typeof globalThis.fetch;
+  /** Refreshes request authentication after a DPoP nonce challenge. */
+  onNonceRetry?: (() => Promise<void> | void) | undefined;
 }
 
 export interface DpopClient {
-  keyPair: DpopKeyPair;
   /**
    * Sends `init` to `url` with a DPoP proof and handles server nonces
    * (RFC 9449 §8 and §9).
@@ -52,6 +53,7 @@ export interface DpopClient {
    * `URLSearchParams`, not a stream.
    */
   fetch(url: string | URL, init?: DpopRequestInit): Promise<Response>;
+  keyPair: DpopKeyPair;
   /**
    * Signs one DPoP proof without sending a request. `htu` is the URL
    * without its query and fragment (RFC 9449 §4.2).
@@ -118,8 +120,12 @@ async function createClient(keyPair: DpopKeyPair): Promise<DpopClient> {
     // cancelling the challenge body, which never settles when the transport
     // kept an unread clone of the response.
     async fetch(url, init = {}) {
-      const { accessToken, fetch: transport = globalThis.fetch, ...request } =
-        init;
+      const {
+        accessToken,
+        fetch: transport = globalThis.fetch,
+        onNonceRetry,
+        ...request
+      } = init;
       const target = String(url);
       const origin = new URL(target).origin;
       const method = (request.method ?? "GET").toUpperCase();
@@ -150,6 +156,7 @@ async function createClient(keyPair: DpopKeyPair): Promise<DpopClient> {
         first.nextNonce !== sentNonce &&
         (await isDpopNonceChallenge(first.response))
       ) {
+        await onNonceRetry?.();
         return (await send(first.nextNonce)).response;
       }
       return first.response;
@@ -179,10 +186,10 @@ export async function createDpopClientFromKeyPair(
 }
 
 export interface DeriveDpopKeyPairOptions {
-  /** HKDF salt. Defaults to the zpay payment channel; override only with a coordinated `jkt` rotation. */
-  salt?: string;
   /** HKDF info string. Defaults to the zpay payment channel. */
   info?: string;
+  /** HKDF salt. Defaults to the zpay payment channel; override only with a coordinated `jkt` rotation. */
+  salt?: string;
 }
 
 /**
@@ -225,9 +232,7 @@ export async function deriveDpopKeyPairFromSeed(
   );
   // Uncompressed SEC1 point: 0x04 || x || y.
   const publicPoint = p256.getPublicKey(privateScalar, false);
-  const xB64 = base64url.encode(
-    publicPoint.subarray(1, 1 + P256_SCALAR_BYTES)
-  );
+  const xB64 = base64url.encode(publicPoint.subarray(1, 1 + P256_SCALAR_BYTES));
   const yB64 = base64url.encode(publicPoint.subarray(1 + P256_SCALAR_BYTES));
   return {
     privateJwk: {

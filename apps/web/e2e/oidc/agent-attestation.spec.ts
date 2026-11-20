@@ -26,7 +26,10 @@ test.describe("Registered agent assertion in CIBA flow", () => {
     request,
   }) => {
     const session = await createIssuerSession(request);
-    const clientId = await registerCibaClient(request, "attest-e2e");
+    const { clientId, clientSecret } = await registerCibaClient(
+      request,
+      "attest-e2e"
+    );
 
     const agentClaims = JSON.stringify({
       agent: {
@@ -43,6 +46,7 @@ test.describe("Registered agent assertion in CIBA flow", () => {
     const bcRes = await request.post(`${AUTH_BASE_URL}/oauth2/bc-authorize`, {
       form: {
         client_id: clientId,
+        client_secret: clientSecret,
         login_hint: await cibaLoginHint(clientId, session.userId),
         scope: "openid",
         binding_message: "Agent claims E2E test",
@@ -71,6 +75,7 @@ test.describe("Registered agent assertion in CIBA flow", () => {
             grant_type: CIBA_GRANT_TYPE,
             auth_req_id,
             client_id: clientId,
+            client_secret: clientSecret,
             resource: MCP_RESOURCE,
           },
           headers: { Origin: BASE_URL, DPoP: proof },
@@ -91,12 +96,16 @@ test.describe("Registered agent assertion in CIBA flow", () => {
     request,
   }) => {
     const session = await createIssuerSession(request);
-    const clientId = await registerCibaClient(request, "attest-e2e");
+    const { clientId, clientSecret } = await registerCibaClient(
+      request,
+      "attest-e2e"
+    );
 
     // CIBA without agent claims
     const bcRes = await request.post(`${AUTH_BASE_URL}/oauth2/bc-authorize`, {
       form: {
         client_id: clientId,
+        client_secret: clientSecret,
         login_hint: await cibaLoginHint(clientId, session.userId),
         scope: "openid",
         binding_message: "No agent claims test",
@@ -122,6 +131,7 @@ test.describe("Registered agent assertion in CIBA flow", () => {
             grant_type: CIBA_GRANT_TYPE,
             auth_req_id,
             client_id: clientId,
+            client_secret: clientSecret,
             resource: MCP_RESOURCE,
           },
           headers: { Origin: BASE_URL, DPoP: proof },
