@@ -1,13 +1,14 @@
 import "server-only";
 
 import crypto from "node:crypto";
+import { defineRequestState } from "@better-auth/core/context";
 import { drizzleAdapter } from "@better-auth/drizzle-adapter";
 import { createOpenIdTokenVerifier, fetchUserInfo } from "@zentity/sdk/rp";
 import { betterAuth } from "better-auth";
 import { nextCookies } from "better-auth/next-js";
 import type { DpopKeyPair } from "better-auth/oauth2/dpop-client";
 import { genericOAuth } from "better-auth/plugins";
-import { eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { decodeProtectedHeader } from "jose";
 
 import { getDb } from "@/lib/db/connection";
@@ -114,76 +115,70 @@ async function buildOAuthProfile(tokens: {
     throw new Error("Zentity response missing sub/id");
   }
 
-  const profile: Record<string, unknown> = {
+  const profile = {
     ...body,
     id,
     emailVerified: Boolean(body.email_verified),
   };
   stripProviderFields(profile);
-  return { id, profile };
+  return profile;
 }
 
-async function findUserIdByAccountId(
-  accountId: string
-): Promise<string | null> {
-  try {
-    const row = await getDb().query.account.findFirst({
-      where: eq(account.accountId, accountId),
-      columns: { userId: true },
-    });
-    return row?.userId ?? null;
-  } catch (e) {
-    console.error("Failed to find user by account ID:", e);
-    return null;
+const pendingProfile = defineRequestState<{
+  providerId: string;
+  profile: Record<string, unknown>;
+} | null>(() => null);
+
+async function saveAccountClaims(linked: {
+  userId: string;
+  providerId: string;
+  accountId: string;
+}) {
+  const pending = await pendingProfile.get();
+  if (
+    pending?.providerId !== linked.providerId ||
+    pending.profile.id !== linked.accountId
+  ) {
+    return;
   }
-}
 
-async function readExistingClaims(
-  accountId: string
-): Promise<Record<string, Record<string, unknown>>> {
-  try {
-    const userId = await findUserIdByAccountId(accountId);
-    if (!userId) {
-      return {};
-    }
-    const row = await getDb().query.user.findFirst({
-      where: eq(user.id, userId),
-      columns: { claims: true },
-    });
-    if (row?.claims) {
-      return JSON.parse(row.claims);
-    }
-  } catch (e) {
-    console.error("Failed to read existing claims:", e);
-  }
-  return {};
-}
+  const db = getDb();
+  const owner = eq(user.id, linked.userId);
+  const path = `$.${JSON.stringify(linked.providerId)}`;
+  const profiles = sql`CASE WHEN json_valid(${user.claims}) AND json_type(${user.claims}) = 'object' THEN ${user.claims} ELSE '{}' END`;
+  const stored = sql<string | null>`(${profiles}) -> ${path}`;
 
-async function syncClaimsToDb(
-  accountId: string,
-  oauthProviderId: string,
-  profile: Record<string, unknown>
-) {
-  try {
-    const userId = await findUserIdByAccountId(accountId);
-    if (!userId) {
+  while (true) {
+    // biome-ignore lint/performance/noAwaitInLoops: a conflicting callback requires a fresh read of this provider's disclosures.
+    const row = await db
+      .select({ profile: stored })
+      .from(user)
+      .where(owner)
+      .get();
+    if (!row) {
+      throw new Error("The linked account's user no longer exists");
+    }
+    const previous: Record<string, unknown> | null = row.profile
+      ? JSON.parse(row.profile)
+      : null;
+    const profile =
+      (previous?.sub ?? previous?.id) === linked.accountId
+        ? { ...previous, ...pending.profile }
+        : pending.profile;
+
+    const result = await db
+      .update(user)
+      .set({
+        claims: sql`json_set(${profiles}, ${path}, json(${JSON.stringify(profile)}))`,
+      })
+      .where(and(owner, sql`${stored} IS ${row.profile}`))
+      .catch(() => {
+        // Drizzle errors include the bound profile in their query parameters.
+        throw new Error("Could not save claims for the linked account");
+      });
+    if (result.rowsAffected > 0) {
       return;
     }
-    const row = await getDb().query.user.findFirst({
-      where: eq(user.id, userId),
-      columns: { claims: true },
-    });
-    const allClaims = row?.claims ? JSON.parse(row.claims) : {};
-    allClaims[oauthProviderId] = {
-      ...allClaims[oauthProviderId],
-      ...profile,
-    };
-    await getDb()
-      .update(user)
-      .set({ claims: JSON.stringify(allClaims) })
-      .where(eq(user.id, userId));
-  } catch (e) {
-    console.error("Failed to sync claims to DB:", e);
   }
 }
 
@@ -214,26 +209,9 @@ function makeProviderConfig(
     pushedAuthorizationRequest: "auto" as const,
     overrideUserInfo: true,
     authorizationUrlParams,
-    async getUserInfo(tokens: {
-      accessToken?: string | undefined;
-      idToken?: string | undefined;
-    }) {
-      const result = await buildOAuthProfile(tokens);
-      if (!result) {
-        return null;
-      }
-      const { id, profile } = result;
-      await syncClaimsToDb(id, oauthProviderId, profile);
-      profile.__existingClaims = await readExistingClaims(id);
-      return profile as { id: string; emailVerified: boolean };
-    },
-    mapProfileToUser(profile: Record<string, unknown>) {
-      const existingClaims = (profile.__existingClaims ?? {}) as Record<
-        string,
-        Record<string, unknown>
-      >;
-      const { __existingClaims: _, ...cleanProfile } = profile;
-
+    getUserInfo: buildOAuthProfile,
+    async mapProfileToUser(profile: Record<string, unknown>) {
+      await pendingProfile.set({ providerId: oauthProviderId, profile });
       const subject =
         (typeof profile.sub === "string" && profile.sub) ||
         (typeof profile.id === "string" && profile.id) ||
@@ -255,13 +233,6 @@ function makeProviderConfig(
         email,
         emailVerified: profile.email_verified as boolean,
         image: profile.picture as string,
-        claims: {
-          ...existingClaims,
-          [oauthProviderId]: {
-            ...existingClaims[oauthProviderId],
-            ...cleanProfile,
-          },
-        },
       };
     },
   };
@@ -298,6 +269,12 @@ function createAuth(
       provider: "sqlite",
       schema: { account, session, user, verification },
     }),
+    databaseHooks: {
+      account: {
+        create: { after: saveAccountClaims },
+        update: { after: saveAccountClaims },
+      },
+    },
     baseURL: env.NEXT_PUBLIC_APP_URL,
     secret: env.BETTER_AUTH_SECRET,
     account: {
@@ -312,7 +289,7 @@ function createAuth(
     },
     user: {
       additionalFields: {
-        claims: { type: "json", required: false },
+        claims: { type: "json", required: false, input: false },
       },
     },
     plugins: [

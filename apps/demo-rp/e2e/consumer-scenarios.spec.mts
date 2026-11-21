@@ -1,9 +1,12 @@
+import { isDeepStrictEqual } from "node:util";
+
 import { expect, test } from "@playwright/test";
 import { PAYMENT_REQUIRED_HEADER } from "@zentity/sdk/rp";
 
 import {
   approveCibaRequestWithPasskey,
   completeStepUp,
+  readDemoSession,
   registerScenario,
   signInToScenario,
   signInToScenarioThroughApi,
@@ -23,11 +26,12 @@ const demoRpBaseURL =
   process.env.PLAYWRIGHT_DEMO_RP_BASE_URL ?? "http://localhost:3102";
 
 test.describe("demo-rp consumer scenarios", () => {
-  test("bank completes sign-in and step-up account opening", async ({
+  test("provider claims stay isolated and available across sign-ins", async ({
     page,
     request,
   }) => {
     await registerScenario(request, "bank");
+    await registerScenario(request, "exchange");
     await signInToScenario(page, {
       path: "/bank",
       signInButtonName: "Member Access",
@@ -38,17 +42,15 @@ test.describe("demo-rp consumer scenarios", () => {
       path: "/bank",
     });
 
+    const bankSession = await readDemoSession(page);
+    expect(typeof bankSession?.user?.id).toBe("string");
+    expect(bankSession?.user?.claims?.["zentity-bank"]?.name).toBeDefined();
+
     await expect(
       page.getByRole("heading", { name: "Dashboard", exact: true })
     ).toBeVisible();
     await expect(page.getByText("Welcome back")).toBeVisible();
-  });
 
-  test("exchange completes sign-in and nationality step-up", async ({
-    page,
-    request,
-  }) => {
-    await registerScenario(request, "exchange");
     await signInToScenario(page, {
       path: "/exchange",
       signInButtonName: "Connect with Zentity",
@@ -60,8 +62,30 @@ test.describe("demo-rp consumer scenarios", () => {
       path: "/exchange",
     });
 
+    await page.reload();
+    await expect(page.getByText("Account Status")).toBeVisible();
     await expect(page.getByText("Lv.2 VERIFIED")).toBeVisible();
     await expect(page.getByText("Nationality")).toBeVisible();
+    const sessionAfterExchange = await readDemoSession(page);
+    const claims = sessionAfterExchange?.user?.claims;
+    const bankClaimsPreserved = isDeepStrictEqual(
+      claims?.["zentity-bank"],
+      bankSession?.user?.claims?.["zentity-bank"]
+    );
+    expect(sessionAfterExchange?.user?.id).toBe(bankSession?.user?.id);
+    expect(bankClaimsPreserved).toBe(true);
+    expect(claims?.["zentity-exchange"]?.nationality).toBeDefined();
+    expect(
+      typeof claims?.["zentity-bank"]?.sub === "string" &&
+        typeof claims?.["zentity-exchange"]?.sub === "string" &&
+        claims["zentity-bank"].sub !== claims["zentity-exchange"].sub
+    ).toBe(true);
+
+    await page.goto("/bank");
+    await expect(
+      page.getByRole("heading", { name: "Dashboard", exact: true })
+    ).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByText("Welcome back")).toBeVisible();
   });
 
   test("wine completes age gate, checkout step-up, and order placement", async ({

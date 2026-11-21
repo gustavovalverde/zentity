@@ -1,4 +1,17 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+// @vitest-environment node
+
+import { runWithRequestState } from "@better-auth/core/context";
+import { createClient } from "@libsql/client";
+import type { GenericOAuthConfig } from "better-auth/plugins/generic-oauth";
+import {
+  generateSQLiteDrizzleJson,
+  generateSQLiteMigration,
+} from "drizzle-kit/api";
+import { eq } from "drizzle-orm";
+import { drizzle } from "drizzle-orm/libsql";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { Auth } from "./auth";
+import { user } from "./db/schema";
 
 const authMocks = vi.hoisted(() => ({
   betterAuth: vi.fn((config) => config),
@@ -48,14 +61,6 @@ vi.mock("@/lib/dcr", () => ({
   readDcrClient: authMocks.readDcrClient,
 }));
 
-vi.mock("@/scenarios/route-scenario-registry", async (importOriginal) => {
-  const actual =
-    await importOriginal<
-      typeof import("@/scenarios/route-scenario-registry")
-    >();
-  return { ...actual, ROUTE_SCENARIO_IDS: ["x402"] };
-});
-
 vi.mock("@/lib/env", () => ({
   env: {
     BETTER_AUTH_SECRET: "test-secret",
@@ -71,33 +76,30 @@ vi.mock("@/lib/oauth-dpop-client", () => ({
 
 vi.mock("server-only", () => ({}));
 
-async function loadProviderConfig() {
+type ProviderConfig = GenericOAuthConfig & {
+  getUserInfo: NonNullable<GenericOAuthConfig["getUserInfo"]>;
+  mapProfileToUser: NonNullable<GenericOAuthConfig["mapProfileToUser"]>;
+};
+type AuthConfig = Pick<Auth["options"], "databaseHooks" | "user"> & {
+  plugins: { type: string; config?: ProviderConfig[] }[];
+};
+
+async function loadAuthConfig() {
   const { getAuth } = await import("./auth");
-  const auth = await getAuth();
-  const plugins = (auth as unknown as { plugins: Record<string, unknown>[] })
-    .plugins;
-  const oauthPlugin = plugins.find((plugin) => plugin.type === "genericOAuth");
-  if (!oauthPlugin) {
-    throw new Error("genericOAuth plugin not configured");
-  }
+  return (await getAuth()) as unknown as AuthConfig;
+}
 
-  const config = oauthPlugin.config as Record<string, unknown>[];
-  const provider = config.find(
-    (entry) => entry.providerId === "zentity-x402"
-  ) as
-    | {
-        getUserInfo(tokens: {
-          accessToken?: string;
-          idToken?: string;
-        }): Promise<unknown>;
-      }
-    | undefined;
-
+function findProvider(auth: AuthConfig, id: string) {
+  const plugin = auth.plugins.find((entry) => entry.type === "genericOAuth");
+  const provider = plugin?.config?.find((entry) => entry.providerId === id);
   if (!provider) {
-    throw new Error("x402 provider not configured");
+    throw new Error(`Missing test provider ${id}`);
   }
-
   return provider;
+}
+
+async function loadProviderConfig() {
+  return findProvider(await loadAuthConfig(), "zentity-x402");
 }
 
 describe("getAuth provider discovery", () => {
@@ -110,9 +112,7 @@ describe("getAuth provider discovery", () => {
   });
 
   it("discovers Zentity through the OIDC discovery URL of its issuer", async () => {
-    const provider = (await loadProviderConfig()) as unknown as {
-      discoveryUrl: string;
-    };
+    const provider = await loadProviderConfig();
 
     // OpenID Connect Discovery 1.0 §4 appends the well-known path to the
     // issuer, so this URL names `http://zentity.example/api/auth`.
@@ -140,22 +140,7 @@ describe("getAuth provider userinfo", () => {
     authMocks.verifyToken.mockResolvedValue({
       payload: { sub: "pairwise-sub" },
     });
-    authMocks.getDb.mockReturnValue({
-      insert: vi.fn(() => ({
-        values: vi.fn(() => ({
-          onConflictDoUpdate: vi.fn(),
-        })),
-      })),
-      query: {
-        account: { findFirst: vi.fn().mockResolvedValue(null) },
-        user: { findFirst: vi.fn().mockResolvedValue(null) },
-      },
-      update: vi.fn(() => ({
-        set: vi.fn(() => ({
-          where: vi.fn(),
-        })),
-      })),
-    });
+    authMocks.getDb.mockReturnValue({});
   });
 
   it("rejects when userinfo succeeds but id_token verification fails", async () => {
@@ -278,42 +263,147 @@ describe("getAuth provider userinfo", () => {
   });
 
   it("returns to the scenario after provider logout", async () => {
-    const provider = (await loadProviderConfig()) as Record<string, unknown>;
+    const provider = await loadProviderConfig();
 
     expect(provider.postLogoutRedirectURI).toBe("http://localhost:3102/x402");
   });
 
   it("rebuilds provider configuration from the latest DCR client id", async () => {
-    authMocks.readDcrClient
-      .mockResolvedValueOnce({
-        clientId: "client-before",
-        clientSecret: "secret-before",
-      })
-      .mockResolvedValueOnce({
-        clientId: "client-after",
-        clientSecret: "secret-after",
-      });
-
-    const { getAuth } = await import("./auth");
-    const firstAuth = await getAuth();
-    const secondAuth = await getAuth();
-
-    const firstProvider = (
-      firstAuth as unknown as { plugins: Record<string, unknown>[] }
-    ).plugins.find((plugin) => plugin.type === "genericOAuth") as
-      | { config: Record<string, unknown>[] }
-      | undefined;
-    const secondProvider = (
-      secondAuth as unknown as { plugins: Record<string, unknown>[] }
-    ).plugins.find((plugin) => plugin.type === "genericOAuth") as
-      | { config: Record<string, unknown>[] }
-      | undefined;
-
-    expect(firstProvider?.config[0]?.clientId).toBe("client-before");
-    expect(secondProvider?.config[0]?.clientId).toBe("client-after");
-    expect(firstProvider?.config[0]?.clientSecret).toBe("secret-before");
-    expect(firstProvider?.config[0]?.tokenEndpointAuth).toEqual({
-      method: "client_secret_basic",
+    authMocks.readDcrClient.mockResolvedValue({
+      clientId: "client-before",
+      clientSecret: "secret-before",
     });
+    const first = await loadProviderConfig();
+    authMocks.readDcrClient.mockResolvedValue({
+      clientId: "client-after",
+      clientSecret: "secret-after",
+    });
+    const second = await loadProviderConfig();
+
+    expect(first.clientId).toBe("client-before");
+    expect(second.clientId).toBe("client-after");
+    expect(first.clientSecret).toBe("secret-before");
+    expect(first.tokenEndpointAuth).toEqual({ method: "client_secret_basic" });
+  });
+});
+
+describe("linked scenario claims", () => {
+  const bank = {
+    userId: "alice",
+    providerId: "zentity-bank",
+    accountId: "bank-sub",
+  };
+  const exchange = {
+    userId: "alice",
+    providerId: "zentity-exchange",
+    accountId: "exchange-sub",
+  };
+  let config: AuthConfig;
+  let db: ReturnType<typeof drizzle>;
+
+  beforeEach(async () => {
+    db = drizzle(createClient({ url: ":memory:" }));
+    const empty = await generateSQLiteDrizzleJson({});
+    const tables = await generateSQLiteDrizzleJson({ user });
+    await db.$client.batch(await generateSQLiteMigration(empty, tables));
+    await db.insert(user).values([
+      { id: "alice", name: "Alice", email: "alice@example.test" },
+      { id: "bob", name: "Bob", email: "bob@example.test", claims: "null" },
+    ]);
+    authMocks.getDb.mockReturnValue(db);
+    authMocks.readDcrClient.mockResolvedValue({
+      clientId: "test-client",
+      clientSecret: "test-secret",
+    });
+    config = await loadAuthConfig();
+  });
+
+  afterEach(() => db.$client.close());
+
+  async function callback(
+    event: "create" | "update",
+    account: typeof bank,
+    fields: Record<string, unknown>,
+    source = account
+  ) {
+    await runWithRequestState(new WeakMap(), async () => {
+      await findProvider(config, source.providerId).mapProfileToUser({
+        id: source.accountId,
+        sub: source.accountId,
+        emailVerified: true,
+        ...fields,
+      });
+      await config.databaseHooks.account[event].after(account);
+    });
+  }
+
+  async function savedClaims(userId: string) {
+    const row = await db
+      .select({ claims: user.claims })
+      .from(user)
+      .where(eq(user.id, userId))
+      .get();
+    return JSON.parse(row?.claims ?? "{}");
+  }
+
+  it("keeps concurrent callbacks for one user, including partial disclosures from the same provider", async () => {
+    await callback("create", bank, { address: { old: true }, name: "old" });
+    await Promise.all([
+      callback("update", bank, { address: { current: true }, name: null }),
+      callback("update", bank, { verified: true }),
+      callback("create", exchange, { nationality: "US" }),
+    ]);
+    expect(await savedClaims("alice")).toEqual({
+      [bank.providerId]: {
+        id: bank.accountId,
+        sub: bank.accountId,
+        emailVerified: true,
+        address: { current: true },
+        name: null,
+        verified: true,
+      },
+      [exchange.providerId]: {
+        id: exchange.accountId,
+        sub: exchange.accountId,
+        emailVerified: true,
+        nationality: "US",
+      },
+    });
+  });
+
+  it("uses the linked owner and requires both provider and subject to match", async () => {
+    const bob = { ...exchange, userId: "bob", accountId: bank.accountId };
+    await callback("create", bank, { name: "Alice" });
+    await callback("create", bob, { nationality: "US" });
+    await callback("update", bob, { unexpected: true }, bank);
+    await callback("update", bob, { unexpected: true }, exchange);
+
+    expect(await savedClaims("alice")).toEqual({
+      [bank.providerId]: expect.objectContaining({ name: "Alice" }),
+    });
+    expect(await savedClaims("bob")).toEqual({
+      [bob.providerId]: {
+        id: bob.accountId,
+        sub: bob.accountId,
+        emailVerified: true,
+        nationality: "US",
+      },
+    });
+  });
+
+  it("starts a new profile when a different subject uses the same provider", async () => {
+    await callback("create", bank, { name: "first account" });
+    const second = { ...bank, accountId: "another-bank-sub" };
+    await callback("create", second, { verified: true });
+    expect((await savedClaims("alice"))[bank.providerId]).toEqual({
+      id: second.accountId,
+      sub: second.accountId,
+      emailVerified: true,
+      verified: true,
+    });
+  });
+
+  it("keeps provider claims read-only for clients", () => {
+    expect(config.user.additionalFields.claims.input).toBe(false);
   });
 });
