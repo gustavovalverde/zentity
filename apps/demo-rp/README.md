@@ -187,7 +187,7 @@ For the OAuth token transition release, push at the step the header of `apps/web
 ## Architecture
 
 - **Next.js 16** with App Router
-- **better-auth** with `genericOAuth` plugin (`overrideUserInfo: true` for step-up)
+- **Better Auth** with the `genericOAuth` plugin for scenario sign-in and step-up
 - **DPoP sign-in**: `genericOAuth` signs the code exchange and refresh with one key derived from `OAUTH_DPOP_KEY_SEED` and sends `dpop_jkt` on the authorization request. Userinfo, the agent bootstrap token exchange, validity pulls, and Proof-of-Human requests present the tokens with the same key. Sign-in does not use PAR: Zentity's PAR endpoint requires a `resource` indicator, which would change the access token audience
 - **shadcn/ui** for components
 - **SQLite** (via better-sqlite3) for session storage
@@ -279,7 +279,7 @@ Step-up follows the disclosure profile's interaction rules:
 1. Sign-in uses **standard + proof scopes** — consent only, no vault unlock
 2. Step-up calls `signIn.social()` with `identity.*` scopes — triggers vault unlock + exact binding on Zentity's consent page
 3. Zentity stages the PII ephemerally (5-minute TTL, single-consume) and delivers it through the userinfo-backed disclosure path
-4. `overrideUserInfo: true` ensures the updated claims overwrite the user record
-5. Phase detection checks if `stepUpClaimKeys` are present in `session.user.claims`
+4. Once Better Auth links the provider account, the demo saves the disclosed claims under that scenario's provider ID. A later sign-in or step-up for the same account updates the claims Zentity returned.
+5. Each scenario checks its own entry in `session.user.claims` for its `stepUpClaimKeys`. After you complete bank account opening, you can visit the exchange and return to the bank dashboard with the bank profile you already shared.
 
 The disclosure semantics (vault requirement, delivery surface, binding rules) are enforced by Zentity's auth server, not by the RP. The RP just requests the right scopes.

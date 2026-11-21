@@ -132,6 +132,19 @@ export async function signInToScenarioThroughApi(
   await completeConsent(page, "/");
 }
 
+export async function readDemoSession(page: Page) {
+  const response = await page.request.get("/api/auth/get-session", {
+    headers: { Origin: demoRpBaseURL.replace(TRAILING_SLASH_RE, "") },
+  });
+  expect(response.ok()).toBeTruthy();
+  return (await response.json()) as {
+    user?: {
+      id?: string;
+      claims?: Record<string, Record<string, unknown>>;
+    };
+  } | null;
+}
+
 export async function completeConsent(page: Page, path: string) {
   const allowButton = page.getByRole("button", { name: "Allow" });
   await allowButton.waitFor({ state: "visible", timeout: 60_000 });
